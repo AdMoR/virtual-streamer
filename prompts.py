@@ -35,6 +35,13 @@ SARCASTIC_PROMPT_FR = ("What sarcastic answer could you give to this question ? 
                        "Before answering, greet the user. You can develop your answer. Don't mention sarcastic in your answer. Answer in french."
                        "=> {name}: {question}")
 
+STAND_UP_PROMPT = ("Write a very long funny comedy standup about the user's comment below and give your honest "
+                   "opinion on the subject. You are a comedian acting pretending to be Jesus Christ. "
+                   "you don't need to introduce yourself."
+                   "Answer in French to this topic. You can be sarcastic at times. "
+                   "Part of your speech can have the style of a Bible extract : "
+                   "{name}: {question}")
+
 
 default_names = ['LéaParisienne', 'MaximeRiveGauche', 'ClaraChic', 'HugoMontmartre', 'ChloéCoeurdeVille',
                  'ThéoRiveDouce', 'ManonBelleÉpoque', 'GabrielLumière', 'LénaBoulevard', 'LouisRiveGastronomie',

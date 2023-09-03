@@ -19,7 +19,7 @@ from batch_face import RetinaFace
 import time
 from textwrap import wrap
 from utils import *
-from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR
+from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, STAND_UP_PROMPT
 
 import subprocess
 import numpy as np
@@ -68,6 +68,9 @@ parser.add_argument('--rotate', default=False, action='store_true',
 
 parser.add_argument('--nosmooth', default=False, action='store_true',
                     help='Prevent smoothing face detections over a short temporal window')
+
+
+RESOLUTION = 720
 
 
 def get_smoothened_boxes(boxes, T):
@@ -218,7 +221,7 @@ while 1:
         break
 
     aspect_ratio = frame.shape[1] / frame.shape[0]
-    frame = cv2.resize(frame, (int(1080 * aspect_ratio), 1080))
+    frame = cv2.resize(frame, (int(RESOLUTION * aspect_ratio), RESOLUTION))
     # if args.resize_factor > 1:
     #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
 
@@ -274,7 +277,6 @@ def main(args, name, question,audio_path, full_frames, face_det_results_origin):
     full_frames = full_frames[:len(mel_chunks)]
     face_det_results = face_det_results_origin[:len(mel_chunks)]
 
-
     gen = datagen(full_frames.copy(), mel_chunks, face_det_results.copy())
 
     s = time.time()
@@ -308,8 +310,6 @@ def main(args, name, question,audio_path, full_frames, face_det_results_origin):
     
     outfile_path = f'./temp/result_{tag}.mp4'
     outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
-    #combine_part_in_concat_file([title_path, outfile_path], None, outfile_titled_path)
-
 
     subprocess.check_call([
         "ffmpeg", "-y",
@@ -342,13 +342,12 @@ def gpt_call(prompt):
     return completion.choices[0].message.content
 
 
-
 def fn(args, name, question):
-    template = random.choice([PROMPT_FR_2, PROMPT_FR_3, SARCASTIC_PROMPT_FR])
+    template = random.choice([STAND_UP_PROMPT])
     query = template.format(name=name, question=question)
 
     completion = gpt_call(query)
-    text = completion
+    text = replace_number_to_text(completion)
     print("response ===> ", text)
 
     # prev p317
@@ -358,7 +357,7 @@ def fn(args, name, question):
 
 
 def update_next_qestion_file(question: Question):
-    with open("./next_qestion.txt", "wb") as f:
+    with open("./next_question.txt", "wb") as f:
         if question is not None:
             f.write(f"Question de {question.name} : {question.question[:500]}".encode("utf-8"))
         else:
