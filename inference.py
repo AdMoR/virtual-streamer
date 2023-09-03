@@ -3,6 +3,7 @@ import math
 import os
 import platform
 import subprocess
+import datetime
 
 import cv2
 import numpy as np
@@ -14,17 +15,30 @@ import audio
 from models import Wav2Lip
 
 from batch_face import RetinaFace
-from time import time
+import time
+from textwrap import wrap
+from utils import *
+
+import subprocess
+import numpy as np
+import imageio
+import tempfile
+from PIL import Image
+import dataclasses
+import openai
+import os
+import obsws_python as obs
+
+cl = obs.ReqClient(host='192.168.1.24', port=4455, password='FGKezkUn96whKfub', timeout=3)
+
+
+
 
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
 parser.add_argument('--checkpoint_path', type=str, 
                     help='Name of saved checkpoint to load weights from', required=True)
 
-parser.add_argument('--face', type=str, 
-                    help='Filepath of video/image that contains faces to use', required=True)
-parser.add_argument('--audio', type=str, 
-                    help='Filepath of video/audio file to use as raw audio source', required=True)
 parser.add_argument('--outfile', type=str, help='Video path to save result. See default for an e.g.', 
                                 default='results/result_voice.mp4')
 
@@ -36,12 +50,12 @@ parser.add_argument('--fps', type=float, help='Can be specified only if input is
 parser.add_argument('--pads', nargs='+', type=int, default=[0, 10, 0, 0], 
                     help='Padding (top, bottom, left, right). Please adjust to include chin at least')
 
-parser.add_argument('--wav2lip_batch_size', type=int, help='Batch size for Wav2Lip model(s)', default=128)
+parser.add_argument('--wav2lip_batch_size', type=int, help='Batch size for Wav2Lip model(s)', default=8)
 
 # parser.add_argument('--resize_factor', default=1, type=int,
 #             help='Reduce the resolution by this factor. Sometimes, best results are obtained at 480p or 720p')
 
-parser.add_argument('--out_height', default=480, type=int,
+parser.add_argument('--out_height', default=1080, type=int,
             help='Output video height. Best results are obtained at 480 or 720')
 
 parser.add_argument('--crop', nargs='+', type=int, default=[0, -1, 0, -1],
@@ -71,9 +85,9 @@ def get_smoothened_boxes(boxes, T):
 
 def face_detect(images):
     results = []
-    pady1, pady2, padx1, padx2 = args.pads
+    pady1, pady2, padx1, padx2 = [0, 10, 0, 0]
 
-    s = time()
+    s = time.time()
 
     for image, rect in zip(images, face_rect(images)):
         if rect is None:
@@ -87,27 +101,17 @@ def face_detect(images):
 
         results.append([x1, y1, x2, y2])
 
-    print('face detect time:', time() - s)
+    print('face detect time:', time.time() - s)
 
     boxes = np.array(results)
-    if not args.nosmooth: boxes = get_smoothened_boxes(boxes, T=5)
+    #if not args.nosmooth: boxes = get_smoothened_boxes(boxes, T=5)
     results = [[image[y1: y2, x1:x2], (y1, y2, x1, x2)] for image, (x1, y1, x2, y2) in zip(images, boxes)]
 
     return results
 
 
-def datagen(frames, mels):
+def datagen(frames, mels, face_det_results):
     img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
-
-    if args.box[0] == -1:
-        if not args.static:
-            face_det_results = face_detect(frames) # BGR2RGB for CNN face detection
-        else:
-            face_det_results = face_detect([frames[0]])
-    else:
-        print('Using the specified bounding box instead of face detection...')
-        y1, y2, x1, x2 = args.box
-        face_det_results = [[f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
 
     for i, m in enumerate(mels):
         idx = 0 if args.static else i%len(frames)
@@ -169,62 +173,89 @@ def load_model(path):
     model = model.to(device)
     return model.eval()
 
-def main():
-    args.img_size = 96
 
-    if os.path.isfile(args.face) and args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
-        args.static = True
 
-    if not os.path.isfile(args.face):
-        raise ValueError('--face argument must be a valid path to video/image file')
+def face_rect(images):
+    num_batches = math.ceil(len(images) / face_batch_size)
+    prev_ret = None
+    for i in range(num_batches):
+        batch = images[i * face_batch_size: (i + 1) * face_batch_size]
+        all_faces = detector(batch)  # return faces list of all images
+        for faces in all_faces:
+            if faces:
+                box, landmarks, score = faces[0]
+                prev_ret = tuple(map(int, box))
+            yield prev_ret
 
-    elif args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
-        full_frames = [cv2.imread(args.face)]
-        fps = args.fps
 
-    else:
-        video_stream = cv2.VideoCapture(args.face)
-        fps = video_stream.get(cv2.CAP_PROP_FPS)
+model = detector = detector_model = None
 
-        print('Reading video frames...')
+def do_load(checkpoint_path):
+    global model, detector, detector_model
 
-        full_frames = []
-        while 1:
-            still_reading, frame = video_stream.read()
-            if not still_reading:
-                video_stream.release()
-                break
+    model = load_model(checkpoint_path)
 
-            aspect_ratio = frame.shape[1] / frame.shape[0]
-            frame = cv2.resize(frame, (int(args.out_height * aspect_ratio), args.out_height))
-            # if args.resize_factor > 1:
-            #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
+    # SFDDetector.load_model(device)
+    detector = RetinaFace(gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet")
+    # detector = RetinaFace(gpu_id=0, model_path="checkpoints/resnet50.pth", network="resnet50")
 
-            if args.rotate:
-                frame = cv2.rotate(frame, cv2.cv2.ROTATE_90_CLOCKWISE)
+    detector_model = detector.model
 
-            y1, y2, x1, x2 = args.crop
-            if x2 == -1: x2 = frame.shape[1]
-            if y2 == -1: y2 = frame.shape[0]
+    print("Models loaded")
 
-            frame = frame[y1:y2, x1:x2]
 
-            full_frames.append(frame)
+args = parser.parse_args()
+args.img_size = 96
+do_load(args.checkpoint_path)
 
-    print ("Number of frames available for inference: "+str(len(full_frames)))
+face_batch_size = 8 * 8
+video_stream = cv2.VideoCapture("/media/amor/Storage/code_dw/cog-Wav2Lip/reference.mp4")
+fps = video_stream.get(cv2.CAP_PROP_FPS)
 
-    if not args.audio.endswith('.wav'):
+print('Reading video frames...')
+
+full_frames = []
+while 1:
+    still_reading, frame = video_stream.read()
+    if not still_reading:
+        video_stream.release()
+        break
+
+    aspect_ratio = frame.shape[1] / frame.shape[0]
+    frame = cv2.resize(frame, (int(1080 * aspect_ratio), 1080))
+    # if args.resize_factor > 1:
+    #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
+
+    y1, y2, x1, x2 = [0, -1, 0, -1]
+    if x2 == -1: x2 = frame.shape[1]
+    if y2 == -1: y2 = frame.shape[0]
+
+    frame = frame[y1:y2, x1:x2]
+
+    full_frames.append(frame)
+    
+face_det_results_origin = face_detect(full_frames) 
+
+
+def main(args, name, question,audio_path, full_frames, face_det_results_origin):
+    dirname = "/media/amor/Storage/Videos/JesusStreamFolder"
+    tag=str(datetime.datetime.now()).replace(" ", "-")
+    out_path = os.path.join(dirname, f"result_{tag}.mp4")
+    batch_size = args.wav2lip_batch_size
+    #print ("Number of frames available for inference: "+str(len(full_frames)))
+
+    if not audio_path.endswith('.wav'):
         print('Extracting raw audio...')
         # command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
         # subprocess.call(command, shell=True)
         subprocess.check_call([
             "ffmpeg", "-y",
-            "-i", args.audio,
+            "-i", audio_path,
             "temp/temp.wav",
         ])
-        args.audio = 'temp/temp.wav'
+        audio_path = 'temp/temp.wav'
 
-    wav = audio.load_wav(args.audio, 16000)
+    wav = audio.load_wav(audio_path, 16000)
     mel = audio.melspectrogram(wav)
     print(mel.shape)
 
@@ -245,11 +276,12 @@ def main():
     print("Length of mel chunks: {}".format(len(mel_chunks)))
 
     full_frames = full_frames[:len(mel_chunks)]
+    face_det_results = face_det_results_origin[:len(mel_chunks)]
 
-    batch_size = args.wav2lip_batch_size
-    gen = datagen(full_frames.copy(), mel_chunks)
 
-    s = time()
+    gen = datagen(full_frames.copy(), mel_chunks, face_det_results.copy())
+
+    s = time.time()
 
     for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen,
                                             total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
@@ -262,7 +294,8 @@ def main():
         mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
 
         with torch.no_grad():
-            pred = model(mel_batch, img_batch)
+            with torch.amp.autocast("cuda"):
+                pred = model(mel_batch, img_batch)
 
         pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.
 
@@ -275,49 +308,179 @@ def main():
 
     out.release()
 
-    print("wav2lip prediction time:", time() - s)
+    print("wav2lip prediction time:", time.time() - s)
+    
+    outfile_path = f'./temp/result_{tag}.mp4'
+    outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
+    #combine_part_in_concat_file([title_path, outfile_path], None, outfile_titled_path)
+
 
     subprocess.check_call([
         "ffmpeg", "-y",
         # "-vsync", "0", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
         "-i", "temp/result.avi",
-        "-i", args.audio,
-        # "-c:v", "h264_nvenc",
-        args.outfile,
+        "-i", audio_path, 
+        "-c:v", "h264_nvenc",
+        outfile_path,
     ])
-
-model = detector = detector_model = None
-
-def do_load(checkpoint_path):
-    global model, detector, detector_model
-
-    model = load_model(checkpoint_path)
-
-    # SFDDetector.load_model(device)
-    detector = RetinaFace(gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet")
-    # detector = RetinaFace(gpu_id=0, model_path="checkpoints/resnet50.pth", network="resnet50")
-
-    detector_model = detector.model
-
-    print("Models loaded")
+    subtitle = f"Question de {name} : {question}"
+    add_subtitle(subtitle, outfile_path, outfile_titled_path)
+    
+    # Move the file
+    final_outfile_path = os.path.join(dirname, f"result_{tag}.mp4")
+    shutil.copyfile(outfile_titled_path, final_outfile_path)
+    
+    return final_outfile_path
+    
+    
 
 
-face_batch_size = 64 * 8
 
-def face_rect(images):
-    num_batches = math.ceil(len(images) / face_batch_size)
-    prev_ret = None
-    for i in range(num_batches):
-        batch = images[i * face_batch_size: (i + 1) * face_batch_size]
-        all_faces = detector(batch)  # return faces list of all images
-        for faces in all_faces:
-            if faces:
-                box, landmarks, score = faces[0]
-                prev_ret = tuple(map(int, box))
-            yield prev_ret
+PROMPT = (
+    "You are playing the role of Jesus, the biblical character. In this scene, " +
+    "a person from the modern times ask you about advices. You answer the person in a helpful, " +
+    "loving and spiritual way. You can quote the bible to provide examples. " +
+    "You can call the person by her name to make your response more personal." +
+    "Answer in 2 or 3 sentences maximum."
+    '{name}: {question} ? \nJesus: ')
+
+
+PROMPT_FR = (
+    "You are playing the role of Jesus, the biblical character. In this scene, " +
+    "a French person from the modern times ask you about advices. You answer the person in a helpful, " +
+    "loving and spiritual way. You can quote the bible to provide examples. " +
+    "You can call the person by her name to make your response more personal." +
+    "Answer in French, first by repeating the question and then by answering."
+    '{name}: {question} ? \nJesus: ')
+
+
+PROMPT_FR_2 = ("You are playing the role of Jesus, the biblical character. In this scene, you have to answer the question of one of your french followers. Only write the answer of Jesus." + 
+	"Please answer in the following manner : repeat the question, then succinctly answer it, then justify your answer and finally quote the bible to extend the discussion. Answer in French." +
+	"{name} : {question}" +
+	"Jesus : ")
+	
+	
+PROMPT_FR_3 = ("You are playing the role of Jesus, the biblical character. In this scene, you have to answer the question of one of your french followers. Only write the answer of Jesus." + 
+	"Please answer in the following manner : greet the user by his name, then succinctly quote a related bible extract and finally anwswer the request of the user extensively. "
+    "You always comply to the demand of the user if they are not offensive. Answer in french." +
+	"{name} : {question}" +
+	"Jesus : ")
+
+SARCASTIC_PROMPT_FR = ("What sarcastic answer could you give to this question ? "
+                       "It has to sound like an extract of the bible. Your answer should be the line of your character."
+                       "Before answering, greet the user. You can develop your answer. Don't mention sarcastic in your answer. Answer in french."
+                       "=> {name}: {question}")
+
+
+def gpt_call_mock(prompt):
+    return """
+        Bonjour Dany, merci pour cette demande. Les hosties symbolisent mon corps donné pour vous, et leur préparation requiert du pain sans levain. Elles sont un rappel du dernier repas que j'ai partagé avec mes disciples avant ma crucifixion, où j'ai offert le pain comme mon corps sacrifié.
+Dans la Bible, lors de la Cène, je partageais le pain avec mes disciples en disant : "Prenez, mangez, ceci est mon corps" (Matthieu 26:26). Cette action symbolique représente l'unité entre les croyants et moi-même, ainsi que le sacrifice ultime que j'ai fait pour l'humanité.
+        """
+
+
+def gpt_call(prompt):
+    completion = openai.ChatCompletion.create(model="gpt-3.5-turbo", temperature=0.3, 
+                                              messages=[{"role": "user", "content": prompt}])
+    return completion.choices[0].message.content
+
+
+
+def fn(args, name, question):
+    template = random.choice([PROMPT_FR_2, PROMPT_FR_3, SARCASTIC_PROMPT_FR])
+    query = template.format(name=name, question=question)
+
+    completion = gpt_call(query)
+    text = completion
+    print("response ===> ", text)
+
+    # prev p317
+    audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./response_{hash(query) % 100000}.wav")
+    # Create response
+    return main(args, name, question, audio_outpath, full_frames, face_det_results_origin)
+
+
+
+@dataclasses.dataclass
+class Question:
+    name: str
+    question: str
+
+
+default_questions = list()
+default_names = ['LéaParisienne', 'MaximeRiveGauche', 'ClaraChic', 'HugoMontmartre', 'ChloéCoeurdeVille',
+                 'ThéoRiveDouce', 'ManonBelleÉpoque', 'GabrielLumière', 'LénaBoulevard', 'LouisRiveGastronomie',
+                 'EmmaCharmant', 'ArthurRuelle', 'CamilleCielBleu', 'LucasAvenue', 'AnnaCaféCrème', 'EthanFlâneur',
+                 'JadeArcade', 'EnzoPassepartout', 'ZoéÉtoile', 'NoahMélodie', 'LéonieRiveRomantique',
+                 'PaulineCoeurdeParis', 'EliottRiveGourmande', 'ÉlisePontNeuf', 'MathisPavé', 'OliviaChanson',
+                 'ThibaultPassageSecret', 'MargotFleurdeSeine', 'AlexandreCoeurBohème', 'LouisonCielRouge',
+                 'JulesChicMarais', 'InèsCharmeParisien', 'AugustinRiveRêve', 'CélesteMétroÉtoile',
+                 'VictorCaféNoir', 'JulietteTrésor', 'NicolasBistrot', 'ÉvaCielOrage', 'BenjaminLuneSaint-Germain',
+                 'ZoéRueEnchantée', 'LucieQuartierLatin', 'AntoineRivePassion', 'MargauxArc-en-Ciel',
+                 'MathéoRiveFlânerie', 'LénaëlJardinSecret', 'LilaCaféCoeur', 'ÉmileChemin',
+                 'LéonieEtoileFilante', 'BaptisteRiveRive', 'OcéaneCoeurdeLumière', "Jean-Pierre Liégois"] + \
+                ['ColetteMystère', 'RémyVoyageur', 'ÉlodiePlume', 'LaurentLabyrinthe', 'LéaFleurdeLune', 'ThéoVenture',
+                 'ManonEclat', 'FrançoisSonge', 'AmélieRêveuse', 'NicolasÉnigme', 'CamilleErrant', 'JulienAventureux',
+                 'ClaraChanson', 'AlexandreEtoile', 'MargotFlâneuse', 'AntoineVagabond', 'EliseArcade',
+                 'LucasEspritLibre', 'EmilieRandonneuse', 'HugoPérégrin', 'MathildeSillage', 'VictorErrance',
+                 'ZoéEclaireur', 'BenjaminRêveur', 'CélineAstre', 'DamienMystique', 'InèsEvasion', 'BaptisteCheminant',
+                 'AuroreErrante', 'MaximeOdyssée', 'ClémenceErratique', 'JérémieVoyant', 'LiseRandonneuse',
+                 'QuentinÉvanescent', 'EléonoreEtoileFilante', 'GabrielErrant', 'AmandinePérégrine', 'LouisPasseur',
+                 'LucieEchappée', 'AdrienErrant', 'ManonFlâneuse', 'ThibautVoyageur', 'ChloéSongeuse',
+                 'MathieuErrance', 'OcéaneEclaireuse', 'OlivierAstre', 'MarieLointaine', 'NicolasErrant',
+                 'MargauxEtoileErrante', 'JulienErratique', '']
+
+
+
+def read_from_question_queue() -> Optional[Question]:
+    offset = 0
+    while True:
+        infile = open("/media/amor/Storage/code_dw/SadTalker/other_methods/video-retalking/chat_log.txt", "rb")
+        infile.seek(offset)
+        for line in infile:
+            tokens = line.decode("utf-8").split("|")
+            if len(tokens) < 2:
+                print(f"Invalid line found : '{line}'")
+                continue
+            yield Question(tokens[0], tokens[1])
+        infile.close()
+        with open("/media/amor/Storage/code_dw/SadTalker/other_methods/video-retalking/chat_log.txt", "wb") as f:
+            f.write(b"")
+        yield None
+        print(offset)
+
+
+def update_obs_source(video_path: str):
+    # pass conn info if not in config.toml
+    settings_call = cl.get_input_settings("JesusAnswers")
+    settings = settings_call.input_settings
+    settings["local_file"] = video_path
+    cl.set_input_settings("JesusAnswers", settings, True)
+    cl.set_current_program_scene("DemandeAJesus")
+
+
+def update_next_qestion_file(question: Question):
+    with open("/media/amor/Storage/code_dw/SadTalker/other_methods/video-retalking/next_qestion.txt", "wb") as f:
+        if question is not None:
+            f.write(f"Question de {question.name} : {question.question[:500]}".encode("utf-8"))
+        else:
+            f.write(f"Pas de question en cours".encode("utf-8"))
+
+
+def main_exec():
+    for question in read_from_question_queue():
+        update_next_qestion_file(question)
+        if question is not None:
+            #question = Question(random.choice(default_names), random.choice(default_questions))
+            print("-->", question)
+            video_path = fn(args, question.name, question.question)
+            print(f"New video_path : {video_path}")
+            update_obs_source(video_path)
+        time.sleep(1)
+        print("sleeping")
+
 
 
 if __name__ == '__main__':
-    args = parser.parse_args()
-    do_load(args.checkpoint_path)
-    main()
+	main_exec()
+

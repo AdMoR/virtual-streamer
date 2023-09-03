@@ -4,7 +4,8 @@ import json
 def get_video_details(filename):
   cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-of', 'json', filename]
   result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-  info = json.loads(result.stdout)
+  info = json.loads(result.stdout.decode("utf-8"))
+  print(info)
 
   # Get video stream
   video_stream = next(stream for stream in info['streams'] if stream['codec_type'] == 'video')
