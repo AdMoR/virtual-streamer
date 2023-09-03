@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Callable, Any
 
 import shutil
 import urllib
@@ -105,3 +105,28 @@ def txt_to_speech_call(speech_lines, speaker, outpath):
 
     return outpath
 
+
+@dataclasses.dataclass
+class Question:
+    name: str
+    question: str
+
+
+def question_parser(line: bytes) -> Question:
+    tokens = line.decode("utf-8").split("|")
+    return Question(tokens[0], tokens[1])
+
+
+def read_from_question_queue(fileptah: str ="./chat_log.txt",
+                             parser: Callable[[bytes], Any] = question_parser) -> Optional[Any]:
+    offset = 0
+    while True:
+        infile = open(fileptah, "rb")
+        infile.seek(offset)
+        for line in infile:
+            yield parser(line)
+        infile.close()
+        with open(fileptah, "wb") as f:
+            f.write(b"")
+        yield None
+        print(offset)

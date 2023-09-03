@@ -1,3 +1,4 @@
+from typing import Callable, Dict, Any
 import argparse
 import math
 import os
@@ -18,6 +19,7 @@ from batch_face import RetinaFace
 import time
 from textwrap import wrap
 from utils import *
+from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR
 
 import subprocess
 import numpy as np
@@ -331,45 +333,6 @@ def main(args, name, question,audio_path, full_frames, face_det_results_origin):
     shutil.copyfile(outfile_titled_path, final_outfile_path)
     
     return final_outfile_path
-    
-    
-
-
-
-PROMPT = (
-    "You are playing the role of Jesus, the biblical character. In this scene, " +
-    "a person from the modern times ask you about advices. You answer the person in a helpful, " +
-    "loving and spiritual way. You can quote the bible to provide examples. " +
-    "You can call the person by her name to make your response more personal." +
-    "Answer in 2 or 3 sentences maximum."
-    '{name}: {question} ? \nJesus: ')
-
-
-PROMPT_FR = (
-    "You are playing the role of Jesus, the biblical character. In this scene, " +
-    "a French person from the modern times ask you about advices. You answer the person in a helpful, " +
-    "loving and spiritual way. You can quote the bible to provide examples. " +
-    "You can call the person by her name to make your response more personal." +
-    "Answer in French, first by repeating the question and then by answering."
-    '{name}: {question} ? \nJesus: ')
-
-
-PROMPT_FR_2 = ("You are playing the role of Jesus, the biblical character. In this scene, you have to answer the question of one of your french followers. Only write the answer of Jesus." + 
-    "Please answer in the following manner : repeat the question, then succinctly answer it, then justify your answer and finally quote the bible to extend the discussion. Answer in French." +
-    "{name} : {question}" +
-    "Jesus : ")
-
-
-PROMPT_FR_3 = ("You are playing the role of Jesus, the biblical character. In this scene, you have to answer the question of one of your french followers. Only write the answer of Jesus." + 
-    "Please answer in the following manner : greet the user by his name, then succinctly quote a related bible extract and finally anwswer the request of the user extensively. "
-    "You always comply to the demand of the user if they are not offensive. Answer in french." +
-    "{name} : {question}" +
-    "Jesus : ")
-
-SARCASTIC_PROMPT_FR = ("What sarcastic answer could you give to this question ? "
-                       "It has to sound like an extract of the bible. Your answer should be the line of your character."
-                       "Before answering, greet the user. You can develop your answer. Don't mention sarcastic in your answer. Answer in french."
-                       "=> {name}: {question}")
 
 
 def gpt_call_mock(prompt):
@@ -398,56 +361,6 @@ def fn(args, name, question):
     audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
     # Create response
     return main(args, name, question, audio_outpath, full_frames, face_det_results_origin)
-
-
-
-@dataclasses.dataclass
-class Question:
-    name: str
-    question: str
-
-
-default_questions = list()
-default_names = ['LéaParisienne', 'MaximeRiveGauche', 'ClaraChic', 'HugoMontmartre', 'ChloéCoeurdeVille',
-                 'ThéoRiveDouce', 'ManonBelleÉpoque', 'GabrielLumière', 'LénaBoulevard', 'LouisRiveGastronomie',
-                 'EmmaCharmant', 'ArthurRuelle', 'CamilleCielBleu', 'LucasAvenue', 'AnnaCaféCrème', 'EthanFlâneur',
-                 'JadeArcade', 'EnzoPassepartout', 'ZoéÉtoile', 'NoahMélodie', 'LéonieRiveRomantique',
-                 'PaulineCoeurdeParis', 'EliottRiveGourmande', 'ÉlisePontNeuf', 'MathisPavé', 'OliviaChanson',
-                 'ThibaultPassageSecret', 'MargotFleurdeSeine', 'AlexandreCoeurBohème', 'LouisonCielRouge',
-                 'JulesChicMarais', 'InèsCharmeParisien', 'AugustinRiveRêve', 'CélesteMétroÉtoile',
-                 'VictorCaféNoir', 'JulietteTrésor', 'NicolasBistrot', 'ÉvaCielOrage', 'BenjaminLuneSaint-Germain',
-                 'ZoéRueEnchantée', 'LucieQuartierLatin', 'AntoineRivePassion', 'MargauxArc-en-Ciel',
-                 'MathéoRiveFlânerie', 'LénaëlJardinSecret', 'LilaCaféCoeur', 'ÉmileChemin',
-                 'LéonieEtoileFilante', 'BaptisteRiveRive', 'OcéaneCoeurdeLumière', "Jean-Pierre Liégois"] + \
-                ['ColetteMystère', 'RémyVoyageur', 'ÉlodiePlume', 'LaurentLabyrinthe', 'LéaFleurdeLune', 'ThéoVenture',
-                 'ManonEclat', 'FrançoisSonge', 'AmélieRêveuse', 'NicolasÉnigme', 'CamilleErrant', 'JulienAventureux',
-                 'ClaraChanson', 'AlexandreEtoile', 'MargotFlâneuse', 'AntoineVagabond', 'EliseArcade',
-                 'LucasEspritLibre', 'EmilieRandonneuse', 'HugoPérégrin', 'MathildeSillage', 'VictorErrance',
-                 'ZoéEclaireur', 'BenjaminRêveur', 'CélineAstre', 'DamienMystique', 'InèsEvasion', 'BaptisteCheminant',
-                 'AuroreErrante', 'MaximeOdyssée', 'ClémenceErratique', 'JérémieVoyant', 'LiseRandonneuse',
-                 'QuentinÉvanescent', 'EléonoreEtoileFilante', 'GabrielErrant', 'AmandinePérégrine', 'LouisPasseur',
-                 'LucieEchappée', 'AdrienErrant', 'ManonFlâneuse', 'ThibautVoyageur', 'ChloéSongeuse',
-                 'MathieuErrance', 'OcéaneEclaireuse', 'OlivierAstre', 'MarieLointaine', 'NicolasErrant',
-                 'MargauxEtoileErrante', 'JulienErratique', '']
-
-
-
-def read_from_question_queue() -> Optional[Question]:
-    offset = 0
-    while True:
-        infile = open("./chat_log.txt", "rb")
-        infile.seek(offset)
-        for line in infile:
-            tokens = line.decode("utf-8").split("|")
-            if len(tokens) < 2:
-                print(f"Invalid line found : '{line}'")
-                continue
-            yield Question(tokens[0], tokens[1])
-        infile.close()
-        with open("./chat_log.txt", "wb") as f:
-            f.write(b"")
-        yield None
-        print(offset)
 
 
 def update_obs_source(video_path: str):
