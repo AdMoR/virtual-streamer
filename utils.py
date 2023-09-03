@@ -27,6 +27,7 @@ import dataclasses
 import openai
 import os
 
+
 def create_video_from_image(image_path, output_path, duration):
     args = [
         "ffmpeg", "-y",  "-i",
@@ -92,7 +93,6 @@ def get_length(filename):
                             stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT)
     return float(result.stdout)
-
 
 
 def txt_to_speech_call(speech_lines, speaker, outpath):

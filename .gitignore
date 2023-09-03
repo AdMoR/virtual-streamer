@@ -16,3 +16,6 @@ evaluation/test_filelists/lr*.txt
 *.mp3
 .idea
 .venv
+chat_log.txt
+chat_log_saved.txt
+next_qestion.txt
