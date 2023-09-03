@@ -14,7 +14,7 @@ import requests
 
 
 openai.api_key = os.environ["OPENAI_TOKEN"]
-
+queue_directory = "./"
 
 import os
 from textwrap import wrap
@@ -117,16 +117,21 @@ def question_parser(line: bytes) -> Question:
     return Question(tokens[0], tokens[1])
 
 
-def read_from_question_queue(fileptah: str ="./chat_log.txt",
-                             parser: Callable[[bytes], Any] = question_parser) -> Optional[Any]:
-    offset = 0
+def read_from_queue(queue_name: str,
+                    parser: Callable[[bytes], Any] = question_parser) -> Optional[Any]:
+    filepath = f"{queue_directory}/{queue_name}.txt"
     while True:
-        infile = open(fileptah, "rb")
-        infile.seek(offset)
+        infile = open(filepath, "rb")
         for line in infile:
             yield parser(line)
         infile.close()
-        with open(fileptah, "wb") as f:
+        with open(filepath, "wb") as f:
             f.write(b"")
         yield None
-        print(offset)
+
+
+def add_to_queue(queue_name, message):
+    with open(f"{queue_directory}/{queue_name}.txt", "a") as f:
+        if not message.endswith("\n"):
+            message += "\n"
+        f.write(f"{message}")

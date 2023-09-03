@@ -28,12 +28,6 @@ import tempfile
 from PIL import Image
 import dataclasses
 import openai
-import os
-import obsws_python as obs
-
-cl = obs.ReqClient(host='192.168.1.24', port=4455, password='FGKezkUn96whKfub', timeout=3)
-
-
 
 
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
@@ -205,7 +199,7 @@ def do_load(checkpoint_path):
 
     print("Models loaded")
 
-
+message_directory = "./"
 args = parser.parse_args()
 args.img_size = 96
 do_load(args.checkpoint_path)
@@ -363,15 +357,6 @@ def fn(args, name, question):
     return main(args, name, question, audio_outpath, full_frames, face_det_results_origin)
 
 
-def update_obs_source(video_path: str):
-    # pass conn info if not in config.toml
-    settings_call = cl.get_input_settings("JesusAnswers")
-    settings = settings_call.input_settings
-    settings["local_file"] = video_path
-    cl.set_input_settings("JesusAnswers", settings, True)
-    cl.set_current_program_scene("DemandeAJesus")
-
-
 def update_next_qestion_file(question: Question):
     with open("./next_qestion.txt", "wb") as f:
         if question is not None:
@@ -381,14 +366,15 @@ def update_next_qestion_file(question: Question):
 
 
 def main_exec():
-    for question in read_from_question_queue():
+    for question in read_from_queue("chat_log", question_parser):
         update_next_qestion_file(question)
         if question is not None:
             #question = Question(random.choice(default_names), random.choice(default_questions))
             print("-->", question)
             video_path = fn(args, question.name, question.question)
             print(f"New video_path : {video_path}")
-            update_obs_source(video_path)
+            #update_obs_source(video_path)
+            add_to_queue("video_response_queue", video_path)
         time.sleep(1)
         print("sleeping")
 
