@@ -13,10 +13,13 @@ def append_question(message: twitch.chat.Message):
 
 
 def handle_message(message: twitch.chat.Message) -> None:
-    #if message.text.__contains__("!allo"):
-    append_question(message)
-    message.chat.send(f"Merci {message.user}, ta question est en cours de traitement.")
-    print("Answer done")
+    if message.text.lstrip(" ").lower().startswith("!allo") or message.text.lstrip(" ").lower().startswith("allo"):
+        append_question(message)
+        message.chat.send(f"Merci {message.user}, ta question est en cours de traitement.")
+        print("Answer done")
+    elif "jesus" in message.text.lower() or "jésus" in message.text.lower():
+        message.chat.send(f"{message.user}, si tu souhaites poser une question à Jésus. "
+                          f"Utilises !allo avant ta question. Ex: !allo Salut, la forme ?.")
 
 
 def main_exec():

@@ -3,20 +3,11 @@ import re
 import num2words
 import shutil
 import urllib
-
 import random
 import os
-
 import openai
-
 import warnings
 import requests
-
-
-
-openai.api_key = os.environ["OPENAI_TOKEN"]
-queue_directory = "./"
-
 import os
 from textwrap import wrap
 import subprocess
@@ -27,6 +18,10 @@ from PIL import Image
 import dataclasses
 import openai
 import os
+
+
+openai.api_key = os.environ["OPENAI_TOKEN"]
+queue_directory = "./"
 
 
 def create_video_from_image(image_path, output_path, duration):
@@ -50,7 +45,7 @@ def add_subtitle(subtitle, video_path, output_path, min_duration=None) -> str:
             "-y", '-i',
             video_path,
             '-filter_complex',
-            f"drawtext=fontfile=/home/amor/Downloads/croissant-one/CroissantOne-Regular.ttf:text='{subtitle}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=7*(h-text_h)/8:box=1:boxcolor=black@0.5:boxborderw=1",
+            f"drawtext=fontfile=/home/amor/Downloads/croissant-one/CroissantOne-Regular.ttf:text='{subtitle}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=7*(h-text_h)/8:box=1:boxcolor=black@0.5:boxborderw=1",
              '-c:v', 'h264_nvenc', "-qp", "32", "-b:v", "3000k", "-minrate", "3000k", "-maxrate", "10000k",
             '-codec:a', 'copy',
             output_path]
@@ -80,7 +75,8 @@ def build_concat_file(path_list, concat_file_path=None, duration_per_block=None)
 
 def combine_part_in_concat_file(video_path_list, concat_file_path, out_path, duration_per_block=None):
     concat_file_path = build_concat_file(video_path_list, concat_file_path, duration_per_block)
-    rez = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file_path, '-c:v', 'h264_nvenc', "-qp", "32", "-b:v", "3000k", "-minrate", "3000k", "-maxrate", "10000k",
+    rez = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file_path, '-c:v', 'h264_nvenc',
+                          "-qp", "32", "-b:v", "3000k", "-minrate", "3000k", "-maxrate", "10000k",
                           "-c", "copy", out_path])
     if rez.returncode == 1:
         raise Exception("ffmpeg concat failed")

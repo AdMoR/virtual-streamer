@@ -19,7 +19,8 @@ from batch_face import RetinaFace
 import time
 from textwrap import wrap
 from utils import *
-from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, STAND_UP_PROMPT
+from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
+    STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_PROMPT
 
 import subprocess
 import numpy as np
@@ -236,9 +237,14 @@ while 1:
 face_det_results_origin = face_detect(full_frames) 
 
 
-def main(args, name, question,audio_path, full_frames, face_det_results_origin):
+def sanitize_str(str_):
+    for c in [" ", "/", ",", ";", ":", "!", "?", ".", "\n", "\t", "\r"]:
+        str_ = str_.replace(c, "")
+    return str_
+
+def main(args, name, question, audio_path, full_frames, face_det_results_origin):
     dirname = "/media/amor/Storage/Videos/JesusStreamFolder"
-    tag=str(datetime.datetime.now()).replace(" ", "-")
+    tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:25])
     out_path = os.path.join(dirname, f"result_{tag}.mp4")
     batch_size = args.wav2lip_batch_size
     #print ("Number of frames available for inference: "+str(len(full_frames)))
@@ -329,10 +335,15 @@ def main(args, name, question,audio_path, full_frames, face_det_results_origin):
     return final_outfile_path
 
 
-def gpt_call_mock(prompt):
+def gpt_call_mock(_prompt):
     return """
-        Bonjour Dany, merci pour cette demande. Les hosties symbolisent mon corps donné pour vous, et leur préparation requiert du pain sans levain. Elles sont un rappel du dernier repas que j'ai partagé avec mes disciples avant ma crucifixion, où j'ai offert le pain comme mon corps sacrifié.
-Dans la Bible, lors de la Cène, je partageais le pain avec mes disciples en disant : "Prenez, mangez, ceci est mon corps" (Matthieu 26:26). Cette action symbolique représente l'unité entre les croyants et moi-même, ainsi que le sacrifice ultime que j'ai fait pour l'humanité.
+        Bonjour Dany, merci pour cette demande. Les hosties symbolisent mon corps donné pour vous, et leur préparation
+        requiert du pain sans levain. Elles sont un rappel du dernier repas que j'ai partagé avec mes disciples 
+        avant ma crucifixion, où j'ai offert le pain comme mon corps sacrifié.
+        Dans la Bible, lors de la Cène, je partageais le pain avec mes disciples en disant : 
+        "Prenez, mangez, ceci est mon corps" (Matthieu 26:26). Cette action symbolique 
+        représente l'unité entre les croyants 
+        et moi-même, ainsi que le sacrifice ultime que j'ai fait pour l'humanité.
         """
 
 
@@ -343,7 +354,8 @@ def gpt_call(prompt):
 
 
 def fn(args, name, question):
-    template = random.choice([STAND_UP_PROMPT])
+    template = random.choice([STAND_UP_PROMPT, SARCASTIC_PROMPT_FR, SARCASTIC_STANDUP,
+                              PROMPT_FR_3, VERY_SARCASTIC_PROMPT])
     query = template.format(name=name, question=question)
 
     completion = gpt_call(query)
@@ -370,7 +382,7 @@ def main_exec():
         if question is not None:
             #question = Question(random.choice(default_names), random.choice(default_questions))
             print("-->", question)
-            video_path = fn(args, question.name, question.question)
+            video_path = fn(args, question.name, question.question.replace("!allo", ""))
             print(f"New video_path : {video_path}")
             #update_obs_source(video_path)
             add_to_queue("video_response_queue", video_path)
