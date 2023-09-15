@@ -19,3 +19,4 @@ evaluation/test_filelists/lr*.txt
 chat_log.txt
 chat_log_saved.txt
 next_qestion.txt
+run_worker_service.sh
