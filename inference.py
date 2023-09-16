@@ -20,7 +20,7 @@ import time
 from textwrap import wrap
 from utils import *
 from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
-    STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_PROMPT
+    STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT
 
 import subprocess
 import numpy as np
@@ -197,7 +197,6 @@ def do_load(checkpoint_path):
 
     # SFDDetector.load_model(device)
     detector = RetinaFace(gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet")
-    # detector = RetinaFace(gpu_id=0, model_path="checkpoints/resnet50.pth", network="resnet50")
 
     detector_model = detector.model
 
@@ -354,8 +353,7 @@ def gpt_call(prompt):
 
 
 def fn(args, name, question):
-    template = random.choice([STAND_UP_PROMPT, SARCASTIC_PROMPT_FR, SARCASTIC_STANDUP,
-                              PROMPT_FR_3, VERY_SARCASTIC_PROMPT])
+    template = random.choice([VERY_SARCASTIC_STANDUP_PROMPT])
     query = template.format(name=name, question=question)
 
     completion = gpt_call(query)
