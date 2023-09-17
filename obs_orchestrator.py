@@ -9,7 +9,7 @@ import subprocess
 cl = obs.ReqClient(host='192.168.1.24', port=4455, password='FGKezkUn96whKfub', timeout=3)
 
 MAIN_SCENE = "DemandeAJesus"
-MAIN_MEDIA = "DemandeAJesus"
+MAIN_MEDIA = "JesusAnswers"
 BACKGROUND_SCENE = "DemandeAJesusBackground 3"
 BACKGROUND_MEDIA = "JesusBackground"
 QUEUE_NAME = "video_response_queue"
@@ -17,10 +17,12 @@ VIDEO_DIRECTORY_PATH = "/media/amor/Storage/Videos/JesusStreamFolder"
 
 
 def update_obs_source(video_path: str):
-    # pass conn info if not in config.toml
-    while cl.get_current_program_scene().current_program_scene_name == MAIN_SCENE:
-        print("Waiting for end of current question")
-        time.sleep(1)
+    if cl.get_current_program_scene().current_program_scene_name != MAIN_SCENE:
+        pass
+    else:
+        while cl.get_current_program_scene().current_program_scene_name == MAIN_SCENE:
+            print("Waiting for end of current question")
+            time.sleep(1)
     settings_call = cl.get_input_settings(MAIN_MEDIA)
     settings = settings_call.input_settings
     settings["local_file"] = video_path
@@ -57,6 +59,10 @@ def update_random_obs_source(video_directory_path):
                 cl.set_input_settings(BACKGROUND_MEDIA, settings, True)
                 print(f"Switch background to {new_video}")
                 return new_video
+    else:
+        while cl.get_current_program_scene().current_program_scene_name == MAIN_SCENE:
+            print("Waiting for end of current question")
+            time.sleep(1)
 
 
 def main_loop():
@@ -67,7 +73,8 @@ def main_loop():
             update_obs_source(video_path)
         else:
             background_path = update_random_obs_source(VIDEO_DIRECTORY_PATH)
-            time.sleep(3)
+            if background_path is not None:
+                time.sleep(3)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,16 @@ openai.api_key = os.environ["OPENAI_TOKEN"]
 queue_directory = "./"
 
 
+def combine_video_and_audio(vfile_path, afile_path, out_path):
+    return subprocess.check_call([
+        "ffmpeg", "-y",
+        "-i", vfile_path,
+        "-i", afile_path,
+        "-c:v", "h264_nvenc",
+        out_path,
+    ])
+
+
 def create_video_from_image(image_path, output_path, duration):
     args = [
         "ffmpeg", "-y",  "-i",
@@ -54,7 +64,6 @@ def add_subtitle(subtitle, video_path, output_path, min_duration=None) -> str:
         for i, t in zip(range(2, 2 + len(supp_args)), supp_args):
             args.insert(i, t)
 
-    print("------> ", args)
     rez = subprocess.run(args)
     if rez.returncode != 0:
         raise Exception(rez)
@@ -72,6 +81,7 @@ def build_concat_file(path_list, concat_file_path=None, duration_per_block=None)
                 text = f"file '{path}'\nduration {duration_per_block}\n"
             f.write(text)
     return concat_file_path
+
 
 def combine_part_in_concat_file(video_path_list, concat_file_path, out_path, duration_per_block=None):
     concat_file_path = build_concat_file(video_path_list, concat_file_path, duration_per_block)
@@ -151,3 +161,37 @@ def replace_number_to_text(str_):
     for p in sorted(re.findall(pattern, str_), key=lambda x: len(x), reverse=True):
         str_ = str_.replace(p, num2words.num2words(p, lang="fr"))
     return str_
+
+
+def gpt_call_mock(_prompt):
+    return """
+        Bonjour Dany, merci pour cette demande. Les hosties symbolisent mon corps donné pour vous, et leur préparation
+        requiert du pain sans levain. Elles sont un rappel du dernier repas que j'ai partagé avec mes disciples 
+        avant ma crucifixion, où j'ai offert le pain comme mon corps sacrifié.
+        Dans la Bible, lors de la Cène, je partageais le pain avec mes disciples en disant : 
+        "Prenez, mangez, ceci est mon corps" (Matthieu 26:26). Cette action symbolique 
+        représente l'unité entre les croyants 
+        et moi-même, ainsi que le sacrifice ultime que j'ai fait pour l'humanité.
+        """
+
+
+def gpt_call(prompt):
+    completion = openai.ChatCompletion.create(model="gpt-3.5-turbo", temperature=0.3,
+                                              messages=[{"role": "user", "content": prompt}])
+    return completion.choices[0].message.content
+
+
+def sanitize_str(str_):
+    for c in ["/", ",", ";", ":", "!", "?", ".", "\n", "\t", "\r"]:
+        str_ = str_.replace(c, "")
+    for c in [" "]:
+        str_ = str_.replace(c, "_")
+    return str_
+
+
+def update_next_qestion_file(question: Question):
+    with open("./next_question.txt", "wb") as f:
+        if question is not None:
+            f.write(f"Question de {question.name} : {question.question[:500]}".encode("utf-8"))
+        else:
+            f.write(f"Pas de question en cours".encode("utf-8"))
