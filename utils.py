@@ -2,7 +2,7 @@ from typing import List, Dict, Optional, Callable, Any
 import re
 import num2words
 import shutil
-import urllib
+from urllib import parse
 import random
 import os
 import openai
@@ -103,7 +103,7 @@ def get_length(filename):
 
 
 def txt_to_speech_call(speech_lines, speaker, outpath):
-    safe_string = urllib.parse.quote_plus(speech_lines)
+    safe_string = parse.quote_plus(speech_lines)
     url = f"http://localhost:5002/api/tts?text={safe_string}&speaker_id={speaker}&style_wav=&language_id=fr-fr"
 
     rez = subprocess.run(["curl", "-L", "-X", "GET", url, "--output", outpath])
@@ -111,6 +111,16 @@ def txt_to_speech_call(speech_lines, speaker, outpath):
         raise Exception("Txt to speech call failed")
 
     return outpath
+
+
+def txt_to_speech_call_bis(speech_lines, speaker, outpath):
+    safe_string = parse.quote_plus(speech_lines)
+    url = f"http://0.0.0.0:59125/api/tts?text={safe_string}&voice=fr_FR/tom_low&noiseScale=0.9&noiseW=0.1&lengthScale=0.8&ssml=false&audioTarget=client"
+    rez = subprocess.run(["curl", "-L", "-X", "GET", url, "--output", outpath])
+    if rez.returncode == 1:
+        raise Exception("Txt to speech call failed")
+    return outpath
+
 
 
 @dataclasses.dataclass

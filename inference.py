@@ -2,6 +2,7 @@ from typing import Callable, Dict, Any
 import datetime
 import cv2
 import torch
+import json
 from tqdm import tqdm
 import audio
 from batch_face import RetinaFace
@@ -197,12 +198,13 @@ def main(args, name, question, full_frames, face_det_results_origin):
     dirname = "/media/amor/Storage/Videos/JesusStreamFolder"
 
     # Step 1 - Get the response from GPT 3.5
-    template = random.choice([VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
+    template = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
     query = template.format(name=name, question=question)
 
     completion = gpt_call(query)
     text = replace_number_to_text(completion)
-    print("response ===> ", text)
+    json.dump({"query": query, "response": text, "question": question},
+              open(f"prompts/response_{hash(query) % 1000000}.json", "w"))
 
     # Step 2 - Get the audio for the response
     # prev p317
