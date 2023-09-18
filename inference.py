@@ -35,7 +35,6 @@ class Config:
     outfile: str = 'results/result_voice.mp4'
 
 
-
 def datagen(frames, mels, face_det_results):
     img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
