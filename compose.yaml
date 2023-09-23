@@ -1,0 +1,42 @@
+version: '3'
+services:
+  tts:
+    image: ghcr.io/coqui-ai/tts
+    runtime: nvidia
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    ports:
+      - 5002:5002
+    volumes:
+       - model_cache_2:/root/.local/share
+    networks:
+      - tts
+    entrypoint: ["python3", "TTS/server/server.py", "--model_name", "tts_models/multilingual/multi-dataset/your_tts", "--use_cuda", "true"]
+  virtual_streamer:
+    image: virtual_streamer:latest
+    runtime: nvidia
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    networks:
+      - tts
+      - rabbit
+    volumes:
+      - generations:/src/generations
+      - prompts:/src/prompts
+    env_file:
+      - .env
+  rabbitmq:
+    image: rabbitmq:latest
+
+
+volumes:
+  model_cache_2:
+  generations:
+  prompts:
+
+
+networks:
+  tts:
+  rabbit:
