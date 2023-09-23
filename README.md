@@ -18,7 +18,7 @@ The code was tested with cuda 11.8
 
 ## Run the code
 
-- Twitch reader : python3 twitch_call.py & python3 chat_reader.py
+- Twitch reader : export SHARED_VOLUME="./" && python3 twitch_call.py && python3 chat_reader.py
 - TTS service : python3 TTS/server/server.py --model_name tts_models/multilingual/multi-dataset/your_tts --use_cuda 1
 - Worker : python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
 - Stream orchestrator : python3 obs_orchestrator.py

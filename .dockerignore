@@ -1,1 +1,5 @@
-checkpoints/
+temp
+tmp
+venv
+.ipynb_checkpoints
+prompts/*.json

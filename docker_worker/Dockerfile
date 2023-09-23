@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
 	&& rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.pyenv/shims:/root/.pyenv/bin:$PATH"
-ARG PYTHON_VERSION=3.8
+ARG PYTHON_VERSION=3.9
 RUN curl -s -S -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash && \
 	pyenv install $PYTHON_VERSION && \
 	pyenv global $PYTHON_VERSION
@@ -54,4 +54,4 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 
 # run cog
-CMD python3 -m cog.server.http
+CMD python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
