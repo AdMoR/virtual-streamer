@@ -14,6 +14,8 @@ from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMP
 from model_utils import face_detect, load_model
 import subprocess
 import numpy as np
+import random
+import shutil
 
 
 @dataclasses.dataclass()

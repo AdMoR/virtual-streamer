@@ -1,5 +1,7 @@
 import twitch, json
 from utils import add_to_queue
+import os
+
 
 cred_file = "/home/amor/twitch_creds_allo_jesus.json"
 message_directory = "."
