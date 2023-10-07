@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	git \
 	ca-certificates \
     libgl1 \
+    libgirepository1.0-dev \
 	&& rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.pyenv/shims:/root/.pyenv/bin:$PATH"
 ARG PYTHON_VERSION=3.9

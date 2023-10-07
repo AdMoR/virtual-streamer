@@ -13,7 +13,9 @@ services:
       - tts
     entrypoint: ["python3", "TTS/server/server.py", "--model_name", "tts_models/multilingual/multi-dataset/your_tts", "--use_cuda", "true"]
   virtual_streamer:
-    image: virtual_streamer:latest
+    build:
+      context: .
+      dockerfile: docker_worker/Dockerfile
     runtime: nvidia
     devices:
       - /dev/nvidia0:/dev/nvidia0
@@ -29,6 +31,14 @@ services:
       - .env
   rabbitmq:
     image: rabbitmq:latest
+    ports:
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      - rabbit
 
 
 volumes:
@@ -40,3 +50,4 @@ volumes:
 networks:
   tts:
   rabbit:
+    driver: bridge
