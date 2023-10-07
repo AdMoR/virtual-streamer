@@ -232,15 +232,17 @@ def main(args, name, question, full_frames, face_det_results_origin):
 
 
 def main_exec():
-    for question in read_from_queue("chat_log", question_parser):
-        update_next_qestion_file(question)
-        if question is not None:
-            print("-->", question)
-            video_path = main(args, question.name, question.question.replace("!allo", ""),
-                              full_frames, face_det_results_origin)
-            print(f"New video_path : {video_path}")
-            add_to_queue("video_response_queue", video_path)
-        time.sleep(1)
+    while True:
+        for question in read_from_queue("chat_log", question_parser):
+            update_next_qestion_file(question)
+            if question is not None:
+                print("-->", question)
+                video_path = main(args, question.name, question.question.replace("!allo", ""),
+                                  full_frames, face_det_results_origin)
+                print(f"New video_path : {video_path}")
+                add_to_queue(question.routing_queue, video_path)
+            else:
+                time.sleep(1)
 
 
 if __name__ == '__main__':

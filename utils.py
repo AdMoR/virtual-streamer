@@ -8,6 +8,7 @@ import tempfile
 import dataclasses
 import openai
 import os
+import pika
 
 
 openai.api_key = os.environ["OPENAI_TOKEN"]
@@ -117,14 +118,18 @@ def txt_to_speech_call_bis(speech_lines, speaker, outpath):
 class Question:
     name: str
     question: str
+    routing_queue: str = "video_response_queue"
 
 
 def question_parser(line: bytes) -> Question:
     tokens = line.decode("utf-8").split("|")
-    return Question(tokens[0], tokens[1])
+    if len(tokens) == 2:
+        return Question(tokens[0], tokens[1])
+    else:
+        return Question(tokens[0], tokens[1], tokens[2])
 
 
-def read_from_queue(queue_name: str,
+def read_from_queue_old(queue_name: str,
                     parser: Callable[[bytes], Any] = question_parser) -> Optional[Any]:
     filepath = f"{queue_directory}/{queue_name}.txt"
     while True:
@@ -137,11 +142,42 @@ def read_from_queue(queue_name: str,
         yield None
 
 
-def add_to_queue(queue_name, message):
+def add_to_queue_old(queue_name, message):
     with open(f"{queue_directory}/{queue_name}.txt", "a") as f:
         if not message.endswith("\n"):
             message += "\n"
         f.write(f"{message}")
+
+
+def get_rmq_channel(queue_name):
+    # Define the connection parameters
+    host = os.environ.get("rmq_host", "localhost")
+    connection_params = pika.ConnectionParameters(host=host)
+    connection = pika.BlockingConnection(connection_params)
+
+    # Create a channel
+    channel = connection.channel()
+    channel.queue_declare(queue=queue_name)
+    return channel
+
+
+def add_to_queue(queue_name, message):
+    # Define the connection parameters
+    channel = get_rmq_channel(queue_name)
+    # Send the message
+    channel.basic_publish(exchange='', routing_key=queue_name, body=message)
+
+
+def read_from_queue(queue_name: str,
+                    parser: Callable[[bytes], Any]) -> Optional[Any]:
+    channel = get_rmq_channel(queue_name)
+    while True:
+        method_frame, header_frame, body = channel.basic_get(queue=queue_name, auto_ack=True)
+        if method_frame:
+            yield parser(body)
+        else:
+            break
+    yield None
 
 
 def replace_number_to_text(str_):

@@ -67,14 +67,15 @@ def update_random_obs_source(video_directory_path):
 
 def main_loop():
     background_path = None
-    for video_path in read_from_queue(QUEUE_NAME, lambda line: line.decode("utf-8").strip()):
-        if video_path is not None:
-            print("Changing ", video_path)
-            update_obs_source(video_path)
-        else:
-            background_path = update_random_obs_source(VIDEO_DIRECTORY_PATH)
-            if background_path is not None:
-                time.sleep(3)
+    while True:
+        for video_path in read_from_queue(QUEUE_NAME, lambda line: line.decode("utf-8").strip()):
+            if video_path is not None:
+                print("Changing ", video_path)
+                update_obs_source(video_path)
+            else:
+                background_path = update_random_obs_source(VIDEO_DIRECTORY_PATH)
+                if background_path is not None:
+                    time.sleep(3)
 
 
 if __name__ == "__main__":
