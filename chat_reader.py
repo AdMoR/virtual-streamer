@@ -11,7 +11,7 @@ creds = json.load(open(cred_file))
 def append_question(message: twitch.chat.Message):
     # !/usr/bin/python
     for queue_name in ["chat_log", "chat_log_saved"]:
-        add_to_queue(queue_name, f"{message.user}|{message.text}")
+        add_to_queue(queue_name, f"{message.user}|{message.text}|video_response_queue")
 
 
 def handle_message(message: twitch.chat.Message) -> None:
@@ -19,7 +19,7 @@ def handle_message(message: twitch.chat.Message) -> None:
         append_question(message)
         message.chat.send(f"Merci {message.user}, ta question est en cours de traitement.")
         print("Answer done")
-    elif "jesus" in message.text.lower() or "jésus" in message.text.lower():
+    elif message.text.lower().startswith("jesus") or message.text.lower().startswith("jésus"):
         message.chat.send(f"{message.user}, si tu souhaites poser une question à Jésus. "
                           f"Utilises !allo avant ta question. Ex: !allo Salut, la forme ?.")
 
