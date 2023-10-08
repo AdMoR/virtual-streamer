@@ -93,9 +93,16 @@ def get_length(filename):
     return float(result.stdout)
 
 
+def speech_to_text_call(audio_path):
+    with open(audio_path, 'rb') as audio_data:
+        transcription = openai.Audio.transcribe("whisper-1", audio_data)
+        return transcription['text']
+
+
 def txt_to_speech_call(speech_lines, speaker, outpath):
+    host = os.environ.get("TTS_HOST", "localhost")
     safe_string = parse.quote_plus(speech_lines)
-    url = f"http://localhost:5002/api/tts?text={safe_string}&speaker_id={speaker}&style_wav=&language_id=fr-fr"
+    url = f"http://{host}:5002/api/tts?text={safe_string}&speaker_id={speaker}&style_wav=&language_id=fr-fr"
 
     rez = subprocess.run(["curl", "-L", "-X", "GET", url, "--output", outpath])
     if rez.returncode == 1:
@@ -151,7 +158,7 @@ def add_to_queue_old(queue_name, message):
 
 def get_rmq_channel(queue_name):
     # Define the connection parameters
-    host = os.environ.get("rmq_host", "localhost")
+    host = os.environ.get("RMQ_HOST", "localhost")
     connection_params = pika.ConnectionParameters(host=host)
     connection = pika.BlockingConnection(connection_params)
 
