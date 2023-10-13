@@ -200,10 +200,8 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results_origi
 
     # Step 1 - Get the response from GPT 3.5
     if question.prompt is None:
-        template = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
-    else:
-        template = question.prompt
-    query = template.format(name=question.name, question=question.question)
+        question.prompt = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
+    query = question.render()
 
     completion = gpt_call(query)
     text = replace_number_to_text(completion)
@@ -232,7 +230,7 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results_origi
     final_outfile_path = os.path.join(dirname, f"result_{tag}.mp4")
     shutil.copyfile(outfile_titled_path, final_outfile_path)
     print("---> ", final_outfile_path)
-    return final_outfile_path
+    return final_outfile_path, text
 
 
 def main_exec():
@@ -241,10 +239,10 @@ def main_exec():
             update_next_qestion_file(question)
             if question is not None:
                 print("-->", question)
-                video_path = main(args, question,
-                                  full_frames, face_det_results_origin)
+                video_path, text = main(args, question,
+                                        full_frames, face_det_results_origin)
                 print(f"New video_path : {video_path}")
-                add_to_queue(question.routing_queue, video_path)
+                add_to_queue(question.routing_queue, f"{video_path}|{text}")
             else:
                 time.sleep(1)
 

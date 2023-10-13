@@ -5,7 +5,7 @@ import os
 import time
 from utils import add_to_queue, read_from_queue, speech_to_text_call
 
-com_channel = "jesus_chat_12345"
+com_channel = "jesus_chat_123456"
 
 """
 def transcribe(audio):
@@ -39,7 +39,8 @@ def add_text(history, audio):
         time.sleep(1)
         counter += 1
     print("Total video time : ", counter)
-    history = history + [(text, None), (None, (response,))]
+    video_path, text_response, *_ = response.split("|")
+    history = history + [(text, None), (None, text_response), (None, (video_path,))]
     return history, None
 
 
@@ -58,9 +59,7 @@ with gr.Blocks() as demo:
 
     with gr.Row():
         audio = gr.Audio(source="microphone", type="filepath")
-        txt_msg = audio.stop_recording(add_text, [chatbot, audio], [chatbot, audio], queue=False).then(
-            bot, chatbot, chatbot
-        )
+        txt_msg = audio.stop_recording(add_text, [chatbot, audio], [chatbot, audio], queue=False)
 
 
 

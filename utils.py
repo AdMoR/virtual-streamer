@@ -11,6 +11,9 @@ import openai
 import os
 import pika
 import requests
+import abc
+from abc import ABC
+
 
 openai.api_key = os.environ["OPENAI_TOKEN"]
 queue_directory = "./"
@@ -145,12 +148,33 @@ def txt_to_speech_call_solero(speech_lines, speaker, outpath):
     return outpath
 
 
+class AbstractPromptQuery(ABC):
+    @abc.abstractmethod
+    def render(self) -> str:
+        pass
+
+
 @dataclasses.dataclass
-class Question:
+class Question(AbstractPromptQuery):
     name: str
     question: str
     routing_queue: str = "video_response_queue"
     prompt: str = None
+
+    def render(self) -> str:
+        return self.prompt.format(name=self.name, question=self.question)
+
+
+@dataclasses.dataclass
+class ChatQuestion(AbstractPromptQuery):
+    name: str
+    question: str
+    routing_queue: str = "video_response_queue"
+    prompt: str = None
+    history: List[str] = dataclasses.field(default_factory=list)
+
+    def render(self):
+        return self.prompt.format(name=self.name, question=self.question, history=self.history)
 
 
 def question_parser(line: bytes) -> Question:
