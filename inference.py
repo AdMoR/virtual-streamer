@@ -127,7 +127,7 @@ while 1:
 face_det_results_origin = face_detect(detector, full_frames, args.face_batch_size)
 
 
-def wav2lip_exec(dirname, full_frames, audio_path, question, face_det_results):
+def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face_det_results: Any):
 
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
     out_path = 'temp/result.avi'
@@ -195,32 +195,36 @@ def wav2lip_exec(dirname, full_frames, audio_path, question, face_det_results):
     return out_path
 
 
-def main(args, name, question, full_frames, face_det_results_origin):
+def main(args: Any, question: Question, full_frames: Any, face_det_results_origin: Any):
     dirname = "/media/amor/Storage/Videos/JesusStreamFolder"
 
     # Step 1 - Get the response from GPT 3.5
-    template = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
-    query = template.format(name=name, question=question)
+    if question.prompt is None:
+        template = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
+    else:
+        template = question.prompt
+    query = template.format(name=question.name, question=question.question)
 
     completion = gpt_call(query)
     text = replace_number_to_text(completion)
-    json.dump({"query": query, "response": text, "question": question},
+    json.dump({"query": query, "response": text, "question": question.question},
               open(f"prompts/response_{hash(query) % 1000000}.json", "w"))
 
     # Step 2 - Get the audio for the response
     # prev p317
-    audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
+    #audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
+    audio_outpath = txt_to_speech_call_solero(text, "friedrich", f"./temp/response_{hash(query) % 100000}.wav")
 
     # Step 3 - Wav2lip video generation
     s = time.time()
-    outfile_path = wav2lip_exec(dirname, full_frames, audio_outpath, question, face_det_results_origin)
+    outfile_path = wav2lip_exec(dirname, full_frames, audio_outpath, question.question, face_det_results_origin)
     print("wav2lip prediction time:", time.time() - s)
 
     # Step 4 - Recombination and add subtitles
-    tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
+    tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question.question[:30])
     outfile_combined_path = f'./temp/result_combined_{tag}.mp4'
     combine_video_and_audio(outfile_path, audio_outpath, outfile_combined_path)
-    subtitle = f"Question de {name} : {question}"
+    subtitle = f"Question de {question.name} : {question.question}"
     outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
     add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
     
@@ -237,7 +241,7 @@ def main_exec():
             update_next_qestion_file(question)
             if question is not None:
                 print("-->", question)
-                video_path = main(args, question.name, question.question.replace("!allo", ""),
+                video_path = main(args, question,
                                   full_frames, face_det_results_origin)
                 print(f"New video_path : {video_path}")
                 add_to_queue(question.routing_queue, video_path)

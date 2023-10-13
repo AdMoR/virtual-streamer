@@ -4,42 +4,41 @@ import gradio as gr
 import os
 import time
 from utils import add_to_queue, read_from_queue, speech_to_text_call
-from pydub import AudioSegment
 
-transcriber = pipeline("automatic-speech-recognition", model="qanastek/whisper-base-french-cased")
-com_channel = "jesus_chat_123"
+com_channel = "jesus_chat_12345"
 
+"""
 def transcribe(audio):
     sr, y = audio
     y = y.astype(np.float32)
     y /= np.max(np.abs(y))
     return transcriber({"sampling_rate": sr, "raw": y[:, 0]})["text"]
+"""
 
-
-def openai_transcribe(audio):
-    sr, y = audio
-    audio = AudioSegment(
-        data=y.tobytes(),
-        sample_width=2,
-        frame_rate=sr,
-        channels=y.shape[1]
-    )
-    # Save the audio as an MP3 file
-    temp_path = "microphone_input.mp3"
-    audio.export(temp_path, format="mp3")
-    return speech_to_text_call(temp_path)
+PROMPT = """
+    You are a german teacher. You are roleplaying with your student as Jesus to help him learn. 
+    The level of your student is B1 so you have to make simple sentence but you should create some content to keep the conversation going. 
+    You can also precise some grammatical or lexical points.
+    ```
+    {name}: {question}
+    Jesus: 
+    ```
+    Only generate what Jesus would say.
+    """
 
 
 def add_text(history, audio):
-    text = openai_transcribe(audio)
-    print("Transcribed : ", text)
-    add_to_queue("chat_log", f"GentilUtilisateur|{text}|{com_channel}")
+    tt = time.time()
+    text = speech_to_text_call(audio, "Ich spreche Deutsch.")
+    print("Transcribed : ", text, f" in {time.time() - tt} secs.")
+    add_to_queue("chat_log", f"GentilUtilisateur|{text}|{com_channel}|{PROMPT}")
     response = None
     counter = 0
     while response is None and counter < 120:
         response = next(read_from_queue(com_channel, lambda x: x.decode("utf-8")))
         time.sleep(1)
         counter += 1
+    print("Total video time : ", counter)
     history = history + [(text, None), (None, (response,))]
     return history, None
 
@@ -58,7 +57,7 @@ with gr.Blocks() as demo:
     )
 
     with gr.Row():
-        audio = gr.Audio(source="microphone")
+        audio = gr.Audio(source="microphone", type="filepath")
         txt_msg = audio.stop_recording(add_text, [chatbot, audio], [chatbot, audio], queue=False).then(
             bot, chatbot, chatbot
         )

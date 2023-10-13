@@ -1,3 +1,4 @@
+import json
 from typing import List, Dict, Optional, Callable, Any
 import re
 import num2words
@@ -9,7 +10,7 @@ import dataclasses
 import openai
 import os
 import pika
-
+import requests
 
 openai.api_key = os.environ["OPENAI_TOKEN"]
 queue_directory = "./"
@@ -93,9 +94,9 @@ def get_length(filename):
     return float(result.stdout)
 
 
-def speech_to_text_call(audio_path):
+def speech_to_text_call(audio_path, prompt=""):
     with open(audio_path, 'rb') as audio_data:
-        transcription = openai.Audio.transcribe("whisper-1", audio_data)
+        transcription = openai.Audio.transcribe("whisper-1", audio_data, prompt=prompt)
         return transcription['text']
 
 
@@ -120,20 +121,49 @@ def txt_to_speech_call_bis(speech_lines, speaker, outpath):
     return outpath
 
 
+def txt_to_speech_call_solero(speech_lines, speaker, outpath):
+    try:
+        url = f"http://0.0.0.0:8001/tts/session"
+        data = {
+            "path": "pouet"
+        }
+        response = requests.post(url, data=json.dumps(data))
+    except Exception as e:
+        print(e)
+
+    url = f"http://0.0.0.0:8001/tts/generate"
+    data = {
+        "text": speech_lines,
+        "speaker": speaker,
+        "session": "pouet"
+    }
+    response = requests.post(url, data=json.dumps(data))
+    if not response.ok:
+        raise Exception("Txt to speech call failed")
+    with open(outpath, "wb") as f:
+        f.write(response.content)
+    return outpath
+
 
 @dataclasses.dataclass
 class Question:
     name: str
     question: str
     routing_queue: str = "video_response_queue"
+    prompt: str = None
 
 
 def question_parser(line: bytes) -> Question:
     tokens = line.decode("utf-8").split("|")
+    question = tokens[1].replace("!allo", "")
     if len(tokens) == 2:
-        return Question(tokens[0], tokens[1])
+        return Question(tokens[0], question)
+    elif len(tokens) == 3:
+        return Question(tokens[0], question, tokens[2])
+    elif len(tokens) == 4:
+        return Question(tokens[0], question, tokens[2], tokens[3])
     else:
-        return Question(tokens[0], tokens[1], tokens[2])
+        return Question(tokens[0], question, tokens[2], tokens[3])
 
 
 def read_from_queue_old(queue_name: str,
