@@ -171,13 +171,15 @@ class ChatQuestion(AbstractPromptQuery):
     question: str
     routing_queue: str = "video_response_queue"
     prompt: str = None
-    history: List[str] = dataclasses.field(default_factory=list)
+    history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
 
     def render(self):
-        return self.prompt.format(name=self.name, question=self.question, history=self.history)
+        history_str = "\n".join(f"{self.name}: {e[0]}\nJesus: {e[1]}\n"
+                                for e in self.history if e[0] is not None and e[1] is not None)
+        return self.prompt.format(name=self.name, question=self.question, history=history_str)
 
 
-def question_parser(line: bytes) -> Question:
+def question_parser(line: bytes) -> AbstractPromptQuery:
     tokens = line.decode("utf-8").split("|")
     question = tokens[1].replace("!allo", "")
     if len(tokens) == 2:
@@ -186,6 +188,8 @@ def question_parser(line: bytes) -> Question:
         return Question(tokens[0], question, tokens[2])
     elif len(tokens) == 4:
         return Question(tokens[0], question, tokens[2], tokens[3])
+    elif len(tokens) == 5:
+        return ChatQuestion(tokens[0], question, tokens[2], tokens[3], json.loads(tokens[4]))
     else:
         return Question(tokens[0], question, tokens[2], tokens[3])
 
