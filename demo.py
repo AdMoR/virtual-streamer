@@ -5,7 +5,9 @@ import os
 import time
 import json
 import pika
-from utils import add_to_queue, read_from_queue, speech_to_text_call, get_rmq_channel
+from serde.json import from_json
+from utils import add_to_queue, read_from_queue, speech_to_text_call, get_rmq_channel, ChatQuestion, VideoResponse
+from character_setup import CHARACTERS
 
 com_channel = "jesus_chat_123456"
 
@@ -40,41 +42,12 @@ HIST_PROMPT = """
     Only generate what Jesus would say.
     """
 
+prompt_dict = {
+    "de": "Ich spreche Deutch",
+    "fr": "Je parle français",
+    "en": "I speak english"
+}
 
-def bind_callback_to_history(chatbot, server_queue="chat_log", prompt=HIST_PROMPT):
-
-    def response_parser(text):
-        response = text.decode("utf-8")
-        video_path, text_response, query_text, *_ = response.split("|")
-        #chatbot.value.extend()
-        chatbot.update(value=chatbot.value + [(query_text, text_response), (None, (video_path,))])
-
-    def on_client_rx_reply_from_server(ch, method_frame, properties, body):
-        response_parser(body)
-        # NOTE A real client might want to make additional RPC requests, but in this
-        # simple example we're closing the channel after getting our first reply
-        # to force control to return from channel.start_consuming()
-        print('RPC Client says bye')
-        ch.close()
-
-    channel = get_rmq_channel(server_queue)
-    channel.basic_consume('amq.rabbitmq.reply-to',
-                          on_client_rx_reply_from_server,
-                          auto_ack=True)
-
-    def query_send(audio):
-        query_text = speech_to_text_call(audio, "Ich spreche Deutsch.")
-        text = f"GentilUtilisateur|{query_text}||{prompt}|{json.dumps(chatbot.value)}"
-        print("Swoosh !")
-        channel.basic_publish(
-            exchange='',
-            routing_key=server_queue,
-            body=text,
-            properties=pika.BasicProperties(reply_to='amq.rabbitmq.reply-to')
-        )
-
-    # channel.start_consuming()
-    return channel, query_send
 
 
 def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
@@ -83,24 +56,27 @@ def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
     # The answer channel must be prepared
     next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True, inactivity_timeout=0.1))
 
-    def aaaa(chatbot, audio):
+    def aaaa(chatbot, audio, character):
         # 2 - Get the query and send it
-        query_text = speech_to_text_call(audio, "Ich spreche Deutsch.")
-        text = f"GentilUtilisateur|{query_text}||{prompt}|{json.dumps(chatbot)}"
+        language = CHARACTERS[character].language
+        query_text = speech_to_text_call(audio, prompt_dict.get(language, ""))
+        q = ChatQuestion("GentilUtilisateur", query_text, None, prompt, chatbot,
+                         character_name=character)
+        text = q.serialize()
+        print("Text content : ", text)
         channel.basic_publish(
             exchange="", routing_key=server_queue, body=text.encode(),
             properties=pika.BasicProperties(reply_to="amq.rabbitmq.reply-to"))
         print("sent:", text)
 
         # 3 - Wait for the response from server and update history
-        def response_parser(chatbot, text):
-            response = text.decode("utf-8")
-            video_path, text_response, query_text, *_ = response.split("|")
-            chatbot += [(query_text, text_response), (None, (video_path,))]
+        def response_parser(history, text_response):
+            response = from_json(VideoResponse, text_response.decode())
+            history += [(response.request, response.text_response), (None, (response.video_path,))]
         (method, properties, body) = next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True,
                                                           inactivity_timeout=2*60))
         response_parser(chatbot, body)
-        return chatbot, None
+        return chatbot, None, language
 
     return aaaa
 
@@ -113,12 +89,12 @@ with gr.Blocks() as demo:
         avatar_images=(None, (os.path.join(os.path.dirname(__file__), "avatar.png"))),
         height=800
     )
-
+    language = gr.Dropdown(choices=CHARACTERS.keys(), value="Jesus_de", label="Character selection")
     callback = build_callback()
 
     with gr.Row():
         audio = gr.Audio(source="microphone", type="filepath")
-        txt_msg = audio.stop_recording(callback, [chatbot, audio], [chatbot, audio], queue=False)
+        txt_msg = audio.stop_recording(callback, [chatbot, audio, language], [chatbot, audio, language], queue=False)
 
 
 demo.queue()

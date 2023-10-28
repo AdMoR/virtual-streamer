@@ -1,4 +1,8 @@
+import dataclasses
+import enum
 from typing import Callable, Dict, Any
+from collections import defaultdict
+from character_setup import CHARACTERS
 import datetime
 import cv2
 import torch
@@ -83,6 +87,7 @@ print('Using {} for inference.'.format(device))
 
 model = detector = detector_model = None
 
+
 def do_load(checkpoint_path):
     global model, detector, detector_model
 
@@ -99,35 +104,45 @@ def do_load(checkpoint_path):
 message_directory = "./"
 args = Config()
 do_load(args.checkpoint_path)
-video_stream = cv2.VideoCapture("/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/reference.mp4")
-fps = video_stream.get(cv2.CAP_PROP_FPS)
 
 print('Reading video frames...')
+full_frames_origin = dict()
+face_det_results_origin = dict()
 
-full_frames = []
-while 1:
-    still_reading, frame = video_stream.read()
-    if not still_reading:
-        video_stream.release()
-        break
 
-    aspect_ratio = frame.shape[1] / frame.shape[0]
-    frame = cv2.resize(frame, (int(args.resolution * aspect_ratio), args.resolution))
-    # if args.resize_factor > 1:
-    #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
+def preprocess(video_path: str, name: str, full_frames: Dict, face_det_results_origin: Dict):
+    video_stream = cv2.VideoCapture(video_path)
+    fps = video_stream.get(cv2.CAP_PROP_FPS)
+    full_frames[name] = list()
 
-    y1, y2, x1, x2 = [0, -1, 0, -1]
-    if x2 == -1: x2 = frame.shape[1]
-    if y2 == -1: y2 = frame.shape[0]
+    while 1:
+        still_reading, frame = video_stream.read()
+        if not still_reading:
+            video_stream.release()
+            break
 
-    frame = frame[y1:y2, x1:x2]
+        aspect_ratio = frame.shape[1] / frame.shape[0]
+        frame = cv2.resize(frame, (int(args.resolution * aspect_ratio), args.resolution))
+        # if args.resize_factor > 1:
+        #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
 
-    full_frames.append(frame)
+        y1, y2, x1, x2 = [0, -1, 0, -1]
+        if x2 == -1: x2 = frame.shape[1]
+        if y2 == -1: y2 = frame.shape[0]
+
+        frame = frame[y1:y2, x1:x2]
+
+        full_frames[name].append(frame)
     
-face_det_results_origin = face_detect(detector, full_frames, args.face_batch_size)
+    face_det_results_origin[name] = face_detect(detector, full_frames[name], args.face_batch_size)
+
+
+for k, v in CHARACTERS.items():
+    preprocess(v.video_clip_path, k, full_frames_origin, face_det_results_origin)
 
 
 def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face_det_results: Any):
+    fps = 24
 
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
     out_path = 'temp/result.avi'
@@ -165,7 +180,7 @@ def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face
     print("Length of mel chunks: {}".format(len(mel_chunks)))
 
     full_frames = full_frames[:len(mel_chunks)]
-    face_det_results = face_det_results_origin[:len(mel_chunks)]
+    face_det_results = face_det_results[:len(mel_chunks)]
     gen = datagen(full_frames.copy(), mel_chunks, face_det_results.copy())
 
     for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen,
@@ -195,7 +210,7 @@ def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face
     return out_path
 
 
-def main(args: Any, question: Question, full_frames: Any, face_det_results_origin: Any):
+def main(args: Any, question: Question, full_frames: Any, face_det_results: Any):
     dirname = "/media/amor/Storage/Videos/JesusStreamFolder"
 
     # Step 1 - Get the response from GPT 3.5
@@ -211,11 +226,14 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results_origi
     # Step 2 - Get the audio for the response
     # prev p317
     #audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
-    audio_outpath = txt_to_speech_call_solero(text, "friedrich", f"./temp/response_{hash(query) % 100000}.wav")
+    character = CHARACTERS[question.character_name]
+    solero_language_switch(character.language, character.voice)
+    audio_outpath = txt_to_speech_call_solero(text, character.language,
+                                              character.voice, f"./temp/response_{hash(query) % 100000}.wav")
 
     # Step 3 - Wav2lip video generation
     s = time.time()
-    outfile_path = wav2lip_exec(dirname, full_frames, audio_outpath, question.question, face_det_results_origin)
+    outfile_path = wav2lip_exec(dirname, full_frames, audio_outpath, question.question, face_det_results)
     print("wav2lip prediction time:", time.time() - s)
 
     # Step 4 - Recombination and add subtitles
@@ -237,10 +255,12 @@ def callback(ch, method_frame, properties, body):
     print("coucou")
     question = question_parser(body)
     update_next_qestion_file(question)
+    character = CHARACTERS[question.character_name]
+
     video_path, text = main(args, question,
-                            full_frames, face_det_results_origin)
+                            full_frames_origin[character.name], face_det_results_origin[character.name])
     print(f"New video_path : {video_path}")
-    msg = f"{video_path}|{text}|{question.question}"
+    msg = VideoResponse(video_path, text, question.question).serialize()
     routing_key = properties.reply_to or question.routing_queue
     print("Reply : ", routing_key)
     ch.basic_publish('', routing_key=routing_key, body=msg)

@@ -1,4 +1,6 @@
 import json
+import serde
+from serde.json import from_json, to_json
 from typing import List, Dict, Optional, Callable, Any
 import re
 import num2words
@@ -124,7 +126,20 @@ def txt_to_speech_call_bis(speech_lines, speaker, outpath):
     return outpath
 
 
-def txt_to_speech_call_solero(speech_lines, speaker, outpath):
+def solero_language_switch(language, speaker):
+    url = f"http://0.0.0.0:8001/tts/speakers"
+    response = requests.get(url)
+    rez = response.json()
+
+    if speaker not in {e["name"] for e in rez}:
+        url = f"http://0.0.0.0:8001/tts/language"
+        response = requests.post(url, data=json.dumps({
+          "id": f"v3_{language}.pt"
+        }))
+        return response.ok
+
+
+def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
     try:
         url = f"http://0.0.0.0:8001/tts/session"
         data = {
@@ -152,8 +167,12 @@ class AbstractPromptQuery(ABC):
     @abc.abstractmethod
     def render(self) -> str:
         pass
+    def serialize(self) -> str:
+        pass
 
 
+@serde.deserialize
+@serde.serialize
 @dataclasses.dataclass
 class Question(AbstractPromptQuery):
     name: str
@@ -161,10 +180,15 @@ class Question(AbstractPromptQuery):
     routing_queue: str = "video_response_queue"
     prompt: str = None
 
+    def serialize(self):
+        return to_json(self)
+
     def render(self) -> str:
         return self.prompt.format(name=self.name, question=self.question)
 
 
+@serde.deserialize
+@serde.serialize
 @dataclasses.dataclass
 class ChatQuestion(AbstractPromptQuery):
     name: str
@@ -172,26 +196,39 @@ class ChatQuestion(AbstractPromptQuery):
     routing_queue: str = "video_response_queue"
     prompt: str = None
     history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
+    character_name: str = "Jesus"
+
+    def serialize(self):
+        return to_json(self)
 
     def render(self):
+        question = self.question.replace("!allo", "")
+        history = self.history
         history_str = "\n".join(f"{self.name}: {e[0]}\nJesus: {e[1]}\n"
-                                for e in self.history if e[0] is not None and e[1] is not None)
-        return self.prompt.format(name=self.name, question=self.question, history=history_str)
+                                for e in history if e[0] is not None and e[1] is not None)
+        return self.prompt.format(name=self.name, question=question, history=history_str)
+
+
+@serde.deserialize
+@serde.serialize
+@dataclasses.dataclass
+class VideoResponse:
+    video_path: str
+    text_response: str
+    request: str
+
+    def serialize(self):
+        return to_json(self)
 
 
 def question_parser(line: bytes) -> AbstractPromptQuery:
-    tokens = line.decode("utf-8").split("|")
-    question = tokens[1].replace("!allo", "")
-    if len(tokens) == 2:
-        return Question(tokens[0], question)
-    elif len(tokens) == 3:
-        return Question(tokens[0], question, tokens[2])
-    elif len(tokens) == 4:
-        return Question(tokens[0], question, tokens[2], tokens[3])
-    elif len(tokens) == 5:
-        return ChatQuestion(tokens[0], question, tokens[2], tokens[3], json.loads(tokens[4]))
-    else:
-        return Question(tokens[0], question, tokens[2], tokens[3])
+    text = line.decode("utf-8")
+    for class_ in [ChatQuestion, Question]:
+        try:
+            return from_json(class_, text)
+        except Exception as e:
+            pass
+    raise Exception("Incorrect message format")
 
 
 def read_from_queue_old(queue_name: str,
