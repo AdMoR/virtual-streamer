@@ -11,7 +11,8 @@ services:
        - model_cache_2:/root/.local/share
     networks:
       - tts
-    entrypoint: ["python3", "TTS/server/server.py", "--model_name", "tts_models/multilingual/multi-dataset/your_tts", "--use_cuda", "true"]
+    entrypoint: ["python3", "TTS/server/server.py", "--model_name", "tts_models/multilingual/multi-dataset/your_tts",
+                 "--use_cuda", "true"]
   virtual_streamer:
     build:
       context: .
@@ -21,6 +22,8 @@ services:
       - /dev/nvidia0:/dev/nvidia0
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - RMQ_HOST=rabbit
+      - TTS_HOST=tts
     networks:
       - tts
       - rabbit

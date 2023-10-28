@@ -233,18 +233,25 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results_origi
     return final_outfile_path, text
 
 
-def main_exec():
-    while True:
-        for question in read_from_queue("chat_log", question_parser):
-            update_next_qestion_file(question)
-            if question is not None:
-                print("-->", question)
-                video_path, text = main(args, question,
-                                        full_frames, face_det_results_origin)
-                print(f"New video_path : {video_path}")
-                add_to_queue(question.routing_queue, f"{video_path}|{text}")
-            else:
-                time.sleep(1)
+def callback(ch, method_frame, properties, body):
+    print("coucou")
+    question = question_parser(body)
+    update_next_qestion_file(question)
+    video_path, text = main(args, question,
+                            full_frames, face_det_results_origin)
+    print(f"New video_path : {video_path}")
+    msg = f"{video_path}|{text}|{question.question}"
+    routing_key = properties.reply_to or question.routing_queue
+    print("Reply : ", routing_key)
+    ch.basic_publish('', routing_key=routing_key, body=msg)
+    ch.basic_ack(delivery_tag=method_frame.delivery_tag)
+
+
+def main_exec(channel_name="chat_log"):
+    channel = get_rmq_channel(channel_name)
+    channel.basic_consume(queue=channel_name, on_message_callback=callback)
+    print(f"Ready to read {channel_name}")
+    channel.start_consuming()
 
 
 if __name__ == '__main__':

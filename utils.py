@@ -236,6 +236,7 @@ def add_to_queue(queue_name, message):
 def read_from_queue(queue_name: str,
                     parser: Callable[[bytes], Any]) -> Optional[Any]:
     channel = get_rmq_channel(queue_name)
+    channel.consume()
     while True:
         method_frame, header_frame, body = channel.basic_get(queue=queue_name, auto_ack=True)
         if method_frame:

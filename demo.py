@@ -4,7 +4,8 @@ import gradio as gr
 import os
 import time
 import json
-from utils import add_to_queue, read_from_queue, speech_to_text_call
+import pika
+from utils import add_to_queue, read_from_queue, speech_to_text_call, get_rmq_channel
 
 com_channel = "jesus_chat_123456"
 
@@ -40,25 +41,68 @@ HIST_PROMPT = """
     """
 
 
-def add_text(history, audio):
-    tt = time.time()
-    query_text = speech_to_text_call(audio, "Ich spreche Deutsch.")
-    print("Transcribed : ", query_text, f" in {time.time() - tt} secs.")
-    add_to_queue("chat_log", f"GentilUtilisateur|{query_text}|{com_channel}|{HIST_PROMPT}|{json.dumps(history)}")
-    response = None
-    counter = 0
-    while response is None and counter < 120:
-        response = next(read_from_queue(com_channel, lambda x: x.decode("utf-8")))
-        time.sleep(1)
-        counter += 1
-    print("Total video time : ", counter)
-    video_path, text_response, *_ = response.split("|")
-    history = history + [(query_text, text_response), (None, (video_path,))]
-    return history, None
+def bind_callback_to_history(chatbot, server_queue="chat_log", prompt=HIST_PROMPT):
+
+    def response_parser(text):
+        response = text.decode("utf-8")
+        video_path, text_response, query_text, *_ = response.split("|")
+        #chatbot.value.extend()
+        chatbot.update(value=chatbot.value + [(query_text, text_response), (None, (video_path,))])
+
+    def on_client_rx_reply_from_server(ch, method_frame, properties, body):
+        response_parser(body)
+        # NOTE A real client might want to make additional RPC requests, but in this
+        # simple example we're closing the channel after getting our first reply
+        # to force control to return from channel.start_consuming()
+        print('RPC Client says bye')
+        ch.close()
+
+    channel = get_rmq_channel(server_queue)
+    channel.basic_consume('amq.rabbitmq.reply-to',
+                          on_client_rx_reply_from_server,
+                          auto_ack=True)
+
+    def query_send(audio):
+        query_text = speech_to_text_call(audio, "Ich spreche Deutsch.")
+        text = f"GentilUtilisateur|{query_text}||{prompt}|{json.dumps(chatbot.value)}"
+        print("Swoosh !")
+        channel.basic_publish(
+            exchange='',
+            routing_key=server_queue,
+            body=text,
+            properties=pika.BasicProperties(reply_to='amq.rabbitmq.reply-to')
+        )
+
+    # channel.start_consuming()
+    return channel, query_send
 
 
-def bot(history):
-    return history
+def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
+    # 1 - Prepare the com channel
+    channel = get_rmq_channel(server_queue)
+    # The answer channel must be prepared
+    next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True, inactivity_timeout=0.1))
+
+    def aaaa(chatbot, audio):
+        # 2 - Get the query and send it
+        query_text = speech_to_text_call(audio, "Ich spreche Deutsch.")
+        text = f"GentilUtilisateur|{query_text}||{prompt}|{json.dumps(chatbot)}"
+        channel.basic_publish(
+            exchange="", routing_key=server_queue, body=text.encode(),
+            properties=pika.BasicProperties(reply_to="amq.rabbitmq.reply-to"))
+        print("sent:", text)
+
+        # 3 - Wait for the response from server and update history
+        def response_parser(chatbot, text):
+            response = text.decode("utf-8")
+            video_path, text_response, query_text, *_ = response.split("|")
+            chatbot += [(query_text, text_response), (None, (video_path,))]
+        (method, properties, body) = next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True,
+                                                          inactivity_timeout=2*60))
+        response_parser(chatbot, body)
+        return chatbot, None
+
+    return aaaa
 
 
 with gr.Blocks() as demo:
@@ -70,9 +114,11 @@ with gr.Blocks() as demo:
         height=800
     )
 
+    callback = build_callback()
+
     with gr.Row():
         audio = gr.Audio(source="microphone", type="filepath")
-        txt_msg = audio.stop_recording(add_text, [chatbot, audio], [chatbot, audio], queue=False)
+        txt_msg = audio.stop_recording(callback, [chatbot, audio], [chatbot, audio], queue=False)
 
 
 demo.queue()
