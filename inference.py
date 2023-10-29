@@ -240,11 +240,18 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results: Any)
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question.question[:30])
     outfile_combined_path = f'./temp/result_combined_{tag}.mp4'
     combine_video_and_audio(outfile_path, audio_outpath, outfile_combined_path)
-    subtitle = f"Question de {question.name} : {question.question}"
-    outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
-    add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
+    # Opt 4 : add subtitles
+    if question.subtitle_mode == SubtitleMode.QUESTION:
+        subtitle = f"Question de {question.name} : {question.question}"
+    elif question.subtitle_mode == SubtitleMode.VOICE_SUBTITLE:
+        subtitle = text
+    if question.subtitle_mode != SubtitleMode.NONE:
+        outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
+        add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
+    else:
+        outfile_titled_path = outfile_combined_path
     
-    # Step 3 - Move the file
+    # Step 5 - Move the file
     final_outfile_path = os.path.join(dirname, f"result_{tag}.mp4")
     shutil.copyfile(outfile_titled_path, final_outfile_path)
     print("---> ", final_outfile_path)

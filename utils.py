@@ -1,3 +1,4 @@
+import enum
 import json
 import serde
 from serde.json import from_json, to_json
@@ -187,6 +188,11 @@ class Question(AbstractPromptQuery):
         return self.prompt.format(name=self.name, question=self.question)
 
 
+class SubtitleMode(enum.Enum):
+    NONE = "none"
+    QUESTION = "question"
+    VOICE_SUBTITLE = "subtitle"
+
 @serde.deserialize
 @serde.serialize
 @dataclasses.dataclass
@@ -197,6 +203,7 @@ class ChatQuestion(AbstractPromptQuery):
     prompt: str = None
     history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
     character_name: str = "Jesus"
+    subtitle_mode: SubtitleMode = SubtitleMode.QUESTION
 
     def serialize(self):
         return to_json(self)

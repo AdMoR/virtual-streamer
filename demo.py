@@ -6,7 +6,8 @@ import time
 import json
 import pika
 from serde.json import from_json
-from utils import add_to_queue, read_from_queue, speech_to_text_call, get_rmq_channel, ChatQuestion, VideoResponse
+from utils import add_to_queue, read_from_queue, speech_to_text_call, get_rmq_channel, ChatQuestion, \
+    VideoResponse, SubtitleMode
 from character_setup import CHARACTERS
 
 com_channel = "jesus_chat_123456"
@@ -49,7 +50,6 @@ prompt_dict = {
 }
 
 
-
 def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
     # 1 - Prepare the com channel
     channel = get_rmq_channel(server_queue)
@@ -61,7 +61,7 @@ def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
         language = CHARACTERS[character].language
         query_text = speech_to_text_call(audio, prompt_dict.get(language, ""))
         q = ChatQuestion("GentilUtilisateur", query_text, None, prompt, chatbot,
-                         character_name=character)
+                         character_name=character, subtitle_mode=SubtitleMode.NONE)
         text = q.serialize()
         print("Text content : ", text)
         channel.basic_publish(
