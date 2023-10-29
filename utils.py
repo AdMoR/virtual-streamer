@@ -211,7 +211,7 @@ class ChatQuestion(AbstractPromptQuery):
     def render(self):
         question = self.question.replace("!allo", "")
         history = self.history
-        history_str = "\n".join(f"{self.name}: {e[0]}\nJesus: {e[1]}\n"
+        history_str = "\n".join(f"{self.name}: {e[0]}\n{self.character_name}: {e[1]}\n"
                                 for e in history if e[0] is not None and e[1] is not None)
         return self.prompt.format(name=self.name, question=question, history=history_str)
 

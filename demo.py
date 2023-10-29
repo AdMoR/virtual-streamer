@@ -33,7 +33,8 @@ PROMPT = """
 
 HIST_PROMPT = """
     You are a german teacher. You are roleplaying with your student as Jesus to help him learn. 
-    The level of your student is B1 so you have to make simple sentence but you should create some content to keep the conversation going. 
+    The level of your student is B1 so you have to make simple sentence but 
+    you should create some content to keep the conversation going. 
     You can also precise some grammatical or lexical points.
     ```
     {history}
@@ -76,7 +77,7 @@ def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
         (method, properties, body) = next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True,
                                                           inactivity_timeout=2*60))
         response_parser(chatbot, body)
-        return chatbot, None, language
+        return chatbot, None, None
 
     return aaaa
 
