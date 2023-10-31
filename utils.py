@@ -128,12 +128,13 @@ def txt_to_speech_call_bis(speech_lines, speaker, outpath):
 
 
 def solero_language_switch(language, speaker):
-    url = f"http://0.0.0.0:8001/tts/speakers"
+    host = os.environ.get("TTS_HOST", "http://0.0.0.0")
+    url = f"{host}:8001/tts/speakers"
     response = requests.get(url)
     rez = response.json()
 
     if speaker not in {e["name"] for e in rez}:
-        url = f"http://0.0.0.0:8001/tts/language"
+        url = f"{host}:8001/tts/language"
         response = requests.post(url, data=json.dumps({
           "id": f"v3_{language}.pt"
         }))
@@ -141,8 +142,9 @@ def solero_language_switch(language, speaker):
 
 
 def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
+    host = os.environ.get("TTS_HOST", "http://0.0.0.0")
     try:
-        url = f"http://0.0.0.0:8001/tts/session"
+        url = f"{host}:8001/tts/session"
         data = {
             "path": "pouet"
         }
@@ -150,7 +152,7 @@ def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
     except Exception as e:
         print(e)
 
-    url = f"http://0.0.0.0:8001/tts/generate"
+    url = f"{host}:8001/tts/generate"
     data = {
         "text": speech_lines,
         "speaker": speaker,
