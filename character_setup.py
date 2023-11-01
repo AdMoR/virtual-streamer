@@ -1,5 +1,7 @@
 import enum
 import dataclasses
+import os.path
+
 
 @dataclasses.dataclass
 class CharacterConfig:
@@ -9,13 +11,16 @@ class CharacterConfig:
     language: str
 
 
+project_root = os.path.dirname(__file__)
+
+
 CHARACTERS = {
-    "Jesus": CharacterConfig("Jesus", "/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/reference.mp4", "fr_0", "fr"),
-    "Jesus_fr": CharacterConfig("Jesus", "/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/reference.mp4", "fr_0", "fr"),
-    "Jesus_de": CharacterConfig("Jesus", "/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/reference.mp4", "friedrich", "de"),
-    "Jesus_en": CharacterConfig("Jesus", "/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/reference.mp4", "en_0", "en"),
-    "German Man": CharacterConfig("German", "/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/oktoberfest_man.mp4", "friedrich", "de"),
-    "English DE man": CharacterConfig("English", "/media/amor/Storage/code_dw/cog-Wav2Lip/reference_videos/oktoberfest_man.mp4", "en_0", "en")
+    "Jesus": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "fr_0", "fr"),
+    "Jesus_fr": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "fr_0", "fr"),
+    "Jesus_de": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "friedrich", "de"),
+    "Jesus_en": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "en_0", "en"),
+    "German Man": CharacterConfig("German", f"{project_root}/reference_videos/oktoberfest_man.mp4", "friedrich", "de"),
+    "English DE man": CharacterConfig("English", f"{project_root}/reference_videos/oktoberfest_man.mp4", "en_0", "en")
 }
 
 

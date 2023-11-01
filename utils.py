@@ -118,23 +118,14 @@ def txt_to_speech_call(speech_lines, speaker, outpath):
     return outpath
 
 
-def txt_to_speech_call_bis(speech_lines, speaker, outpath):
-    safe_string = parse.quote_plus(speech_lines)
-    url = f"http://0.0.0.0:59125/api/tts?text={safe_string}&voice=fr_FR/tom_low&noiseScale=0.9&noiseW=0.1&lengthScale=0.8&ssml=false&audioTarget=client"
-    rez = subprocess.run(["curl", "-L", "-X", "GET", url, "--output", outpath])
-    if rez.returncode == 1:
-        raise Exception("Txt to speech call failed")
-    return outpath
-
-
 def solero_language_switch(language, speaker):
-    host = os.environ.get("TTS_HOST", "http://0.0.0.0")
-    url = f"{host}:8001/tts/speakers"
+    host = os.environ.get("TTS_HOST", "0.0.0.0")
+    url = f"http://{host}:8001/tts/speakers"
     response = requests.get(url)
     rez = response.json()
 
     if speaker not in {e["name"] for e in rez}:
-        url = f"{host}:8001/tts/language"
+        url = f"http://{host}:8001/tts/language"
         response = requests.post(url, data=json.dumps({
           "id": f"v3_{language}.pt"
         }))
@@ -142,9 +133,9 @@ def solero_language_switch(language, speaker):
 
 
 def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
-    host = os.environ.get("TTS_HOST", "http://0.0.0.0")
+    host = os.environ.get("TTS_HOST", "0.0.0.0")
     try:
-        url = f"{host}:8001/tts/session"
+        url = f"http://{host}:8001/tts/session"
         data = {
             "path": "pouet"
         }
@@ -152,7 +143,7 @@ def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
     except Exception as e:
         print(e)
 
-    url = f"{host}:8001/tts/generate"
+    url = f"http://{host}:8001/tts/generate"
     data = {
         "text": speech_lines,
         "speaker": speaker,

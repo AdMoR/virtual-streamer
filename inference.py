@@ -1,5 +1,6 @@
 import dataclasses
 import enum
+import os
 from typing import Callable, Dict, Any
 from collections import defaultdict
 from character_setup import CHARACTERS
@@ -147,7 +148,6 @@ def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
     out_path = 'temp/result.avi'
     batch_size = args.wav2lip_batch_size
-    #print ("Number of frames available for inference: "+str(len(full_frames)))
 
     if not audio_path.endswith('.wav'):
         print('Extracting raw audio...')
@@ -177,7 +177,7 @@ def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face
         mel_chunks.append(mel[:, start_idx : start_idx + mel_step_size])
         i += 1
 
-    print("Length of mel chunks: {}".format(len(mel_chunks)))
+    print(f"Length of mel chunks: {len(mel_chunks)}, length of frames {len(full_frames)}")
 
     full_frames = full_frames[:len(mel_chunks)]
     face_det_results = face_det_results[:len(mel_chunks)]
@@ -211,7 +211,8 @@ def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face
 
 
 def main(args: Any, question: Question, full_frames: Any, face_det_results: Any):
-    dirname = "/media/amor/Storage/Videos/JesusStreamFolder"
+    dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
+    os.makedirs(dirname, exist_ok=True)
 
     # Step 1 - Get the response from GPT 3.5
     if question.prompt is None:
@@ -228,6 +229,7 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results: Any)
     #audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
     character = CHARACTERS[question.character_name]
     solero_language_switch(character.language, character.voice)
+    os.makedirs("./temp", exist_ok=True)
     audio_outpath = txt_to_speech_call_solero(text, character.language,
                                               character.voice, f"./temp/response_{hash(query) % 100000}.wav")
 

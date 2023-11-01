@@ -23,8 +23,10 @@ services:
       - /dev/nvidia0:/dev/nvidia0
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
       - RMQ_HOST=rabbitmq
       - TTS_HOST=tts
+      - OUT_VIDEO_FOLDER=/src/generations
     networks:
       - tts
       - rabbit
@@ -46,7 +48,6 @@ services:
 
 
 volumes:
-  model_cache_2:
   generations:
   prompts:
 
