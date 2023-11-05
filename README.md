@@ -23,4 +23,18 @@ The code was tested with cuda 11.8
 - Worker : python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
 - Stream orchestrator : python3 obs_orchestrator.py
 - RabbitMQ : sudo docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:latest
--  sudo docker logs 41a123fabae5 --tail 150
+- sudo docker logs 41a123fabae5 --tail 150
+
+
+# Run the "compose up"
+
+Required : 
+- AWS creds stored under $HOME/.aws/credentials
+
+
+First time 
+- sudo docker compose up 
+
+Rebuild from scratch
+- docker builder prune
+- sudo docker compose up --build --force-recreate --no-deps 

@@ -84,6 +84,7 @@ def datagen(frames, mels, face_det_results):
 mel_step_size = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
+UPLOAD_BUCKET = os.environ["S3_BUCKET_URL"]
 
 
 model = detector = detector_model = None
@@ -269,6 +270,7 @@ def callback(ch, method_frame, properties, body):
     video_path, text = main(args, question,
                             full_frames_origin[character.name], face_det_results_origin[character.name])
     print(f"New video_path : {video_path}")
+    s3_upload(video_path, UPLOAD_BUCKET)
     msg = VideoResponse(video_path, text, question.question).serialize()
     routing_key = properties.reply_to or question.routing_queue
     print("Reply : ", routing_key)

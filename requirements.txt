@@ -16,3 +16,5 @@ batch_face
 imageio
 pika
 pyserde
+boto3
+botocore

@@ -16,6 +16,8 @@ import pika
 import requests
 import abc
 from abc import ABC
+import boto3
+from botocore.exceptions import NoCredentialsError
 
 
 openai.api_key = os.environ["OPENAI_TOKEN"]
@@ -334,3 +336,33 @@ def update_next_qestion_file(question: Question):
             f.write(f"Question de {question.name} : {question.question[:500]}".encode("utf-8"))
         else:
             f.write(f"Pas de question en cours".encode("utf-8"))
+
+
+def s3_upload(local_file_path, bucket_name):
+    # AWS credentials and S3 bucket information
+    print("1----> ", os.environ.get("AWS_SHARED_CREDENTIALS_FILE"))
+    print("2----> ", os.listdir(os.path.dirname(os.environ.get("AWS_SHARED_CREDENTIALS_FILE"))))
+    try:
+        aws_access_key_id = os.environ["AWS_ACCESS_KEY"]
+        aws_secret_access_key = os.environ["AWS_SECRET_KEY"]
+    except KeyError:
+        session = boto3.Session()
+        credentials = session.get_credentials()
+        credentials = credentials.get_frozen_credentials()
+        aws_access_key_id = credentials.access_key
+        aws_secret_access_key = credentials.secret_key
+    object_name = os.path.basename(local_file_path)
+
+    # Initialize the S3 client
+    s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+    # Upload the file to the S3 bucket
+    s3.upload_file(local_file_path, bucket_name, object_name)
+    object_dst_url = f"{bucket_name}/{object_name}"
+    print(f'Successfully uploaded {local_file_path} to {bucket_name}/{object_name}')
+    """
+    except NoCredentialsError:
+        print('AWS credentials not available or incorrect. Please configure your credentials.')
+    except Exception as e:
+        print(f'An error occurred: {str(e)}')
+    """
+    return object_dst_url

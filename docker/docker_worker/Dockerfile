@@ -41,13 +41,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # copy to /src
 ENV WORKDIR /src
-RUN mkdir -p $WORKDIR
+RUN mkdir -p $WORKDIR && mkdir /root/.aws
 WORKDIR $WORKDIR
 
 # install requirements
 COPY requirements.txt .
-RUN pip install -r requirements.txt
-RUN pip install git+https://github.com/elliottzheng/batch-face.git@master
+RUN pip install -r requirements.txt && pip install git+https://github.com/elliottzheng/batch-face.git@master
 
 # copy sources
 COPY . .
