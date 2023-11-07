@@ -365,3 +365,23 @@ def s3_upload(local_file_path, bucket_name):
         print(f'An error occurred: {str(e)}')
     """
     return object_dst_url
+
+
+def s3_download(s3_path):
+    try:
+        aws_access_key_id = os.environ["AWS_ACCESS_KEY"]
+        aws_secret_access_key = os.environ["AWS_SECRET_KEY"]
+    except KeyError:
+        session = boto3.Session()
+        credentials = session.get_credentials()
+        credentials = credentials.get_frozen_credentials()
+        aws_access_key_id = credentials.access_key
+        aws_secret_access_key = credentials.secret_key
+
+    # Initialize the S3 client
+    s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+    # Upload the file to the S3 bucket
+    bucket, *others = s3_path.split("/")
+    filename = others[-1]
+    s3.download_file(bucket, "/".join(others), filename)
+    return filename

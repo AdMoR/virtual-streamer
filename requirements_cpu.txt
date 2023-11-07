@@ -1,0 +1,11 @@
+numpy
+tqdm
+mediapipe
+openai
+obsws-python
+twitch-python
+num2words
+pika
+streamlit
+bokeh
+streamlit_bokeh_events

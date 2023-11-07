@@ -3,7 +3,7 @@ import os
 import pika
 from serde.json import from_json
 from utils import speech_to_text_call, get_rmq_channel, ChatQuestion, \
-    VideoResponse, SubtitleMode
+    VideoResponse, SubtitleMode, s3_download
 from character_setup import CHARACTERS
 
 
@@ -60,19 +60,23 @@ def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
                          character_name=character, subtitle_mode=SubtitleMode.NONE)
         text = q.serialize()
         print("Text content : ", text)
-        channel.basic_publish(
-            exchange="", routing_key=server_queue, body=text.encode(),
-            properties=pika.BasicProperties(reply_to="amq.rabbitmq.reply-to"))
+        try:
+            channel.basic_publish(
+                exchange="", routing_key=server_queue, body=text.encode(),
+                properties=pika.BasicProperties(reply_to="amq.rabbitmq.reply-to"))
+        except pika.exceptions.ChannelWrongStateError:
+            raise Exception("Connection closed")
         print("sent:", text)
 
         # 3 - Wait for the response from server and update history
         def response_parser(history, text_response):
             response = from_json(VideoResponse, text_response.decode())
-            history += [(response.request, response.text_response), (None, (response.video_path,))]
+            video_path = s3_download(response.video_path)
+            history += [(response.request, response.text_response), (None, (video_path,))]
         (method, properties, body) = next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True,
                                                           inactivity_timeout=2*60))
         response_parser(chatbot, body)
-        return chatbot, None, None
+        return chatbot, None, character
 
     return aaaa
 

@@ -270,8 +270,8 @@ def callback(ch, method_frame, properties, body):
     video_path, text = main(args, question,
                             full_frames_origin[character.name], face_det_results_origin[character.name])
     print(f"New video_path : {video_path}")
-    s3_upload(video_path, UPLOAD_BUCKET)
-    msg = VideoResponse(video_path, text, question.question).serialize()
+    s3_path = s3_upload(video_path, UPLOAD_BUCKET)
+    msg = VideoResponse(s3_path, text, question.question).serialize()
     routing_key = properties.reply_to or question.routing_queue
     print("Reply : ", routing_key)
     ch.basic_publish('', routing_key=routing_key, body=msg)

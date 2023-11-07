@@ -1,0 +1,12 @@
+numpy
+tqdm
+openai==0.28.0
+twitch-python
+num2words
+pika
+requests
+boto3
+botocore
+gradio==3.47.1
+pyserde
+

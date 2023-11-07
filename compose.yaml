@@ -38,6 +38,7 @@ services:
       - $HOME/.aws/config:/root/.aws/config
     env_file:
       - .env
+    restart: always
   rabbitmq:
     image: rabbitmq:latest
     ports:
@@ -54,6 +55,7 @@ services:
       dockerfile: docker/docker_base/Dockerfile
     ports:
       - 7860:7860
+      - 7861:7861
     depends_on:
       - rabbitmq
     environment:
