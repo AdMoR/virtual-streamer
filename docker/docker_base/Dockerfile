@@ -1,11 +1,18 @@
-FROM python:3.9.18:latest
+FROM python:3.9
 
 ENV WORKDIR /src
 RUN mkdir -p $WORKDIR
 WORKDIR $WORKDIR
 
-RUN apt-get update && apt-get install -y libgirepository1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-rtsp gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad
+RUN apt update && apt install ffmpeg -y
 
-COPY . .
+COPY ./requirements_demo.txt .
+COPY ./demo.py .
+COPY ./character_setup.py .
+COPY ./utils.py .
 
-RUN pip install -r requirements_cpu.txt
+RUN pip install -r requirements_demo.txt
+
+EXPOSE 7860/tcp
+
+ENTRYPOINT ["python3", "demo.py"]

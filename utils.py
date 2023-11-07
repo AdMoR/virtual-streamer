@@ -256,8 +256,8 @@ def add_to_queue_old(queue_name, message):
 def get_rmq_channel(queue_name):
     # Define the connection parameters
     host = os.environ.get("RMQ_HOST", "localhost")
-    connection_params = pika.ConnectionParameters(host=host, port=5672, retry_delay=10, connection_attempts=3)
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=host, port=5672, retry_delay=10, connection_attempts=3))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host=host, port=5672, retry_delay=10,
+                                                                   connection_attempts=3))
 
     # Create a channel
     channel = connection.channel()
@@ -340,8 +340,7 @@ def update_next_qestion_file(question: Question):
 
 def s3_upload(local_file_path, bucket_name):
     # AWS credentials and S3 bucket information
-    print("1----> ", os.environ.get("AWS_SHARED_CREDENTIALS_FILE"))
-    print("2----> ", os.listdir(os.path.dirname(os.environ.get("AWS_SHARED_CREDENTIALS_FILE"))))
+
     try:
         aws_access_key_id = os.environ["AWS_ACCESS_KEY"]
         aws_secret_access_key = os.environ["AWS_SECRET_KEY"]

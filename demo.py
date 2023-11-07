@@ -1,16 +1,11 @@
-import numpy as np
-from transformers import pipeline
 import gradio as gr
 import os
-import time
-import json
 import pika
 from serde.json import from_json
-from utils import add_to_queue, read_from_queue, speech_to_text_call, get_rmq_channel, ChatQuestion, \
+from utils import speech_to_text_call, get_rmq_channel, ChatQuestion, \
     VideoResponse, SubtitleMode
 from character_setup import CHARACTERS
 
-com_channel = "jesus_chat_123456"
 
 """
 def transcribe(audio):
@@ -100,5 +95,6 @@ with gr.Blocks() as demo:
 
 demo.queue()
 if __name__ == "__main__":
+    print("coucou")
     demo.launch()
 

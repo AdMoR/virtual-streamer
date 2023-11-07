@@ -38,3 +38,6 @@ First time
 Rebuild from scratch
 - docker builder prune
 - sudo docker compose up --build --force-recreate --no-deps 
+
+Testing a single container of the compose 
+- sudo docker run -e OPENAI_TOKEN=xxx -p 7860:7860 --net=host cog-wav2lip-demo:latest
