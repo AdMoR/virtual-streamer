@@ -39,8 +39,9 @@ HIST_PROMPT = """
     Only generate what Jesus would say.
     """
 
+
 prompt_dict = {
-    "de": "Ich spreche Deutch",
+    "de": "Ich spreche Deutsch",
     "fr": "Je parle français",
     "en": "I speak english"
 }
@@ -48,14 +49,15 @@ prompt_dict = {
 
 def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
     # 1 - Prepare the com channel
-    channel = get_rmq_channel(server_queue)
-    # The answer channel must be prepared
-    next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True, inactivity_timeout=0.1))
+
 
     def aaaa(chatbot, audio, character):
+        channel = get_rmq_channel(server_queue)
+        # The answer channel must be prepared
+        next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True, inactivity_timeout=0.1))
         # 2 - Get the query and send it
         language = CHARACTERS[character].language
-        query_text = speech_to_text_call(audio, prompt_dict.get(language, ""))
+        query_text = speech_to_text_call(audio, prompt_dict[language])
         q = ChatQuestion("GentilUtilisateur", query_text, None, prompt, chatbot,
                          character_name=character, subtitle_mode=SubtitleMode.NONE)
         text = q.serialize()
@@ -76,7 +78,8 @@ def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
         (method, properties, body) = next(channel.consume(queue="amq.rabbitmq.reply-to", auto_ack=True,
                                                           inactivity_timeout=2*60))
         response_parser(chatbot, body)
-        return chatbot, None, character
+        channel.close()
+        return chatbot, audio, character
 
     return aaaa
 
@@ -86,19 +89,18 @@ with gr.Blocks() as demo:
         [],
         elem_id="chatbot",
         bubble_full_width=False,
-        avatar_images=(None, (os.path.join(os.path.dirname(__file__), "avatar.png"))),
+        avatar_images=(None, None),
         height=800
     )
-    language = gr.Dropdown(choices=CHARACTERS.keys(), value="Jesus_de", label="Character selection")
+    language = gr.Dropdown(choices=CHARACTERS.keys(), value="Jesus_fr", label="Character selection")
     callback = build_callback()
 
     with gr.Row():
-        audio = gr.Audio(source="microphone", type="filepath")
+        audio = gr.Microphone(type="filepath")
         txt_msg = audio.stop_recording(callback, [chatbot, audio, language], [chatbot, audio, language], queue=False)
 
 
 demo.queue()
 if __name__ == "__main__":
-    print("coucou")
-    demo.launch()
+    demo.launch(share=True)
 

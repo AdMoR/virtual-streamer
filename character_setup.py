@@ -16,11 +16,9 @@ project_root = os.path.dirname(__file__)
 
 CHARACTERS = {
     "Jesus": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "fr_0", "fr"),
-    "Jesus_fr": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "fr_0", "fr"),
-    "Jesus_de": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "friedrich", "de"),
-    "Jesus_en": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "en_0", "en"),
-    "German Man": CharacterConfig("German", f"{project_root}/reference_videos/oktoberfest_man.mp4", "friedrich", "de"),
-    "English DE man": CharacterConfig("English", f"{project_root}/reference_videos/oktoberfest_man.mp4", "en_0", "en")
+    "fr": CharacterConfig("fr", f"{project_root}/reference_videos/reference.mp4", "fr_1", "fr"),
+    "de": CharacterConfig("de", f"{project_root}/reference_videos/reference.mp4", "friedrich", "de"),
+    "en": CharacterConfig("en", f"{project_root}/reference_videos/reference.mp4", "en_0", "en")
 }
 
 

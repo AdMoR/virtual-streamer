@@ -8,7 +8,7 @@ torchvision
 tqdm
 numba
 mediapipe
-openai
+openai==0.28
 obsws-python
 twitch-python
 num2words

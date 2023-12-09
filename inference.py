@@ -221,7 +221,7 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results: Any)
     query = question.render()
 
     completion = gpt_call(query)
-    text = replace_number_to_text(completion)
+    text = completion
     json.dump({"query": query, "response": text, "question": question.question},
               open(f"prompts/response_{hash(query) % 1000000}.json", "w"))
 
@@ -233,6 +233,7 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results: Any)
     os.makedirs("./temp", exist_ok=True)
     audio_outpath = txt_to_speech_call_solero(text, character.language,
                                               character.voice, f"./temp/response_{hash(query) % 100000}.wav")
+    return audio_outpath, text
 
     # Step 3 - Wav2lip video generation
     s = time.time()
@@ -267,10 +268,9 @@ def callback(ch, method_frame, properties, body):
     update_next_qestion_file(question)
     character = CHARACTERS[question.character_name]
 
-    video_path, text = main(args, question,
-                            full_frames_origin[character.name], face_det_results_origin[character.name])
-    print(f"New video_path : {video_path}")
-    s3_path = s3_upload(video_path, UPLOAD_BUCKET)
+    media_path, text = main(args, question, None, None) #full_frames_origin[character.name], face_det_results_origin[character.name])
+    print(f"New video_path : {media_path}")
+    s3_path = s3_upload(media_path, UPLOAD_BUCKET)
     msg = VideoResponse(s3_path, text, question.question).serialize()
     routing_key = properties.reply_to or question.routing_queue
     print("Reply : ", routing_key)
