@@ -54,7 +54,6 @@ services:
       context: .
       dockerfile: docker/docker_base/Dockerfile
     ports:
-      - 7860:7860
       - 7861:7861
     depends_on:
       - rabbitmq

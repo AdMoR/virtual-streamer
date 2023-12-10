@@ -41,3 +41,13 @@ Rebuild from scratch
 
 Testing a single container of the compose 
 - sudo docker run -e OPENAI_TOKEN=xxx -p 7860:7860 --net=host cog-wav2lip-demo:latest
+
+
+## Pushing the image to the Docker hub
+
+```
+#docker login -u amorvend
+docker commit  cog-wav2lip-demo-1 virtual-streamer:demo
+docker tag  virtual-streamer:demo amorvend/virtual-teacher-space:demo
+docker image push  amorvend/virtual-teacher-space:demo
+```
