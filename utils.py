@@ -255,9 +255,13 @@ def add_to_queue_old(queue_name, message):
 
 def get_rmq_channel(queue_name):
     # Define the connection parameters
-    host = os.environ.get("RMQ_HOST", "localhost")
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=host, port=5672, retry_delay=10,
-                                                                   connection_attempts=3))
+    if "RMQ_URL" not in os.environ:
+        host = os.environ.get("RMQ_HOST", "localhost")
+        parameters = pika.ConnectionParameters(host=host, port=5672, retry_delay=10,
+                                               connection_attempts=3)
+    else:
+        parameters = pika.URLParameters(os.environ["RMQ_URL"])
+    connection = pika.BlockingConnection(parameters)
 
     # Create a channel
     channel = connection.channel()
