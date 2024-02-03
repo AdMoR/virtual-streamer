@@ -47,7 +47,7 @@ Testing a single container of the compose
 
 ```
 #docker login -u amorvend
-docker commit  cog-wav2lip-demo-1 virtual-streamer:demo
+docker commit virtual-streamer-demo-1 virtual-streamer:demo
 docker tag  virtual-streamer:demo amorvend/virtual-teacher-space:demo
 docker image push  amorvend/virtual-teacher-space:demo
 ```

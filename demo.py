@@ -7,14 +7,6 @@ from utils import speech_to_text_call, get_rmq_channel, ChatQuestion, \
 from character_setup import CHARACTERS
 
 
-"""
-def transcribe(audio):
-    sr, y = audio
-    y = y.astype(np.float32)
-    y /= np.max(np.abs(y))
-    return transcriber({"sampling_rate": sr, "raw": y[:, 0]})["text"]
-"""
-
 PROMPT = """
     You are a german teacher. You are roleplaying with your student as Jesus to help him learn. 
     The level of your student is B1 so you have to make simple sentence but you should create some content to keep the conversation going. 
@@ -39,6 +31,29 @@ HIST_PROMPT = """
     Only generate what Jesus would say.
     """
 
+ROLEPLAY_PROMPT = """
+    You are roleplaying as Jesus. Here is a summary of Jesus way of interaction :
+    - Jesus's Persona: Jesus is a young, computer engineer-nerd with a knack for problem solving and a passion for technology.
+    - Example of conversation :
+    '''
+    Benutzer: Wie bist du zur Informatikingenieurwissenschaft gekommen?
+    Jesus: Ich habe schon immer gerne mit Technologie herumgebastelt, seit ich ein Kind war.
+    Benutzer: Das ist wirklich beeindruckend!
+    Jesus: *Er lacht schüchtern* Danke! Was machst du, wenn du nicht gerade an Computern arbeitest?
+    Benutzer: Ich liebe es, zu erkunden, mit Freunden auszugehen, Filme anzusehen und Videospiele zu spielen.
+    Jesus: Was ist deine Lieblingsart von Computerhardware, mit der du arbeitest?
+    Benutzer: Mainboards, sie sind wie Puzzles und das Rückgrat eines jeden Systems.
+    Jesus: Das klingt großartig!
+    Benutzer: Ja, es macht wirklich Spaß. Ich habe Glück, das als Job machen zu können.
+    '''
+    Now start the conversation with the user as if you were Jesus by saying hello or continuing the following conversation.
+    ```
+    {history}
+    {name}: {question}
+    Jesus: 
+    ```
+    """
+
 
 prompt_dict = {
     "de": "Ich spreche Deutsch",
@@ -47,9 +62,8 @@ prompt_dict = {
 }
 
 
-def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
+def build_callback(server_queue="chat_log", prompt=ROLEPLAY_PROMPT):
     # 1 - Prepare the com channel
-
 
     def aaaa(chatbot, audio, character):
         channel = get_rmq_channel(server_queue)
@@ -58,7 +72,7 @@ def build_callback(server_queue="chat_log", prompt=HIST_PROMPT):
         # 2 - Get the query and send it
         language = CHARACTERS[character].language
         query_text = speech_to_text_call(audio, prompt_dict[language])
-        q = ChatQuestion("GentilUtilisateur", query_text, None, prompt, chatbot,
+        q = ChatQuestion("User", query_text, None, prompt, chatbot,
                          character_name=character, subtitle_mode=SubtitleMode.NONE)
         text = q.serialize()
         print("Text content : ", text)
@@ -92,7 +106,7 @@ with gr.Blocks() as demo:
         avatar_images=(None, None),
         height=800
     )
-    language = gr.Dropdown(choices=CHARACTERS.keys(), value="Jesus_fr", label="Character selection")
+    language = gr.Dropdown(choices=CHARACTERS.keys(), value="de", label="Character selection")
     callback = build_callback()
 
     with gr.Row():

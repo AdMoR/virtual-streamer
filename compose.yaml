@@ -4,9 +4,13 @@ services:
     build:
       context: .
       dockerfile: docker/docker_tts/Dockerfile
-    runtime: nvidia
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     ports:
       - 8001:8001
     networks:
@@ -15,7 +19,13 @@ services:
     build:
       context: .
       dockerfile: docker/docker_worker/Dockerfile
-    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       - tts
       - rabbitmq
@@ -54,7 +64,7 @@ services:
       context: .
       dockerfile: docker/docker_base/Dockerfile
     ports:
-      - 7861:7861
+      - 7860:7860
     depends_on:
       - rabbitmq
     environment:
