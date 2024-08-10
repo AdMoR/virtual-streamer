@@ -15,10 +15,10 @@ project_root = os.path.dirname(__file__)
 
 
 CHARACTERS = {
-    "Jesus": CharacterConfig("Jesus", f"{project_root}/reference_videos/reference.mp4", "fr_0", "fr"),
-    "fr": CharacterConfig("fr", f"{project_root}/reference_videos/reference.mp4", "fr_1", "fr"),
-    "de": CharacterConfig("de", f"{project_root}/reference_videos/reference.mp4", "friedrich", "de"),
-    "en": CharacterConfig("en", f"{project_root}/reference_videos/reference.mp4", "en_0", "en")
+    "Jesus": CharacterConfig("Jesus", f"{project_root}/assets/reference.mp4", "fr_0", "fr"),
+    "fr": CharacterConfig("fr", f"{project_root}/assets/reference.mp4", "fr_1", "fr"),
+    "de": CharacterConfig("de", f"{project_root}/assets/reference.mp4", "friedrich", "de"),
+    "en": CharacterConfig("en", f"{project_root}/assets/reference.mp4", "en_0", "en")
 }
 
 

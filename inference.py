@@ -143,7 +143,7 @@ for k, v in CHARACTERS.items():
     preprocess(v.video_clip_path, k, full_frames_origin, face_det_results_origin)
 
 
-def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face_det_results: Any):
+def wav2lip_exec(dirname, full_frames: List[Any], audio_path: str, question: str, face_det_results: Any):
     fps = 24
 
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
@@ -211,7 +211,7 @@ def wav2lip_exec(dirname, full_frames: Any, audio_path: str, question: str, face
     return out_path
 
 
-def main(args: Any, question: Question, full_frames: Any, face_det_results: Any):
+def main(args: Any, question: Question, full_frames: List[Any], face_det_results: Any):
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
 
@@ -233,7 +233,6 @@ def main(args: Any, question: Question, full_frames: Any, face_det_results: Any)
     os.makedirs("./temp", exist_ok=True)
     audio_outpath = txt_to_speech_call_solero(text, character.language,
                                               character.voice, f"./temp/response_{hash(query) % 100000}.wav")
-    return audio_outpath, text
 
     # Step 3 - Wav2lip video generation
     s = time.time()
@@ -266,9 +265,9 @@ def callback(ch, method_frame, properties, body):
     print("coucou")
     question = question_parser(body)
     update_next_qestion_file(question)
-    character = CHARACTERS[question.character_name]
+    character = CHARACTERS[question.character_name].name
 
-    media_path, text = main(args, question, None, None) #full_frames_origin[character.name], face_det_results_origin[character.name])
+    media_path, text = main(args, question, full_frames_origin[character], face_det_results_origin[character])
     print(f"New video_path : {media_path}")
     s3_path = s3_upload(media_path, UPLOAD_BUCKET)
     msg = VideoResponse(s3_path, text, question.question).serialize()

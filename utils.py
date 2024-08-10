@@ -194,7 +194,7 @@ class SubtitleMode(enum.Enum):
 class ChatQuestion(AbstractPromptQuery):
     name: str
     question: str
-    routing_queue: str = "video_response_queue"
+    routing_queue: Optional[str] = "video_response_queue"
     prompt: str = None
     history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
     character_name: str = "Jesus"
@@ -321,7 +321,7 @@ def gpt_call_mock(_prompt):
 
 
 def gpt_call(prompt):
-    completion = openai.ChatCompletion.create(model="gpt-3.5-turbo", temperature=0.3,
+    completion = openai.ChatCompletion.create(model="gpt-4o-mini", temperature=0.3,
                                               messages=[{"role": "user", "content": prompt}])
     return completion.choices[0].message.content
 
