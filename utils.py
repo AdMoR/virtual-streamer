@@ -21,7 +21,7 @@ from botocore.exceptions import NoCredentialsError
 from prompts import PROMPT
 
 
-openai.api_key = os.environ["OPENAI_TOKEN"]
+
 queue_directory = "./"
 
 
@@ -315,6 +315,7 @@ def gpt_call_mock(_prompt):
 
 
 def gpt_call(prompt):
+    openai.api_key = os.environ["OPENAI_TOKEN"]
     completion = openai.ChatCompletion.create(model="gpt-4o-mini", temperature=0.3,
                                               messages=[{"role": "user", "content": prompt}])
     return completion.choices[0].message.content
