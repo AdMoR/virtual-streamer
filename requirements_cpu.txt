@@ -10,3 +10,5 @@ pika
 streamlit
 bokeh
 streamlit_bokeh_events
+pyserde
+boto3

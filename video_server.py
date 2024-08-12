@@ -17,6 +17,7 @@ app = Flask(__name__, static_folder=video_folder)
 old_videos = [os.path.join(video_folder, f) for f in os.listdir(video_folder) if f.endswith(".mp4")]
 new_videos = list()
 
+
 @app.route('/videos')
 def videos():
     if len(new_videos) > 0:

@@ -11,5 +11,6 @@ RUN pip install -r requirements_cpu.txt
 
 COPY ./video_server.py .
 COPY ./utils.py .
+COPY ./prompts.py .
 
 ENTRYPOINT ["python3", "video_server.py"]

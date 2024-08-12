@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+  <div id = "vid">
+    <video id="video" width = "1920"
+    height = "1080"
+    autoplay>
+      <source id="vsrc" />
+    </video>
+  </div>
+  
+  <script type='text/javascript'>
+    document.getElementById("vsrc").src = "/videos/" + Math.floor((Math.random()*2)+1) + ".mp4";
+    document.getElementById('video').addEventListener('ended',myHandler,false);
+    function myHandler(e) {
+        window.location.reload(true);
+    }
+</script>
+</body>
+
+</html>
