@@ -72,7 +72,7 @@ def build_callback(server_queue="chat_log", prompt=ROLEPLAY_PROMPT):
         # 2 - Get the query and send it
         language = CHARACTERS[character].language
         query_text = speech_to_text_call(audio, prompt_dict[language])
-        q = ChatQuestion("User", query_text, None, prompt, chatbot,
+        q = ChatQuestion(name="User", question=query_text, routing_queue=None, prompt=prompt, history=chatbot,
                          character_name=character, subtitle_mode=SubtitleMode.NONE)
         text = q.serialize()
         print("Text content : ", text)

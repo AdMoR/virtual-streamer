@@ -1,6 +1,6 @@
 import twitch, json
-from utils import add_to_queue
-import os
+from utils import add_to_queue, ChatQuestion
+from prompts import VERY_SARCASTIC_STANDUP_PROMPT
 
 
 cred_file = "/home/amor/twitch_creds_allo_jesus.json"
@@ -10,8 +10,11 @@ creds = json.load(open(cred_file))
 
 def append_question(message: twitch.chat.Message):
     # !/usr/bin/python
-    for queue_name in ["chat_log", "chat_log_saved"]:
-        add_to_queue(queue_name, f"{message.user}|{message.text}|video_response_queue")
+    queue_name = "chat_log"
+    # API : name: str,  question: str, routing_queue: str = "video_response_queue", prompt: str = None
+    msg = ChatQuestion(name=message.sender, question=message.text, routing_queue=queue_name,
+                       prompt=VERY_SARCASTIC_STANDUP_PROMPT, next_queue="obs")
+    add_to_queue(queue_name, msg.serialize())
 
 
 def handle_message(message: twitch.chat.Message) -> None:

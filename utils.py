@@ -18,6 +18,7 @@ import abc
 from abc import ABC
 import boto3
 from botocore.exceptions import NoCredentialsError
+from prompts import PROMPT
 
 
 openai.api_key = os.environ["OPENAI_TOKEN"]
@@ -159,49 +160,42 @@ def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
     return outpath
 
 
-class AbstractPromptQuery(ABC):
-    @abc.abstractmethod
-    def render(self) -> str:
-        pass
-    def serialize(self) -> str:
-        pass
-
-
-@serde.deserialize
-@serde.serialize
-@dataclasses.dataclass
-class Question(AbstractPromptQuery):
-    name: str
-    question: str
-    routing_queue: str = "video_response_queue"
-    prompt: str = None
-
-    def serialize(self):
-        return to_json(self)
-
-    def render(self) -> str:
-        return self.prompt.format(name=self.name, question=self.question)
-
-
 class SubtitleMode(enum.Enum):
     NONE = "none"
     QUESTION = "question"
     VOICE_SUBTITLE = "subtitle"
 
-@serde.deserialize
-@serde.serialize
+
 @dataclasses.dataclass
-class ChatQuestion(AbstractPromptQuery):
-    name: str
-    question: str
+class AbstractPromptQuery(ABC):
     routing_queue: Optional[str] = "video_response_queue"
-    prompt: str = None
-    history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
-    character_name: str = "Jesus"
-    subtitle_mode: SubtitleMode = SubtitleMode.QUESTION
+    next_queue: Optional[str] = None
+    prompt: str = PROMPT
+
+    @abc.abstractmethod
+    def render(self) -> str:
+        pass
 
     def serialize(self):
         return to_json(self)
+
+
+@serde.deserialize
+@serde.serialize
+class Question(AbstractPromptQuery):
+    name: str
+    question: str
+
+    def render(self) -> str:
+        return self.prompt.format(name=self.name, question=self.question)
+
+
+@serde.deserialize
+@serde.serialize
+class ChatQuestion(Question):
+    history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
+    character_name: str = "Jesus"
+    subtitle_mode: SubtitleMode = SubtitleMode.QUESTION
 
     def render(self):
         question = self.question.replace("!allo", "")
@@ -234,7 +228,7 @@ def question_parser(line: bytes) -> AbstractPromptQuery:
 
 
 def read_from_queue_old(queue_name: str,
-                    parser: Callable[[bytes], Any] = question_parser) -> Optional[Any]:
+                        parser: Callable[[bytes], Any] = question_parser) -> Optional[Any]:
     filepath = f"{queue_directory}/{queue_name}.txt"
     while True:
         infile = open(filepath, "rb")
@@ -371,7 +365,7 @@ def s3_upload(local_file_path, bucket_name):
     return object_dst_url
 
 
-def s3_download(s3_path):
+def s3_download(s3_path: str, output_dir: Optional[str] = None):
     try:
         aws_access_key_id = os.environ["AWS_ACCESS_KEY"]
         aws_secret_access_key = os.environ["AWS_SECRET_KEY"]
@@ -387,5 +381,8 @@ def s3_download(s3_path):
     # Upload the file to the S3 bucket
     bucket, *others = s3_path.split("/")
     filename = others[-1]
-    s3.download_file(bucket, "/".join(others), filename)
-    return filename
+    if output_dir is None:
+        output_dir = "."
+    full_local_path = os.path.join(output_dir, filename)
+    s3.download_file(bucket, "/".join(others), full_local_path)
+    return full_local_path

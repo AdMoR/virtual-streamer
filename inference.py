@@ -262,14 +262,16 @@ def main(args: Any, question: Question, full_frames: List[Any], face_det_results
 
 
 def callback(ch, method_frame, properties, body):
-    print("coucou")
+    # 1 - Retrieve some params of the processing job
     question = question_parser(body)
-    update_next_qestion_file(question)
     character = CHARACTERS[question.character_name].name
 
+    # 2 - main processing : video answer to the question is produced and stored on S3
     media_path, text = main(args, question, full_frames_origin[character], face_det_results_origin[character])
     print(f"New video_path : {media_path}")
     s3_path = s3_upload(media_path, UPLOAD_BUCKET)
+
+    # 3 - A msg is prepared and send to the next user
     msg = VideoResponse(s3_path, text, question.question).serialize()
     routing_key = properties.reply_to or question.routing_queue
     print("Reply : ", routing_key)
