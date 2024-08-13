@@ -14,6 +14,8 @@ from utils import get_rmq_channel, s3_download, VideoResponse
 #rmq_url = os.environ["RMQ_URL"]
 queue_name = os.environ.get("VIDEO_QUEUE", "obs")
 video_folder = os.environ.get("VIDEO_FOLDER", "assets")
+HOST_NAME = os.environ.get("HOST_NAME", "127.0.0.1")
+REMOTE_VIDEO = False
 
 app = Flask(__name__, static_folder=video_folder)
 CORS(app)
@@ -28,7 +30,8 @@ def videos():
         new_vid = new_videos.pop(0)
         random.shuffle(old_videos)
         old_videos.append(new_vid)
-    videos = [f"http://127.0.0.1:5000/video/{f}" for f in old_videos]
+    videos = [f"http://{HOST_NAME}:5000/video/{f}" for f in old_videos] if REMOTE_VIDEO \
+        else [f"{video_folder}/{f}" for f in old_videos]
     response = app.response_class(
         response=json.dumps(videos),
         status=200,
@@ -58,7 +61,7 @@ def home():
 
 
 def start_flask():
-    app.run(debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", debug=True, use_reloader=False)
 
 
 def start_rabbitmq_consumer():

@@ -2,8 +2,8 @@
 <html>
 
 <body>
-  <div id = "vid">
-    <video id="video" width = "1920"
+  <div>
+    <video id="videoPlayer" width = "1920"
     height = "1080"
     autoplay>
       <source id="vsrc" />
@@ -11,11 +11,62 @@
   </div>
   
   <script type='text/javascript'>
-    document.getElementById("vsrc").src = "/videos/" + Math.floor((Math.random()*2)+1) + ".mp4";
-    document.getElementById('video').addEventListener('ended',myHandler,false);
-    function myHandler(e) {
-        window.location.reload(true);
+
+
+document.addEventListener("DOMContentLoaded", function() {
+    const videoPlayer = document.getElementById('videoPlayer');
+    let videoList = [];
+    let currentIndex = 0;
+
+    async function fetchVideoFiles() {
+        const response = await fetch('http://video_server:5000/videos');
+        if (response.ok) {
+            videoList = await response.json();
+            currentIndex = 0;
+            console.log(videoList)
+            return true;
+        } else {
+            console.error('Failed to fetch video files');
+            return false;
+        }
     }
+    
+    function submitDone(videofile) {
+        const response = fetch('http://video_server:5000/done/${videofile}', {
+  mode: 'no-cors',
+});
+        if (response.ok) {
+            return true;
+        } else {
+            console.error('Failed to submit done video files');
+            return false;
+        }
+    }
+
+    async function playNextVideo() {
+        let refreshed = await fetchVideoFiles()
+        console.log("coucou")
+        if (refreshed) {
+            console.log("coucou")
+            currentIndex++;
+        } else {
+            currentIndex = 0; // Reset to the first video
+            //playNextVideo();
+        }
+        videoPlayer.src = videoList[currentIndex];
+        videoPlayer.play();
+    }
+
+    videoPlayer.addEventListener('ended', playNextVideo);
+
+    async function initializePlayer() {
+        playNextVideo()
+    }
+
+    initializePlayer();
+});
+
+
 </script>
 </body>
 
