@@ -166,25 +166,18 @@ class SubtitleMode(enum.Enum):
     VOICE_SUBTITLE = "subtitle"
 
 
+@serde.deserialize
+@serde.serialize
 @dataclasses.dataclass
-class AbstractPromptQuery(ABC):
+class Question:
+    name: str
+    question: str
     routing_queue: Optional[str] = "video_response_queue"
     next_queue: Optional[str] = None
-    prompt: str = PROMPT
-
-    @abc.abstractmethod
-    def render(self) -> str:
-        pass
+    prompt: Optional[str] = None
 
     def serialize(self):
         return to_json(self)
-
-
-@serde.deserialize
-@serde.serialize
-class Question(AbstractPromptQuery):
-    name: str
-    question: str
 
     def render(self) -> str:
         return self.prompt.format(name=self.name, question=self.question)
@@ -192,6 +185,7 @@ class Question(AbstractPromptQuery):
 
 @serde.deserialize
 @serde.serialize
+@dataclasses.dataclass
 class ChatQuestion(Question):
     history: List[tuple[str, str]] = dataclasses.field(default_factory=list)
     character_name: str = "Jesus"
@@ -217,7 +211,7 @@ class VideoResponse:
         return to_json(self)
 
 
-def question_parser(line: bytes) -> AbstractPromptQuery:
+def question_parser(line: bytes) -> Question:
     text = line.decode("utf-8")
     for class_ in [ChatQuestion, Question]:
         try:
@@ -250,10 +244,12 @@ def add_to_queue_old(queue_name, message):
 def get_rmq_channel(queue_name):
     # Define the connection parameters
     if "RMQ_URL" not in os.environ:
+        print("Host Rabbit mode", os.environ.get("RMQ_HOST", "localhost"))
         host = os.environ.get("RMQ_HOST", "localhost")
         parameters = pika.ConnectionParameters(host=host, port=5672, retry_delay=10,
                                                connection_attempts=3)
     else:
+        print("Remote Rabbit mode", os.environ["RMQ_URL"])
         parameters = pika.URLParameters(os.environ["RMQ_URL"])
     connection = pika.BlockingConnection(parameters)
 

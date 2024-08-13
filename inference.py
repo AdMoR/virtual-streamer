@@ -263,6 +263,7 @@ def main(args: Any, question: Question, full_frames: List[Any], face_det_results
 
 def callback(ch, method_frame, properties, body):
     # 1 - Retrieve some params of the processing job
+    print("body", body)
     question = question_parser(body)
     character = CHARACTERS[question.character_name].name
 
@@ -274,9 +275,10 @@ def callback(ch, method_frame, properties, body):
     # 3 - A msg is prepared and send to the next user
     msg = VideoResponse(s3_path, text, question.question).serialize()
     routing_key = properties.reply_to or question.routing_queue
-    print("Reply : ", routing_key)
-    ch.basic_publish('', routing_key=routing_key, body=msg)
-    ch.basic_ack(delivery_tag=method_frame.delivery_tag)
+    if routing_key:
+        print("Reply : ", routing_key)
+        ch.basic_publish('', routing_key=routing_key, body=msg)
+        ch.basic_ack(delivery_tag=method_frame.delivery_tag)
 
 
 def main_exec(channel_name="chat_log"):

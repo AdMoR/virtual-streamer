@@ -46,6 +46,8 @@ services:
     volumes:
       - $HOME/.aws/credentials:/root/.aws/credentials
       - $HOME/.aws/config:/root/.aws/config
+      - generations:/src/generations
+      - prompts:/src/prompts
     env_file:
       - .env
     restart: always
@@ -59,31 +61,21 @@ services:
       - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
     networks:
       - rabbit
-  demo:
-    build:
-      context: .
-      dockerfile: docker/docker_base/Dockerfile
-    ports:
-      - 7860:7860
-    depends_on:
-      - rabbitmq
-    environment:
-      - RMQ_HOST=rabbitmq
-      - S3_BUCKET_URL=virtual-streamer-output
-      - AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
-      - AWS_CONFIG_FILE=/root/.aws/config
-    networks:
-      - rabbit
-    volumes:
-      - $HOME/.aws/credentials:/root/.aws/credentials
-      - $HOME/.aws/config:/root/.aws/config
-    env_file:
-      - .env
 
 
 volumes:
   generations:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /media/amor/data/videos
+      o: bind
   prompts:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /media/amor/data/prompts
+      o: bind
 
 
 networks:
