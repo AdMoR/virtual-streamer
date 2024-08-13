@@ -3,7 +3,7 @@ services:
   tts:
     build:
       context: .
-      dockerfile: docker/docker_tts/Dockerfile
+      dockerfile: docker/docker_fr_tts/Dockerfile
     deploy:
       resources:
         reservations:

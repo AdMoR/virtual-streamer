@@ -227,12 +227,12 @@ def main(args: Any, question: Question, full_frames: List[Any], face_det_results
 
     # Step 2 - Get the audio for the response
     # prev p317
-    #audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
-    character = CHARACTERS[question.character_name]
-    solero_language_switch(character.language, character.voice)
     os.makedirs("./temp", exist_ok=True)
-    audio_outpath = txt_to_speech_call_solero(text, character.language,
-                                              character.voice, f"./temp/response_{hash(query) % 100000}.wav")
+    audio_outpath = txt_to_speech_call(text, "male-pt-3%0A", f"./temp/response_{hash(query) % 100000}.wav")
+    #character = CHARACTERS[question.character_name]
+    #solero_language_switch(character.language, character.voice)
+    #audio_outpath = txt_to_speech_call_solero(text, character.language,
+    #                                          character.voice, f"./temp/response_{hash(query) % 100000}.wav")
 
     # Step 3 - Wav2lip video generation
     s = time.time()
