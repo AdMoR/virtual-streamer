@@ -1,8 +1,12 @@
 import os
 import random
 import threading
+
+import flask
 from serde.json import from_json
 from flask import Flask, request, jsonify
+import json
+from flask_cors import CORS
 from utils import get_rmq_channel, s3_download, VideoResponse
 
 
@@ -12,9 +16,9 @@ queue_name = os.environ.get("VIDEO_QUEUE", "obs")
 video_folder = os.environ.get("VIDEO_FOLDER", "assets")
 
 app = Flask(__name__, static_folder=video_folder)
+CORS(app)
 
-
-old_videos = [os.path.join(video_folder, f) for f in os.listdir(video_folder) if f.endswith(".mp4")]
+old_videos = [f for f in os.listdir(video_folder) if f.endswith(".mp4")]
 new_videos = list()
 
 
@@ -24,12 +28,28 @@ def videos():
         new_vid = new_videos.pop(0)
         random.shuffle(old_videos)
         old_videos.append(new_vid)
-    return jsonify(old_videos)
+    videos = [f"http://127.0.0.1:5000/video/{f}" for f in old_videos]
+    response = app.response_class(
+        response=json.dumps(videos),
+        status=200,
+        mimetype='application/json'
+    )
+    return response
 
 
 @app.route('/video/<path:filename>')
 def video_server(filename: str):
     return app.send_static_file(filename)
+
+
+@app.route('/done/<path:filename>')
+def video_completed(filename: str):
+    response = app.response_class(
+        response=json.dumps("ok"),
+        status=200,
+        mimetype='application/json'
+    )
+    return response
 
 
 @app.route('/')
