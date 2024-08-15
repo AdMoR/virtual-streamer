@@ -13,3 +13,5 @@ bokeh
 streamlit_bokeh_events
 pyserde
 boto3
+asyncio
+websockets
