@@ -1,4 +1,5 @@
 import json
+import os
 from utils import add_to_queue, ChatQuestion
 from prompts import VERY_SARCASTIC_STANDUP_PROMPT
 import requests
@@ -12,8 +13,8 @@ def append_question(user, message):
     # !/usr/bin/python
     queue_name = "chat_log"
     # API : name: str,  question: str, routing_queue: str = "video_response_queue", prompt: str = None
-    msg = ChatQuestion(name=user, question=message, routing_queue=queue_name,
-                       prompt=VERY_SARCASTIC_STANDUP_PROMPT, next_queue="obs")
+    msg = ChatQuestion(name=user, question=message, routing_queue="obs",
+                       prompt=VERY_SARCASTIC_STANDUP_PROMPT, next_queue=None)
     add_to_queue(queue_name, msg.serialize())
 
 
@@ -39,6 +40,7 @@ class TwitchClient:
         }
         response = requests.post(url, params=params)
         response_data = response.json()
+        print(response.json(), self.client_id)
         self.access_token = response_data['access_token']
         self.refresh_token = response_data['refresh_token']
         self.token_expiry = time.time() + response_data['expires_in']
@@ -116,18 +118,17 @@ class TwitchClient:
         if len(parts) > 2:
             user_info, chat_message = parts[1], parts[2]
             username = user_info.split("!")[0]
-            print(f"{username}>>>{chat_message}")
         else:
-            print(message, "!!!!!!!")
+            print("Failure to parse message")
+            return
 
         if chat_message.lstrip(" ").lower().startswith("!allo") or chat_message.lstrip(" ").lower().startswith("allo"):
-            #append_question(message)
+            append_question(username, chat_message[5:])
             response = f"Merci {username}, ta question est en cours de traitement."
         elif chat_message.lower().startswith("jesus") or chat_message.lower().startswith("jésus"):
             response = f"{username}, si tu souhaites poser une question à Jésus. Utilises !allo avant ta question. Ex: !allo Salut, la forme ?."
         else:
-            response = "toto"
-        print("---> ", response)
+            response = ""
         asyncio.create_task(self.send_message(websocket, channel, response))
 
     async def send_message(self, websocket, channel_name, msg):
@@ -147,7 +148,11 @@ class TwitchClient:
 
 
 # Usage
-creds = json.load(open("./creds.json"))
+try:
+    creds = json.load(open("./creds.json"))
+except Exception as e:
+    creds = os.environ
+
 client_id = creds["client_id"]
 client_secret = creds["client_secret"]
 refresh_token = creds["refresh_token"]
