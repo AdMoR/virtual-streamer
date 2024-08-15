@@ -14,5 +14,4 @@ WORKDIR /root
 RUN git clone https://github.com/coqui-ai/TTS.git && cd /root/TTS && make install
 RUN tts --model_name tts_models/multilingual/multi-dataset/your_tts --speaker_idx male-en-2 --language_idx en --text "test" --out_path "/tmp/test.wav"
 
-ENTRYPOINT ["/usr/bin/python3", "/root/TTS/TTS/server/server.py", "--model_name",
-            "tts_models/multilingual/multi-dataset/your_tts", "--use_cuda", "1"]
+ENTRYPOINT ["/usr/bin/python3", "/root/TTS/TTS/server/server.py", "--model_name", "tts_models/multilingual/multi-dataset/your_tts", "--use_cuda", "1"]
