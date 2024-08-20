@@ -16,10 +16,10 @@
 document.addEventListener("DOMContentLoaded", function() {
     const videoPlayer = document.getElementById('videoPlayer');
     let videoList = [];
-    let currentIndex = 0;
+    let currentIndex = -1;
 
     async function fetchVideoFiles() {
-        const response = await fetch('http://video_server:5000/videos');
+        const response = await fetch('http://127.0.0.1:5000/videos');
         if (response.ok) {
             videoList = await response.json();
             currentIndex = 0;
@@ -32,13 +32,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     async function playNextVideo() {
-        let hasNewVideo = await fetch('http://video_server:5000/hasNewVideo', {
+        let hasNewVideo = await fetch('http://127.0.0.1:5000/hasNewVideo', {
   mode: 'no-cors',
 }).json;
         console.log("coucou")
         if (!hasNewVideo) {
             console.log("Nothing new, play next")
-            currentIndex++;
+            currentIndex = (currentIndex + 1) % videoList.length;
         } else {
             fetchVideoFiles()
             currentIndex = 0; // Reset to the first video
