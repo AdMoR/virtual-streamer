@@ -30,28 +30,19 @@ document.addEventListener("DOMContentLoaded", function() {
             return false;
         }
     }
-    
-    function submitDone(videofile) {
-        const response = fetch('http://video_server:5000/done/${videofile}', {
-  mode: 'no-cors',
-});
-        if (response.ok) {
-            return true;
-        } else {
-            console.error('Failed to submit done video files');
-            return false;
-        }
-    }
 
     async function playNextVideo() {
-        let refreshed = await fetchVideoFiles()
+        let hasNewVideo = await fetch('http://video_server:5000/hasNewVideo', {
+  mode: 'no-cors',
+}).json;
         console.log("coucou")
-        if (refreshed) {
-            console.log("coucou")
+        if (!hasNewVideo) {
+            console.log("Nothing new, play next")
             currentIndex++;
         } else {
+            fetchVideoFiles()
             currentIndex = 0; // Reset to the first video
-            //playNextVideo();
+            console.log("New video play next")
         }
         videoPlayer.src = videoList[currentIndex];
         videoPlayer.play();
@@ -60,7 +51,8 @@ document.addEventListener("DOMContentLoaded", function() {
     videoPlayer.addEventListener('ended', playNextVideo);
 
     async function initializePlayer() {
-        playNextVideo()
+        await fetchVideoFiles();
+        playNextVideo();
     }
 
     initializePlayer();

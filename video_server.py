@@ -45,10 +45,11 @@ def video_server(filename: str):
     return app.send_static_file(filename)
 
 
-@app.route('/done/<path:filename>')
-def video_completed(filename: str):
+@app.route('/hasNewVideo')
+def video_completed():
+    has_video = len(new_videos) > 0
     response = app.response_class(
-        response=json.dumps("ok"),
+        response=json.dumps(has_video),
         status=200,
         mimetype='application/json'
     )
@@ -57,7 +58,7 @@ def video_completed(filename: str):
 
 @app.route('/')
 def home():
-    return app.send_static_file("test.html")
+    return app.send_static_file("obs_config/test.html")
 
 
 def start_flask():

@@ -16,7 +16,7 @@ project_root = os.path.dirname(__file__)
 
 CHARACTERS = {
     "Jesus": CharacterConfig("Jesus", f"{project_root}/assets/reference.mp4", "fr_1", "fr"),
-    "fr": CharacterConfig("fr", f"{project_root}/assets/reference.mp4", "fr_1", "fr"),
+    "Jamie": CharacterConfig("Jamie", f"{project_root}/assets/jamie_moon_landing.mp4", "fr_1", "fr"),
     "de": CharacterConfig("de", f"{project_root}/assets/reference.mp4", "friedrich", "de"),
 }
 
