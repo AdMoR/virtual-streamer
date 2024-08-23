@@ -19,6 +19,7 @@ services:
       - $HOME/.aws/credentials:/root/.aws/credentials
       - $HOME/.aws/config:/root/.aws/config
       - video_folder:/videos
+      - ./assets/test.html:/videos/test.html
     env_file:
       - .env
     restart: always
