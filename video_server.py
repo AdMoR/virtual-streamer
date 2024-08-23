@@ -1,7 +1,7 @@
 import os
 import random
 import threading
-
+from multiprocessing.pool import ThreadPool
 import flask
 from serde.json import from_json
 from flask import Flask, request, jsonify
@@ -20,7 +20,7 @@ REMOTE_VIDEO = False
 app = Flask(__name__, static_folder=video_folder)
 CORS(app)
 
-old_videos = [f for f in os.listdir(video_folder) if f.endswith(".mp4")]
+old_videos = [os.path.join(video_folder, f) for f in os.listdir(video_folder) if f.endswith(".mp4")]
 new_videos = list()
 
 
@@ -29,9 +29,9 @@ def videos():
     if len(new_videos) > 0:
         new_vid = new_videos.pop(0)
         random.shuffle(old_videos)
-        old_videos.append(new_vid)
+        old_videos.insert(0, new_vid)
     videos = [f"http://{HOST_NAME}:5000/video/{f}" for f in old_videos] if REMOTE_VIDEO \
-        else [f"{video_folder}/{f}" for f in old_videos]
+        else [f"{f}" for f in old_videos]
     response = app.response_class(
         response=json.dumps(videos),
         status=200,
@@ -46,11 +46,10 @@ def video_server(filename: str):
 
 
 @app.route('/hasNewVideo')
-def video_completed():
+def hasNewVideos():
     has_video = len(new_videos) > 0
     response = app.response_class(
-        response=json.dumps(has_video),
-        status=200,
+        status=200 if has_video else 404,
         mimetype='application/json'
     )
     return response
@@ -58,7 +57,7 @@ def video_completed():
 
 @app.route('/')
 def home():
-    return app.send_static_file("obs_config/test.html")
+    return app.send_static_file("test.html")
 
 
 def start_flask():
@@ -69,22 +68,33 @@ def start_rabbitmq_consumer():
     def callback(ch, method, properties, body):
         response = from_json(VideoResponse, body.decode())
         s3_path = response.video_path
-        file = s3_download(s3_path, output_dir=video_folder)
+        try:
+            file = s3_download(s3_path, output_dir=video_folder)
+        except Exception as e:
+            print("Exception encountered in S3 download")
+            raise e
         new_videos.append(file)
+        print("New video added ---->", new_videos)
 
     channel = get_rmq_channel(queue_name)
-    channel.queue_declare(queue=queue_name)
     channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
 
     print('Waiting for messages. To exit press CTRL+C')
     channel.start_consuming()
+    print("exiting")
 
 
 if __name__ == '__main__':
     # Start Flask web server in a separate thread
-    flask_thread = threading.Thread(target=start_flask)
-    flask_thread.start()
+    pool = ThreadPool(processes=2)
 
-    # Start RabbitMQ consumer in the main thread
-    #start_rabbitmq_consumer()
+    pool.apply_async(start_flask)
+    pool.apply_async(start_rabbitmq_consumer)
+
+    print("Ready")
+    pool.close()
+    pool.join()
+
+
+
 

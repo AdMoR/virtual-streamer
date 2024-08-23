@@ -6,7 +6,6 @@
     <video id="videoPlayer" width = "1920"
     height = "1080"
     autoplay>
-      <source id="vsrc" />
     </video>
   </div>
   
@@ -19,33 +18,37 @@ document.addEventListener("DOMContentLoaded", function() {
     let currentIndex = -1;
 
     async function fetchVideoFiles() {
-        const response = await fetch('http://127.0.0.1:5000/videos');
+        const response = await fetch('http://video_server:5000/videos');
         if (response.ok) {
             videoList = await response.json();
             currentIndex = 0;
             console.log(videoList)
-            return true;
+            return videoList;
         } else {
             console.error('Failed to fetch video files');
-            return false;
+            return videoList;
         }
     }
 
     async function playNextVideo() {
-        let hasNewVideo = await fetch('http://127.0.0.1:5000/hasNewVideo', {
-  mode: 'no-cors',
-}).json;
-        console.log("coucou")
-        if (!hasNewVideo) {
-            console.log("Nothing new, play next")
-            currentIndex = (currentIndex + 1) % videoList.length;
-        } else {
-            fetchVideoFiles()
+        let hasNewVideo = await fetch('http://video_server:5000/hasNewVideo', {
+          mode: 'no-cors',
+        }).then(function(response) {
+            return parseInt(response.status, 10)
+        });
+        if (hasNewVideo == 200) {
+            videoList = await fetchVideoFiles()
             currentIndex = 0; // Reset to the first video
             console.log("New video play next")
+            videoPlayer.src = videoList[0];
         }
-        videoPlayer.src = videoList[currentIndex];
+        else{
+            console.log("Nothing new, play next")
+            videoPlayer.src = videoList[currentIndex];
+        }
+                console.log("coucou", currentIndex)
         videoPlayer.play();
+        currentIndex = (currentIndex + 1) % videoList.length;
     }
 
     videoPlayer.addEventListener('ended', playNextVideo);
