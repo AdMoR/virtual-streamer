@@ -7,6 +7,10 @@ import time
 import json
 import asyncio
 import websockets
+import logging
+
+
+logger = logging.getLogger()
 
 
 def append_question(user, message):
@@ -40,11 +44,10 @@ class TwitchClient:
         }
         response = requests.post(url, params=params)
         response_data = response.json()
-        print(response.json(), self.client_id)
         self.access_token = response_data['access_token']
         self.refresh_token = response_data['refresh_token']
         self.token_expiry = time.time() + response_data['expires_in']
-        print("Access token refreshed")
+        logger.info("Access token refreshed")
 
     def ensure_token_valid(self):
         if time.time() > self.token_expiry:
@@ -63,7 +66,7 @@ class TwitchClient:
             await websocket.send(f"PASS oauth:{self.access_token}")
             await websocket.send(f"NICK allojesuschrist")
             await websocket.send(f"JOIN #{channel_name}")
-
+            print("connection done")
             while True:
                 try:
                     response = await websocket.recv()
@@ -77,6 +80,7 @@ class TwitchClient:
         async def read_chat():
             while True:
                 try:
+                    print("pipou")
                     await self.connect_to_chat(channel_name)
                 except websockets.exceptions.InvalidStatusCode as e:
                     if e.status_code == 400:  # Bad Request, likely due to invalid token
@@ -105,13 +109,13 @@ class TwitchClient:
         elif "NOTICE" in message:
             self.handle_notice(message)
         else:
-            print(f"Unhandled message: {message}")
+            logger.info(f"Unhandled message: {message}")
 
     async def send_pong(self, pong_response, websocket):
         await websocket.send(pong_response)
 
     def handle_notice(self, msg):
-        print(msg)
+        logger.info(msg)
 
     def handle_privmsg(self, websocket, message, channel):
         parts = message.split(":", 2)
@@ -119,7 +123,7 @@ class TwitchClient:
             user_info, chat_message = parts[1], parts[2]
             username = user_info.split("!")[0]
         else:
-            print("Failure to parse message")
+            logger.info("Failure to parse message")
             return
 
         if chat_message.lstrip(" ").lower().startswith("!allo") or chat_message.lstrip(" ").lower().startswith("allo"):
@@ -138,13 +142,13 @@ class TwitchClient:
         parts = message.split("!")
         if len(parts) > 1:
             username = parts[0][1:]
-            print(f"{username} joined the chat")
+            logger.info(f"{username} joined the chat")
 
     def handle_part(self, message):
         parts = message.split("!")
         if len(parts) > 1:
             username = parts[0][1:]
-            print(f"{username}")
+            logger.info(f"{username}")
 
 
 # Usage
@@ -157,4 +161,5 @@ client_id = creds["client_id"]
 client_secret = creds["client_secret"]
 refresh_token = creds["refresh_token"]
 twitch_client = TwitchClient(client_id, client_secret, refresh_token)
+logger.info("Client initialized")
 twitch_client.get_stream_chat("allojesuschrist")

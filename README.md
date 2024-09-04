@@ -52,6 +52,17 @@ It launches an OBS in a container. On the side there is a video server telling w
 sudo docker compose -f compose_obs.yml --env-file .env up
 ``` 
 
+# Support code
+
+## Getting training data for a voice model
+
+Using the container from ...
+
+The whisper french model must be transformed in to the CTranslate format
+
+```commandline
+ct2-transformers-converter --model BELLE-2/Belle-whisper-large-v3-zh --output_dir models/faster-whisper-large-v3 --copy_files tokenizer.json preprocessor_config.json
+```
 
 
 

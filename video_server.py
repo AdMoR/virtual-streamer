@@ -26,6 +26,7 @@ new_videos = list()
 
 @app.route('/videos')
 def videos():
+    old_videos = [os.path.join(video_folder, f) for f in os.listdir(video_folder) if f.endswith(".mp4")]
     if len(new_videos) > 0:
         new_vid = new_videos.pop(0)
         random.shuffle(old_videos)
