@@ -1,146 +1,37 @@
-import dataclasses
-import enum
-import os
-from typing import Callable, Dict, Any
-from collections import defaultdict
 from character_setup import CHARACTERS
 import datetime
 import cv2
 import torch
 import json
 from tqdm import tqdm
-import audio
-from batch_face import RetinaFace
+from virtual_streamer.wav2lip import audio
+
 import time
 from textwrap import wrap
-from utils import *
+from virtual_streamer.utils.utils import *
+from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load
 from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
-from model_utils import face_detect, load_model
 import subprocess
 import numpy as np
 import random
 import shutil
 
 
-@dataclasses.dataclass()
-class Config:
-    checkpoint_path: str = "./checkpoints/Wav2Lip.pth"
-    resolution: int = 720
-    wav2lip_batch_size: int = 8
-    face_batch_size: int = 64
-    img_size: int = 96
-
-    static: bool = False
-    pads: List[int] = (0, 10, 0, 0)
-    nosmooth: bool = False
-    rotate: bool = False
-    box: List[int] = (-1, -1, -1, -1)
-    crop: List[int] = (0, -1, 0, -1)
-    resize_factor: float = 1.
-    fps: int = 25
-    outfile: str = 'results/result_voice.mp4'
-
-
-def datagen(frames, mels, face_det_results):
-    img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
-
-    for i, m in enumerate(mels):
-        idx = 0 if args.static else i%len(frames)
-        frame_to_save = frames[idx].copy()
-        face, coords = face_det_results[idx].copy()
-
-        face = cv2.resize(face, (args.img_size, args.img_size))
-
-        img_batch.append(face)
-        mel_batch.append(m)
-        frame_batch.append(frame_to_save)
-        coords_batch.append(coords)
-
-        if len(img_batch) >= args.wav2lip_batch_size:
-            img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
-
-            img_masked = img_batch.copy()
-            img_masked[:, args.img_size//2:] = 0
-
-            img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.
-            mel_batch = np.reshape(mel_batch, [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1])
-
-            yield img_batch, mel_batch, frame_batch, coords_batch
-            img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
-
-    if len(img_batch) > 0:
-        img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
-
-        img_masked = img_batch.copy()
-        img_masked[:, args.img_size//2:] = 0
-
-        img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.
-        mel_batch = np.reshape(mel_batch, [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1])
-
-        yield img_batch, mel_batch, frame_batch, coords_batch
-
-
 mel_step_size = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
 UPLOAD_BUCKET = os.environ["S3_BUCKET_URL"]
-
-
 model = detector = detector_model = None
-
-
-def do_load(checkpoint_path):
-    global model, detector, detector_model
-
-    model = load_model(checkpoint_path, device)
-
-    # SFDDetector.load_model(device)
-    detector = RetinaFace(gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet")
-
-    detector_model = detector.model
-
-    print("Models loaded")
-
-
 message_directory = "./"
 args = Config()
-do_load(args.checkpoint_path)
+do_load(args.checkpoint_path, device)
 
 print('Reading video frames...')
 full_frames_origin = dict()
 face_det_results_origin = dict()
-
-
-def preprocess(video_path: str, name: str, full_frames: Dict, face_det_results_origin: Dict):
-    video_stream = cv2.VideoCapture(video_path)
-    fps = video_stream.get(cv2.CAP_PROP_FPS)
-    full_frames[name] = list()
-
-    while 1:
-        still_reading, frame = video_stream.read()
-        if not still_reading:
-            video_stream.release()
-            break
-
-        aspect_ratio = frame.shape[1] / frame.shape[0]
-        frame = cv2.resize(frame, (int(args.resolution * aspect_ratio), args.resolution))
-        # if args.resize_factor > 1:
-        #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
-
-        y1, y2, x1, x2 = [0, -1, 0, -1]
-        if x2 == -1: x2 = frame.shape[1]
-        if y2 == -1: y2 = frame.shape[0]
-
-        frame = frame[y1:y2, x1:x2]
-
-        full_frames[name].append(frame)
-    
-    face_det_results_origin[name] = face_detect(detector, full_frames[name], args.face_batch_size)
-
-
 for k, v in CHARACTERS.items():
-    preprocess(v.video_clip_path, k, full_frames_origin, face_det_results_origin)
+    preprocess(args, v.video_clip_path, k, full_frames_origin, face_det_results_origin)
 
 
 def wav2lip_exec(dirname, full_frames: List[Any], audio_path: str, question: str, face_det_results: Any):
@@ -203,7 +94,6 @@ def wav2lip_exec(dirname, full_frames: List[Any], audio_path: str, question: str
         for p, f, c in zip(pred, frames, coords):
             y1, y2, x1, x2 = c
             p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
-
             f[y1:y2, x1:x2] = p
             out.write(f)
 
@@ -211,7 +101,7 @@ def wav2lip_exec(dirname, full_frames: List[Any], audio_path: str, question: str
     return out_path
 
 
-def main(args: Any, question: Question, full_frames: List[Any], face_det_results: Any):
+def main(args: Config, question: Question, full_frames: List[Any], face_det_results: Any):
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
 
@@ -253,7 +143,7 @@ def main(args: Any, question: Question, full_frames: List[Any], face_det_results
         add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
     else:
         outfile_titled_path = outfile_combined_path
-    
+
     # Step 5 - Move the file
     final_outfile_path = os.path.join(dirname, f"result_{tag}.mp4")
     shutil.copyfile(outfile_titled_path, final_outfile_path)

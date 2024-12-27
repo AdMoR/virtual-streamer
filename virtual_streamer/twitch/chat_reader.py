@@ -1,6 +1,6 @@
 import json
 import os
-from utils import add_to_queue, ChatQuestion
+from virtual_streamer.utils.utils import add_to_queue, ChatQuestion
 from prompts import VERY_SARCASTIC_STANDUP_PROMPT
 import requests
 import time

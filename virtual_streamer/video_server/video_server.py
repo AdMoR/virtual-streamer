@@ -7,7 +7,7 @@ from serde.json import from_json
 from flask import Flask, request, jsonify
 import json
 from flask_cors import CORS
-from utils import get_rmq_channel, s3_download, VideoResponse
+from virtual_streamer.utils.utils import get_rmq_channel, s3_download, VideoResponse
 
 
 # RabbitMQ connection parameters

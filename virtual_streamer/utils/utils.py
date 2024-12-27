@@ -379,7 +379,7 @@ def s3_download(s3_path: str, output_dir: Optional[str] = None):
     bucket, *others = s3_path.split("/")
     filename = others[-1]
     if output_dir is None:
-        output_dir = "."
+        output_dir = "../.."
     full_local_path = os.path.join(output_dir, filename)
     s3.download_file(bucket, "/".join(others), full_local_path)
     return full_local_path
