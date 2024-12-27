@@ -1,6 +1,5 @@
 import datetime
 import time
-from virtual_streamer.utils.utils import *
 from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
 import random
@@ -14,6 +13,8 @@ from llama_index.core.workflow import (
     StopEvent
 )
 from llama_index.llms.openai import OpenAI
+from virtual_streamer.wav2lip.main_logic import FaceDetectionGroup
+from virtual_streamer.utils.utils import *
 
 
 class ResponseEvent(Event):
@@ -28,8 +29,8 @@ class VideoEvent(Event):
 class VirtualStreamerWorkflow(Workflow):
 
     llm = OpenAI(model="gpt-4o-mini", temperature=0.1)
-    wav2lip_fn: Callable[[str, str, List[Any], str,  List[Any]]] = None
-    txt_to_speech_call: Callable[[str, str, str] = None
+    wav2lip_fn: Callable[[str, str, str, FaceDetectionGroup], str] = None
+    txt_to_speech_call: Callable[[str, str, str], str] = None
 
     @step
     def generate_answer(self, ctx: Context, ev: StartEvent) -> ResponseEvent:
@@ -39,8 +40,7 @@ class VirtualStreamerWorkflow(Workflow):
         set in global context
         """
         question: Question = ev.question
-        ctx.set("full_frames", ev.full_frames)
-        ctx.set("face_det_results", ev.face_det_results)
+        ctx.set("face_det_group", ev.face_det_group)
         ctx.set("question", question)
         # Step 1 - Get the response from GPT4o
         if question.prompt is None:
@@ -59,8 +59,7 @@ class VirtualStreamerWorkflow(Workflow):
         # Step 1 : Resume
         # Param retrieval
         question = ctx["question"]
-        full_frames = ctx["full_frames"]
-        face_det_results = ctx["face_det_results"]
+        face_det_group = ctx["face_det_group"]
         text = ev.response
 
         # Folder
@@ -80,7 +79,7 @@ class VirtualStreamerWorkflow(Workflow):
 
         # Step 3 - Wav2lip video generation
         s = time.time()
-        outfile_path = self.wave2lip_fn(TEMP_DIR, full_frames, audio_outpath, question.question, face_det_results)
+        outfile_path = self.wave2lip_fn(TEMP_DIR, audio_outpath, question.question, face_det_group)
         print("wav2lip prediction time:", time.time() - s)
 
         # Step 4 - Recombination and add subtitles

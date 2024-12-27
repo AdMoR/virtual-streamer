@@ -9,7 +9,7 @@ from virtual_streamer.wav2lip import audio
 import time
 from textwrap import wrap
 from virtual_streamer.utils.utils import *
-from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load
+from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load, FaceDetectionGroup
 from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
 import subprocess
@@ -28,14 +28,16 @@ args = Config()
 do_load(args.checkpoint_path, device)
 
 print('Reading video frames...')
-full_frames_origin = dict()
-face_det_results_origin = dict()
+face_detection_groups: Dict[str, FaceDetectionGroup] = dict()
 for k, v in CHARACTERS.items():
-    preprocess(args, v.video_clip_path, k, full_frames_origin, face_det_results_origin)
+    preprocess(args, v.video_clip_path, k, face_detection_groups)
 
 
-def wav2lip_exec(dirname, full_frames: List[Any], audio_path: str, question: str, face_det_results: Any):
+def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetectionGroup):
     fps = 24
+
+    full_frames = det_results.full_frames
+    face_det_results = det_results.face_det_results
 
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
     out_path = 'temp/result.avi'
@@ -101,7 +103,7 @@ def wav2lip_exec(dirname, full_frames: List[Any], audio_path: str, question: str
     return out_path
 
 
-def main(args: Config, question: Question, full_frames: List[Any], face_det_results: Any):
+def main(args: Config, question: Question, face_detection_group: FaceDetectionGroup):
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
 
@@ -126,7 +128,7 @@ def main(args: Config, question: Question, full_frames: List[Any], face_det_resu
 
     # Step 3 - Wav2lip video generation
     s = time.time()
-    outfile_path = wav2lip_exec(dirname, full_frames, audio_outpath, question.question, face_det_results)
+    outfile_path = wav2lip_exec(dirname, audio_outpath, question.question, face_detection_group)
     print("wav2lip prediction time:", time.time() - s)
 
     # Step 4 - Recombination and add subtitles
@@ -158,7 +160,7 @@ def callback(ch, method_frame, properties, body):
     character = CHARACTERS[question.character_name].name
 
     # 2 - main processing : video answer to the question is produced and stored on S3
-    media_path, text = main(args, question, full_frames_origin[character], face_det_results_origin[character])
+    media_path, text = main(args, question, face_detection_groups[character])
     print(f"New video_path : {media_path}")
     s3_path = s3_upload(media_path, UPLOAD_BUCKET)
 

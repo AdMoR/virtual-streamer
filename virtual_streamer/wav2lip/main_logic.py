@@ -28,6 +28,13 @@ class Config:
     outfile: str = 'results/result_voice.mp4'
 
 
+@dataclasses.dataclass
+class FaceDetectionGroup:
+    full_frames: List[Any]
+    face_det_results: List[Any]
+
+
+
 def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_results: List[Any]):
     img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
@@ -63,11 +70,10 @@ def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_resu
 
 
 def preprocess(args: Config, video_path: str, name: str,
-               full_frames: Dict[str, List],
-               face_det_results_origin: Dict[str, List]):
+               face_detection_groups: Dict[str, FaceDetectionGroup]):
     video_stream = cv2.VideoCapture(video_path)
     fps = video_stream.get(cv2.CAP_PROP_FPS)
-    full_frames[name] = list()
+    full_frames = list()
 
     while 1:
         still_reading, frame = video_stream.read()
@@ -85,9 +91,12 @@ def preprocess(args: Config, video_path: str, name: str,
         if y2 == -1: y2 = frame.shape[0]
 
         frame = frame[y1:y2, x1:x2]
-        full_frames[name].append(frame)
+        full_frames.append(frame)
 
-    face_det_results_origin[name] = face_detect(detector, full_frames[name], args.face_batch_size)
+    face_det_results_origin = face_detect(detector, full_frames, args.face_batch_size)
+
+    face_detection_groups = dict()
+    face_detection_groups[name] = FaceDetectionGroup(full_frames, face_det_results_origin)
 
 
 def do_load(checkpoint_path, device):
