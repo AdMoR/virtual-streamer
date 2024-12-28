@@ -11,13 +11,13 @@ class CharacterConfig:
     language: str
 
 
-project_root = os.path.dirname(__file__)
+file_path = os.path.dirname(__file__)
 
 
 CHARACTERS = {
-    "Jesus": CharacterConfig("Jesus", f"{project_root}/assets/reference.mp4", "fr_1", "fr"),
-    "Jamie": CharacterConfig("Jamie", f"{project_root}/assets/jamie_moon_landing.mp4", "fr_1", "fr"),
-    "de": CharacterConfig("de", f"{project_root}/assets/reference.mp4", "friedrich", "de"),
+    "Jesus": CharacterConfig("Jesus", f"{file_path}/../../assets/reference.mp4", "fr_1", "fr"),
+    "Jamie": CharacterConfig("Jamie", f"{file_path}/../../assets/jamie_moon_landing.mp4", "fr_1", "fr"),
+    "de": CharacterConfig("de", f"{file_path}/../../assets/reference.mp4", "friedrich", "de"),
 }
 
 

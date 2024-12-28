@@ -18,8 +18,6 @@ import abc
 from abc import ABC
 import boto3
 from botocore.exceptions import NoCredentialsError
-from prompts import PROMPT
-
 
 
 queue_directory = "./"

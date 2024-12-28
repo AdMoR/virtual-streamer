@@ -47,7 +47,7 @@ def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_resu
         img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.
         mel_batch = np.reshape(mel_batch, [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1])
 
-        yield img_batch, mel_batch, frame_batch, coords_batch
+        return img_batch, mel_batch, frame_batch, coords_batch
 
     for i, m in enumerate(mels):
         idx = 0 if args.static else i%len(frames)
@@ -69,7 +69,7 @@ def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_resu
         yield unload(img_batch, mel_batch)
 
 
-def preprocess(args: Config, video_path: str, name: str,
+def preprocess(args: Config, video_path: str, name: str, detector: Callable[Any, Any],
                face_detection_groups: Dict[str, FaceDetectionGroup]):
     video_stream = cv2.VideoCapture(video_path)
     fps = video_stream.get(cv2.CAP_PROP_FPS)
@@ -94,16 +94,13 @@ def preprocess(args: Config, video_path: str, name: str,
         full_frames.append(frame)
 
     face_det_results_origin = face_detect(detector, full_frames, args.face_batch_size)
-
-    face_detection_groups = dict()
     face_detection_groups[name] = FaceDetectionGroup(full_frames, face_det_results_origin)
 
 
 def do_load(checkpoint_path, device):
-    global model, detector, detector_model
-
     model = load_model(checkpoint_path, device)
     # SFDDetector.load_model(device)
     detector = RetinaFace(gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet")
     detector_model = detector.model
     print("Models loaded")
+    return model, detector, detector_model

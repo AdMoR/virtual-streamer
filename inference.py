@@ -1,4 +1,4 @@
-from character_setup import CHARACTERS
+from virtual_streamer.workflows.character_setup import CHARACTERS
 import datetime
 import cv2
 import torch
@@ -10,7 +10,7 @@ import time
 from textwrap import wrap
 from virtual_streamer.utils.utils import *
 from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load, FaceDetectionGroup
-from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
+from virtual_streamer.workflows.prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
 import subprocess
 import numpy as np
@@ -22,15 +22,14 @@ mel_step_size = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
 UPLOAD_BUCKET = os.environ["S3_BUCKET_URL"]
-model = detector = detector_model = None
 message_directory = "./"
 args = Config()
-do_load(args.checkpoint_path, device)
+model, detector, detector_model = do_load(args.checkpoint_path, device)
 
 print('Reading video frames...')
 face_detection_groups: Dict[str, FaceDetectionGroup] = dict()
 for k, v in CHARACTERS.items():
-    preprocess(args, v.video_clip_path, k, face_detection_groups)
+    preprocess(args, v.video_clip_path, k, detector, face_detection_groups)
 
 
 def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetectionGroup):
@@ -75,10 +74,10 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
 
     full_frames = full_frames[:len(mel_chunks)]
     face_det_results = face_det_results[:len(mel_chunks)]
-    gen = datagen(full_frames.copy(), mel_chunks, face_det_results.copy())
+    gen = datagen(args, full_frames.copy(), mel_chunks, face_det_results.copy())
 
-    for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen,
-                                            total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
+    for i, rez in enumerate(tqdm(gen, total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
+        (img_batch, mel_batch, frames, coords) = rez
         if i == 0:
             frame_h, frame_w = full_frames[0].shape[:-1]
             out = cv2.VideoWriter('temp/result.avi',
@@ -160,6 +159,7 @@ def callback(ch, method_frame, properties, body):
     character = CHARACTERS[question.character_name].name
 
     # 2 - main processing : video answer to the question is produced and stored on S3
+    print(face_detection_groups.keys())
     media_path, text = main(args, question, face_detection_groups[character])
     print(f"New video_path : {media_path}")
     s3_path = s3_upload(media_path, UPLOAD_BUCKET)
