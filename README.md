@@ -104,3 +104,31 @@ docker commit virtual-streamer-demo-1 virtual-streamer:demo
 docker tag  virtual-streamer:demo amorvend/virtual-teacher-space:demo
 docker image push  amorvend/virtual-teacher-space:demo
 ```
+
+
+## Preprocessing a video dataset into chunks 
+
+```
+import os
+dir_ = "/media/amor/data/Downloads/CPS/fred_voice"
+files = [os.path.join(dir_, f) for f in os.listdir(dir_) if f.endswith("mp4")]
+import subprocess
+for f in files:
+    rez = subprocess.run(["scenedetect", "-i", f, "split-video", "-o", "/media/amor/data/Downloads/CPS/fred_voice_clips"])
+
+```
+
+## Running fish audio container 
+
+```
+sudo docker run --gpus='all' -it --rm -p 7860:7860 fish-speech-fish-speech
+```
+
+
+## Feature for the video chunks 
+
+florence_run
+
+episode_creation_rag
+
+https://huggingface.co/alibaba-pai/VideoCLIP-XL/tree/main/utils/vision_encoder
