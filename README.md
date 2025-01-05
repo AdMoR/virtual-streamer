@@ -132,3 +132,12 @@ florence_run
 episode_creation_rag
 
 https://huggingface.co/alibaba-pai/VideoCLIP-XL/tree/main/utils/vision_encoder
+
+
+## Lip Sync 
+
+```
+sudo docker build -t lip-talker .
+
+python /data/inf_demo.py --video_path /data/demo.mp4 --wav_path /data/audio.wav --ckpt_path /data/global_only.pth --avhubert_root /data/av_hubert/
+```

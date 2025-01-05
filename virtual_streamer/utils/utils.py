@@ -33,6 +33,18 @@ def combine_video_and_audio(vfile_path, afile_path, out_path):
     ])
 
 
+def combine_video_and_short_audio(vfile_path, afile_path, out_path):
+    duration = get_length(afile_path)
+    return subprocess.check_call([
+        "ffmpeg", "-y",
+        "-i", vfile_path,
+        "-i", afile_path,
+        "-map", "0:v:0", "-map", "1:a:0", "-t", str(duration),
+        "-c:v", "h264_nvenc",
+        out_path,
+    ])
+
+
 def create_video_from_image(image_path, output_path, duration):
     args = [
         "ffmpeg", "-y",  "-i",
