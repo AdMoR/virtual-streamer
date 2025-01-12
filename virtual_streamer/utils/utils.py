@@ -39,6 +39,7 @@ def combine_video_and_short_audio(vfile_path, afile_path, out_path):
         "ffmpeg", "-y",
         "-i", vfile_path,
         "-i", afile_path,
+        "-s", "720x480",
         "-map", "0:v:0", "-map", "1:a:0", "-t", str(duration),
         "-c:v", "h264_nvenc",
         out_path,
@@ -56,17 +57,17 @@ def create_video_from_image(image_path, output_path, duration):
     return output_path
 
 
-def add_subtitle(subtitle, video_path, output_path, min_duration=None) -> str:
+def add_subtitle(subtitle, video_path, output_path, min_duration=None, fontsize=28) -> str:
     # 2 - Add the title
     for char in ":?/!":
         subtitle = subtitle.replace(char, "\\" + char)
-    subtitle = subtitle.replace("'", "").replace('"', "")
+    subtitle = subtitle.replace("'", "`").replace('"', "")
     subtitle = "\n".join(wrap(subtitle, 50))
     args = ['ffmpeg',
             "-y", '-i',
             video_path,
             '-filter_complex',
-            f"drawtext=fontfile=/home/amor/Downloads/croissant-one/CroissantOne-Regular.ttf:text='{subtitle}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=7*(h-text_h)/8:box=1:boxcolor=black@0.5:boxborderw=1",
+            f"drawtext=fontfile=/home/amor/Downloads/croissant-one/CroissantOne-Regular.ttf:text='{subtitle}':fontcolor=white:fontsize={fontsize}:x=(w-text_w)/2:y=7*(h-text_h)/8:box=1:boxcolor=black@0.5:boxborderw=1",
              '-c:v', 'h264_nvenc', "-qp", "32", "-b:v", "3000k", "-minrate", "3000k", "-maxrate", "10000k",
             '-codec:a', 'copy',
             output_path]
@@ -102,6 +103,22 @@ def combine_part_in_concat_file(video_path_list, concat_file_path, out_path, dur
     if rez.returncode == 1:
         raise Exception("ffmpeg concat failed")
     return out_path
+
+
+def add_subtitle_from_srt(video_path, srt_path, output_path,  fontsize=14) -> str:
+    # 2 - Add the title
+    args = ['ffmpeg',
+            "-y", '-i',
+            video_path,
+            "-vf", f"subtitles={srt_path}:force_style='fontcolor=white,fontsize={fontsize},x=(w-text_w)/2,y=7*(h-text_h)/8,box=1,boxcolor=black@0.5,boxborderw=1'",
+            '-c:v', 'h264_nvenc', "-qp", "32", "-b:v", "3000k", "-minrate", "3000k", "-maxrate", "10000k",
+            '-codec:a', 'copy',
+            output_path]
+
+    rez = subprocess.run(args)
+    if rez.returncode != 0:
+        raise Exception(rez)
+    return output_path
 
 
 def get_length(filename):

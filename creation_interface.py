@@ -3,7 +3,9 @@ import json
 import streamlit as st
 from llama_index.retrievers.bm25 import BM25Retriever
 import Stemmer
-from virtual_streamer.utils.utils import combine_video_and_short_audio, combine_part_in_concat_file
+from virtual_streamer.utils.utils import (combine_video_and_short_audio, combine_part_in_concat_file,
+                                          add_subtitle_from_srt)
+from virtual_streamer.utils.subtitle_utils import build_timed_srt
 from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents
 from gradio_client import Client, handle_file
 
@@ -175,7 +177,6 @@ def tab3_ui():
 
 
 # Tab 4: Combined Results
-
 def tab4_ui():
     st.title("Combined Results")
     generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
@@ -192,7 +193,10 @@ def tab4_ui():
                 audio = st.session_state[selected_audio_id]
                 outfile = f"./temp_{build_id('gen', sentence, i)}.mp4"
                 combine_video_and_short_audio(video, audio, outfile)
-                video_chunks.append(outfile)
+                outfile_bis = f"./temp_{build_id('gen_sub', sentence, i)}.mp4"
+                srt_path = build_timed_srt(sentence, audio, "./temp")
+                add_subtitle_from_srt(outfile, srt_path, outfile_bis)
+                video_chunks.append(outfile_bis)
             else:
                 if selected_audio_id not in st.session_state:
                     st.text(f"No audio for sentence {i}: {sentence}")

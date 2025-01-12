@@ -65,20 +65,6 @@ ct2-transformers-converter --model BELLE-2/Belle-whisper-large-v3-zh --output_di
 ```
 
 
-
-# Previous versions 
-
-
-## Run the code
-
-- Twitch reader : export SHARED_VOLUME="./" && python3 twitch_call.py && python3 chat_reader.py
-- TTS service : python3 TTS/server/server.py --model_name tts_models/multilingual/multi-dataset/your_tts --use_cuda 1
-- Worker : python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
-- Stream orchestrator : python3 obs_orchestrator.py
-- RabbitMQ : sudo docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:latest
-- sudo docker logs 41a123fabae5 --tail 150
-
-
 ## Run the "compose up"
 
 Required : 
@@ -136,8 +122,54 @@ https://huggingface.co/alibaba-pai/VideoCLIP-XL/tree/main/utils/vision_encoder
 
 ## Lip Sync 
 
+The most reasonable option remains the Wav2Lip repo, because of : 
+
+- widespread adoption
+- variations available : faster, larger image size
+- the version of this repo is hacked to be much cheaper
+
+The main issue was the lack of handling for number_of_face != 1
+
+
+Tested models : 
+
+Very slow and no observable improvement 
+
 ```
 sudo docker build -t lip-talker .
 
 python /data/inf_demo.py --video_path /data/demo.mp4 --wav_path /data/audio.wav --ckpt_path /data/global_only.pth --avhubert_root /data/av_hubert/
 ```
+
+## Intelligent subtitle file 
+
+FFmpeg can do subtitle piece by piece with an intermediate file.
+
+```
+1
+00:00:04,700 --> 00:00:05,090
+You know what
+
+2
+00:00:05,100 --> 00:00:05,990
+we should all do.
+```
+
+with the following command : 
+
+`ffmpeg -i sample_video_ffmpeg.mp4 -vf subtitles=sample_video_subtitle_ffmpeg.srt output_srt.mp4`
+
+
+
+# Previous versions 
+
+
+## Run the code
+
+- Twitch reader : export SHARED_VOLUME="./" && python3 twitch_call.py && python3 chat_reader.py
+- TTS service : python3 TTS/server/server.py --model_name tts_models/multilingual/multi-dataset/your_tts --use_cuda 1
+- Worker : python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
+- Stream orchestrator : python3 obs_orchestrator.py
+- RabbitMQ : sudo docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:latest
+- sudo docker logs 41a123fabae5 --tail 150
+
