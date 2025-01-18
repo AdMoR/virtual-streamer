@@ -1,13 +1,13 @@
 import json
-
+import random
 import streamlit as st
 from llama_index.retrievers.bm25 import BM25Retriever
 import Stemmer
 from virtual_streamer.utils.utils import (combine_video_and_short_audio, combine_part_in_concat_file,
-                                          add_subtitle_from_srt)
-from virtual_streamer.utils.subtitle_utils import build_timed_srt
+                                          add_subtitle_from_srt,)
 from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents
 from gradio_client import Client, handle_file
+import stable_whisper
 
 
 client = Client("http://localhost:7861/")
@@ -59,6 +59,40 @@ DEFAULT_SCRIPT = """
     Alors, qu'est-ce que t'en penses, Jamy ? 
     """
 
+DEFAULT_PROMPT = """
+    Tu es Fred de l'émission "C'est pas Sorcier". Cela fait 20 ans que l'émission s'est terminée. 
+    Et avec Jamy, tu continues à expliquer des choses à Jamy et au téléspectateurs.
+
+    Voici quelques examples de ton expression : 
+     Alors, qu'est-ce qu'on peut acheter avec une crypto-monnaie, Jamy? Eh bien, je me suis procuré un petit bijou de technologie, un téléphone à clapet dont la batterie ne va pas me chier dans les bottes d'ici 5 mois. Nique l'obsolescence programmée et surtout nique Apple, Jamy. 
+     Ça, c'est pas le genre de truc que tu peux trouver à l'Easy Cash d'Argenteuil, Jamy. C'est moi qui te le dis. 
+     Eh dis donc, Jamy, je viens de vérifier nos comptes. On a tout ce qu'il faut pour s'installer à Dubaï et manger du steak de tigre. 
+     Et dis donc Jamy, c'est super simple de créer de l'argent en France. Qui c'est qui a dit qu'on n'avait pas la possibilité de se faire de l'argent sur le dos des gogos? 
+     Ah, bon Jamy, je perds pas espoir. Je vais aller checker les privilèges des autres cheminots. J'ai lu dans le Figaro qu'ils vivaient en meute le long des trains, un peu comme les musaraignes. Je vais bien finir par en trouver un qui va répondre à nos questions, Jamy. 
+     Alors j'imagine, Jamy, que tu vas me demander mais comment as-tu pu trouver la thune pour t'acheter une centrale nucléaire? Eh bien, c'est très très simple, Jamy. C'est parce que c'est une centrale nucléaire en kit. Tu connais les éditions Altaïa? Eh bien, ils font pas que des maquettes de bateaux ou des figurines. Ils font aussi des centrales nucléaires. Et ça ne m'a coûté que 180 927 euros. 
+     Je vais certainement être assassiné par le FBI ou la bande à Picsou parce que j'ai révélé toutes les vérités que les gens ne veulent pas entendre, Jamy.
+     C'est vrai que vous rigolez au sketch de Tomer Sisley? Figure-toi, Jamy, qu'on n'est jamais allé sur la Lune. Eh oui, c'est Luc Besson qui a filmé le Luberon en pleine nuit, Jamy. 
+     Ça coûte un RSA. C'est pas cher, finalement. Résultat, je n'ai jamais eu de cancer du col de l'utérus. 
+     Sinon Jamy, il n'y a pas que le dropshipping, on peut aussi vendre des formations. Alors Jamy, je sais ce que tu vas me demander, qu'est-ce qu'une formation? Eh bien en fait, pour résumer, c'est une série de vidéos ou de PDF où on dit des choses qui font semblant d'être profondes tout en étant complètement débiles. 
+     Eh dis donc, Jamy, aujourd'hui, on va arrêter d'être des bolosses de YouTube Game avec 3 abonnés et 12 vues. On va essayer de passer en tendance. 
+     Tu vois, Jamy, il y a un proverbe du Wakanda qui dit que la lionne ne copule pas avec le lion, surtout s'il a une petite bite, c'est pour ça qu'on va s'acheter les abonnés Jamy, et c'est aussi ici qu'est entreposée ma petite vidéo là regarde, elle est juste là, fais coucou à la caméra, virtuelle, un peu comme les amis de Manuel Valls Jamy, quoi c'est tout? 23 vues? Ah putain Jamy, ça valait pas le coup de se casser le cul juste pour ce résultat-là. 
+     Ah, alors moi, ce que je te propose, Jamy, c'est que pour totalement disrupter le réchauffement climatique, eh ben, c'est qu'on aille chercher la glace contenue dans les glaciers. Comme ça, on la met chez nous dans un grand frigo, et du coup, on résout le problème du réchauffement climatique. Mais ça m'a l'air un peu haut quand même, Jamy, tu trouves pas? 
+     Eh dis donc, Jamy, j'étais tellement stressé cette nuit que j'ai même pas changé de vêtements. Du coup, je pue la transpiration. Mais c'est pas grave, on va voir ce qu'est devenu notre vidéo. 
+     Et pour réussir une bonne vie, on s'y croirait. Avec moi Sabine et Marcel dans notre camion, je te propose, Jamy, qu'on devienne riche et pour ça, 
+     Dis donc Jamy, 2018 c'est l'année de la bite non? Alors on va acheter des bitcoins. 
+
+     Tu es emploie un langage fleuri et tu n'as pas peur d'utiliser des mots vulgaires pour te rapprocher de tes jeunes lecteurs.
+     Tu fais souvent références à des localités pour rendre ton récits plus réel.
+     Tu t'adresse à Jamy directement.
+
+     Maintenant génère une présentation sur le thème suivant : 
+     Thème : Fred veut trouver le trésor des templiers
+     Les éléments de scénario suivant doivent apparaitre : 
+     {story}
+    """
+
+
+
 SEPARATOR = "\n"
 
 
@@ -77,9 +111,22 @@ def load_retriever(directory_path = "/media/amor/data/Downloads/CPS/clip_infos",
     )
     return bm25_retriever
 
+@st.cache_resource
+def load_transcripter():
+    return stable_whisper.load_hf_whisper('large-v3', batch_size=4)
+
+from llama_index.llms.openai import OpenAI
+from llama_index.llms.anthropic import Anthropic
+from llama_index.core import Settings
+
+@st.cache_resource
+def load_llm():
+    return Anthropic(model="claude-3-5-haiku-20241022")
+
 
 bm25_retriever = load_retriever()
-
+model = load_transcripter()
+llm = load_llm()
 
 def build_id(object_type, sentence, extra_index=None):
     str_ = f"{object_type}_{hash(sentence)}"
@@ -88,7 +135,9 @@ def build_id(object_type, sentence, extra_index=None):
     return str_
 
 def generate_text():
-    st.session_state["llm_result"] = "Coucou. Coucou"
+    PROMPT = st.session_state["prompt"]
+    rez = llm.complete(PROMPT).text
+    st.session_state["llm_result"] = rez
 
 
 def search_videos(kw):
@@ -102,7 +151,7 @@ def search_videos(kw):
 def tab1_ui():
     st.title("Text Generation")
     st.text_area(label="Enter the LLM text here", key="llm_result", value=DEFAULT_SCRIPT)
-    st.text_area(label="Enter the prompt text here")
+    st.text_area(label="Enter the prompt text here", key="prompt", value=DEFAULT_PROMPT)
     st.button("Generate Text", on_click=generate_text)
 
 
@@ -115,9 +164,22 @@ def make_search_fn(sentence_id, video_list_id):
     return search
 
 
+def default_selection():
+    generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
+
+    for i, sentence in enumerate(generated_sentences):
+        selected = build_id("selected_video", sentence, i)
+        video_list_id = build_id("videolist_", sentence, i)
+        videos = search_videos(sentence)
+        st.session_state[video_list_id] = videos
+        st.session_state[selected] = videos[random.choice(list(range(15)))]
+
+
 def tab2_ui():
     st.title("Video Search")
     print(list(st.session_state.keys()))
+    st.button("Default selection", key=build_id("button", "random"),
+              on_click=default_selection)
     generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
 
     for i, sentence in enumerate(generated_sentences):
@@ -194,7 +256,9 @@ def tab4_ui():
                 outfile = f"./temp_{build_id('gen', sentence, i)}.mp4"
                 combine_video_and_short_audio(video, audio, outfile)
                 outfile_bis = f"./temp_{build_id('gen_sub', sentence, i)}.mp4"
-                srt_path = build_timed_srt(sentence, audio, "./temp")
+                srt_path = f"./{i}.srt"
+                result = model.transcribe(audio)
+                result.to_srt_vtt(srt_path)
                 add_subtitle_from_srt(outfile, srt_path, outfile_bis)
                 video_chunks.append(outfile_bis)
             else:

@@ -159,6 +159,10 @@ with the following command :
 
 `ffmpeg -i sample_video_ffmpeg.mp4 -vf subtitles=sample_video_subtitle_ffmpeg.srt output_srt.mp4`
 
+"""
+whisperx --model large-v2 --language de examples/sample_de_01.wav
+"""
+
 
 
 # Previous versions 
