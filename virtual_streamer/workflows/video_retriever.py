@@ -43,3 +43,32 @@ def prepare_nodes(json_documents):
                               id_=str(hash(doc["description_full"]))))
 
     return nodes
+
+
+def prepare_nodes_v2(json_documents):
+    """
+    to check = https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/usage_metadata_extractor/
+    """
+    nodes = list()
+    for i, doc in enumerate(json_documents):
+        base_video_name, scene_index, *args = os.path.basename(doc["path"]).split('-Scene-')
+        doc["description_full"] = doc["description"] + " ||| " + doc["transcription"]
+        doc["title"] = base_video_name
+        doc["who"] = doc["who"][0][0] if len(doc["who"]) >= 1 else ""
+        document_str = list()
+        for k in doc:
+            if k in {"path", "description", "who", "duration", "transcription"}:
+                continue
+            sub_str = f"<{k}>{doc[k]}<\\{k}>"
+            document_str.append(sub_str)
+        final_str = "\n".join(document_str)
+        nodes.append(TextNode(text=final_str,
+                              metadata={"who": doc["who"],
+                                        "base_video": base_video_name,
+                                        "scene_index": scene_index,
+                                        "path": doc["path"],
+                                        "duration": get_length(doc["path"])
+                                        if "duration" not in doc else doc["duration"]},
+                              id_=str(hash(doc["description_full"]))))
+
+    return nodes

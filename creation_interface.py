@@ -5,9 +5,15 @@ from llama_index.retrievers.bm25 import BM25Retriever
 import Stemmer
 from virtual_streamer.utils.utils import (combine_video_and_short_audio, combine_part_in_concat_file,
                                           add_subtitle_from_srt,)
-from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents
+from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents, prepare_nodes_v2
 from gradio_client import Client, handle_file
 import stable_whisper
+from llama_index.llms.openai import OpenAI
+from llama_index.llms.anthropic import Anthropic
+from llama_index.core import Settings
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core import Settings
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 
 
 client = Client("http://localhost:7861/")
@@ -92,12 +98,11 @@ DEFAULT_PROMPT = """
     """
 
 
-
-SEPARATOR = "\n"
+SEPARATOR = "."
 
 
 @st.cache_resource
-def load_retriever(directory_path = "/media/amor/data/Downloads/CPS/clip_infos", who="fred"):
+def load_retriever_bm25(directory_path = "/media/amor/data/Downloads/CPS/clip_infos", who="fred"):
     nodes = prepare_nodes(load_json_documents(directory_path))
     fred_nodes = [n for n in nodes if who == n.metadata["who"]]
     bm25_retriever = BM25Retriever.from_defaults(
@@ -112,12 +117,23 @@ def load_retriever(directory_path = "/media/amor/data/Downloads/CPS/clip_infos",
     return bm25_retriever
 
 @st.cache_resource
+def load_retriever(directory_path = "/media/amor/data/Downloads/CPS/clip_infos", who="fred"):
+    embed_model = HuggingFaceEmbedding(model_name="lightonai/modernbert-embed-large")
+    Settings.embed_model = embed_model
+
+    # storage_context=storage_context
+    nodes = prepare_nodes_v2(load_json_documents(directory_path))
+    fred_nodes = [n for n in nodes if who == n.metadata["who"]]
+    index = VectorStoreIndex(fred_nodes)
+    index.storage_context.persist("/media/amor/data/Downloads/CPS/vector_store")
+    retriever = index.as_retriever(verbose=True, similarity_top_k=5)
+    return retriever
+
+
+@st.cache_resource
 def load_transcripter():
     return stable_whisper.load_hf_whisper('large-v3', batch_size=4)
 
-from llama_index.llms.openai import OpenAI
-from llama_index.llms.anthropic import Anthropic
-from llama_index.core import Settings
 
 @st.cache_resource
 def load_llm():
@@ -127,12 +143,35 @@ def load_llm():
 bm25_retriever = load_retriever()
 model = load_transcripter()
 llm = load_llm()
+DEFAULT_LENGTH = 35
+
+
+def separation_fn(raw_text, max_length=DEFAULT_LENGTH):
+    def split(txt, separator):
+        return [x for x in txt.split(separator) if len(x.replace(" ", "")) > 0]
+    parts = list()
+    for p in split(raw_text, "\n"):
+        if len(p) > max_length:
+            broken_down = False
+            for sep in [".", "!", "?"]:
+                sub_parts = split(p, sep)
+                if len(sub_parts) > 1:
+                    broken_down = True
+                    parts.extend(sub_parts)
+                    break
+            if not broken_down:
+                parts.append(p)
+        else:
+            parts.append(p)
+    return parts
+
 
 def build_id(object_type, sentence, extra_index=None):
     str_ = f"{object_type}_{hash(sentence)}"
     if extra_index:
         str_ += f"_{extra_index}"
     return str_
+
 
 def generate_text():
     PROMPT = st.session_state["prompt"]
@@ -150,8 +189,8 @@ def search_videos(kw):
 
 def tab1_ui():
     st.title("Text Generation")
-    st.text_area(label="Enter the LLM text here", key="llm_result", value=DEFAULT_SCRIPT)
-    st.text_area(label="Enter the prompt text here", key="prompt", value=DEFAULT_PROMPT)
+    st.text_area(label="LLM result here", key="llm_result", height=500, value=DEFAULT_SCRIPT)
+    st.text_area(label="Prompt text here", key="prompt", height=800, value=DEFAULT_PROMPT)
     st.button("Generate Text", on_click=generate_text)
 
 
@@ -165,22 +204,33 @@ def make_search_fn(sentence_id, video_list_id):
 
 
 def default_selection():
-    generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
+    generated_sentences = st.session_state["sentences"]
 
     for i, sentence in enumerate(generated_sentences):
         selected = build_id("selected_video", sentence, i)
         video_list_id = build_id("videolist_", sentence, i)
+        keyword_id = build_id("keyword", sentence, i)
         videos = search_videos(sentence)
+        st.session_state[keyword_id] = sentence
         st.session_state[video_list_id] = videos
         st.session_state[selected] = videos[random.choice(list(range(15)))]
+
+def compute_generated_sentences():
+    generated_sentences = separation_fn(st.session_state["llm_result"],
+                                        st.session_state.get("max_length", DEFAULT_LENGTH))
+    st.session_state["sentences"] = generated_sentences
 
 
 def tab2_ui():
     st.title("Video Search")
+    st.slider("max sentence length", 40, 80, DEFAULT_LENGTH, key="max_length", on_change=compute_generated_sentences)
     print(list(st.session_state.keys()))
     st.button("Default selection", key=build_id("button", "random"),
               on_click=default_selection)
-    generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
+
+    if "sentences" not in st.session_state:
+        compute_generated_sentences()
+    generated_sentences = st.session_state["sentences"]
 
     for i, sentence in enumerate(generated_sentences):
         with st.expander(sentence):
@@ -210,7 +260,9 @@ def make_audio_gen(sentence_id, audio_id):
 
 
 def generate_all():
-    generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
+    if "sentences" not in st.session_state:
+        compute_generated_sentences()
+    generated_sentences = st.session_state["sentences"]
     for i, sentence in enumerate(generated_sentences):
         selected_audio_id = build_id("selected_audio", sentence, i)
         audio = txt_to_speech_call(sentence)
@@ -219,7 +271,9 @@ def generate_all():
 
 def tab3_ui():
     st.title("Audio Generation")
-    generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
+    if "sentences" not in st.session_state:
+        compute_generated_sentences()
+    generated_sentences = st.session_state["sentences"]
 
     st.button("Generate all", on_click=generate_all)
 
@@ -241,7 +295,9 @@ def tab3_ui():
 # Tab 4: Combined Results
 def tab4_ui():
     st.title("Combined Results")
-    generated_sentences = [x for x in st.session_state["llm_result"].split(SEPARATOR) if len(x.replace(" ", "")) > 0]
+    if "sentences" not in st.session_state:
+        compute_generated_sentences()
+    generated_sentences = st.session_state["sentences"]
     video_chunks = list()
 
     ready = st.toggle("create final video", value=False)
