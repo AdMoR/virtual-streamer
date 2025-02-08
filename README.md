@@ -163,6 +163,13 @@ with the following command :
 whisperx --model large-v2 --language de examples/sample_de_01.wav
 """
 
+## Embedding description of video chunks 
+
+ModernBert 
+
+https://huggingface.co/lightonai/modernbert-embed-large
+
+
 
 
 # Previous versions 
