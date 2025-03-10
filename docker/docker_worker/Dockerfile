@@ -53,6 +53,6 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1
 
-# run cog
-RUN echo "coucou"
+# run inference script
+RUN pip install -e .
 CMD python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
