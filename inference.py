@@ -39,7 +39,7 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
     face_det_results = det_results.face_det_results
 
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
-    out_path = 'temp/result.avi'
+    out_path = f'{dirname}/result.avi'
     batch_size = args.wav2lip_batch_size
 
     if not audio_path.endswith('.wav'):
@@ -49,7 +49,7 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
         subprocess.check_call([
             "ffmpeg", "-y",
             "-i", audio_path,
-            "temp/temp.wav",
+            f"{dirname}/temp.wav",
         ])
         audio_path = 'temp/temp.wav'
 
@@ -77,18 +77,19 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
     gen = datagen(args, full_frames.copy(), mel_chunks, face_det_results.copy())
 
     for i, rez in enumerate(tqdm(gen, total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
-        (img_batch, mel_batch, frames, coords) = rez
+        (face_img_batch, mel_batch, frames, coords) = rez
+
         if i == 0:
             frame_h, frame_w = full_frames[0].shape[:-1]
-            out = cv2.VideoWriter('temp/result.avi',
+            out = cv2.VideoWriter(f'{dirname}/result.avi',
                                     cv2.VideoWriter_fourcc(*'DIVX'), fps, (frame_w, frame_h))
 
-        img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
+        face_img_batch = torch.FloatTensor(np.transpose(face_img_batch, (0, 3, 1, 2))).to(device)
         mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
 
         with torch.no_grad():
             with torch.amp.autocast("cuda"):
-                pred = model(mel_batch, img_batch)
+                pred = model(mel_batch, face_img_batch)
 
         pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.
 
@@ -156,11 +157,15 @@ def callback(ch, method_frame, properties, body):
     # 1 - Retrieve some params of the processing job
     print("body", body)
     question = question_parser(body)
-    character = CHARACTERS[question.character_name].name
+    if question.character_name not in CHARACTERS: # Not in precomputed videos
+        character = CHARACTERS[question.character_name].name
+        face_det_group = face_detection_groups[character]
+    else:
+        face_det_group = preprocess(args, v.video_clip_path, k, detector, None)
 
     # 2 - main processing : video answer to the question is produced and stored on S3
     print(face_detection_groups.keys())
-    media_path, text = main(args, question, face_detection_groups[character])
+    media_path, text = main(args, question, face_det_group)
     print(f"New video_path : {media_path}")
     s3_path = s3_upload(media_path, UPLOAD_BUCKET)
 
