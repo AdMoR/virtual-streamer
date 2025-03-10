@@ -21,3 +21,6 @@ botocore
 llama-index
 g2p_en
 syllable
+flask
+requests
+gunicorn

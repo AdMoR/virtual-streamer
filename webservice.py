@@ -24,6 +24,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
 UPLOAD_BUCKET = os.environ.get("S3_BUCKET_URL", "default-bucket")
 args = Config()
+args.checkpoint_path = os.environ.get("CHECKPOINT_PATH", "./checkpoints/Wav2Lip.pth")
+print(f"Using checkpoint: {args.checkpoint_path}")
 model, detector, detector_model = do_load(args.checkpoint_path, device)
 mel_step_size = 16
 

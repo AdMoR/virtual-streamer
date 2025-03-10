@@ -10,6 +10,8 @@ def parse_args():
     parser.add_argument('--web-only', action='store_true', help='Run only the web service')
     parser.add_argument('--rmq-only', action='store_true', help='Run only the RMQ consumer')
     parser.add_argument('--port', type=int, default=5000, help='Port for the web service')
+    parser.add_argument('--checkpoint_path', type=str, default='./checkpoints/Wav2Lip.pth', 
+                        help='Path to the Wav2Lip model checkpoint')
     return parser.parse_args()
 
 def main():
@@ -18,6 +20,7 @@ def main():
     # Set environment variables
     os.environ["PORT"] = str(args.port)
     os.environ["WEBSERVICE_URL"] = f"http://localhost:{args.port}"
+    os.environ["CHECKPOINT_PATH"] = args.checkpoint_path
     
     # Create directories
     os.makedirs("./temp", exist_ok=True)

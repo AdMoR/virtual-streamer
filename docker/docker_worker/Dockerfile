@@ -53,6 +53,10 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1
 
+# Create necessary directories
+RUN mkdir -p /data/out_video_folder /data/temp
+
 # run inference script
 RUN pip install -e .
-CMD python3 inference.py --checkpoint_path ./checkpoints/Wav2Lip.pth
+# Default command - will be overridden in docker-compose
+CMD ["python3", "run_services.py"]
