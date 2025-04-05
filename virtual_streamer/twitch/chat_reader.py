@@ -9,7 +9,7 @@ import requests
 import logging
 from datetime import datetime, timedelta
 from virtual_streamer.utils.utils import add_to_queue, ChatQuestion
-from prompts import VERY_SARCASTIC_STANDUP_PROMPT
+from virtual_streamer.workflows.prompts import VERY_SARCASTIC_STANDUP_PROMPT
 
 # Configure logging
 logging.basicConfig(
@@ -56,13 +56,15 @@ class TwitchClient:
         self.client_secret = client_secret
         self.refresh_token = refresh_token
         self.access_token = None
-        self.token_expiry = 0
+        self.token_expiry = time.time()
         self.base_url = "https://api.twitch.tv/helix"
         self.oauth_url = "https://id.twitch.tv/oauth2"
         self.chat_url = "wss://irc-ws.chat.twitch.tv:443"
         
         # Token refresh lock to prevent multiple simultaneous refreshes
         self.token_lock = threading.Lock()
+        # Store refresh tokens to a file
+        self.token_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refresh_token.json")
         
         # Start token refresh thread
         self.token_refresh_thread = threading.Thread(
@@ -70,12 +72,14 @@ class TwitchClient:
             daemon=True
         )
         self.token_refresh_thread.start()
+
+        print("Lock : ", self.token_lock)
         
         # Ensure we have a valid token to start with
         self.refresh_access_token()
-        
-        # Store refresh tokens to a file
-        self.token_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refresh_token.json")
+
+        print("1st refresh ok")
+
 
     def _token_refresh_monitor(self):
         """
@@ -86,10 +90,10 @@ class TwitchClient:
             try:
                 # Check if token needs refresh (if it expires in less than 10 minutes)
                 current_time = time.time()
-                if self.token_expiry - current_time < 600:  # 10 minutes in seconds
-                    with self.token_lock:
-                        self.refresh_access_token()
-                        logger.info("Token refreshed by background monitor")
+                if self.token_expiry - current_time < 0:  # 10 minutes in seconds
+                    self.refresh_access_token()
+                    logger.info("Token refreshed by background monitor")
+                    self.token_expiry = current_time + 10 * 60
                 
                 # Sleep for 5 minutes before checking again
                 time.sleep(300)
@@ -424,7 +428,7 @@ class TwitchClient:
 if __name__ == "__main__":
     # Load credentials from file or environment variables
     try:
-        creds_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+        creds_file = "/home/amor/Documents/code_dw/virtual-streamer/creds.json"
         if os.path.exists(creds_file):
             with open(creds_file) as f:
                 creds = json.load(f)
@@ -442,6 +446,7 @@ if __name__ == "__main__":
         client_id = creds.get("client_id")
         client_secret = creds.get("client_secret")
         refresh_token = creds.get("refresh_token")
+        print("Oui")
         
         if not all([client_id, client_secret, refresh_token]):
             logger.error("Missing required credentials. Ensure client_id, client_secret, and refresh_token are provided.")
