@@ -62,6 +62,7 @@ args.checkpoint_path = os.environ.get("CHECKPOINT_PATH", "./checkpoints/Wav2Lip.
 print(f"Using checkpoint: {args.checkpoint_path}")
 model, detector, detector_model = do_load(args.checkpoint_path, device)
 mel_step_size = 16
+temp_dir = "./temp"
 
 # Initialize face detection groups
 print('Reading video frames...')
@@ -70,13 +71,13 @@ for k, v in CHARACTERS.items():
     preprocess(args, v.video_clip_path, k, detector, face_detection_groups)
 
 
-def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetectionGroup):
+def wav2lip_exec(dirname: str, audio_path: str, det_results: FaceDetectionGroup):
     fps = 24
 
     full_frames = det_results.full_frames
     face_det_results = det_results.face_det_results
 
-    tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question[:30])
+    tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(os.path.basename(audio_path))
     out_path = f'{dirname}/result.avi'
     batch_size = args.wav2lip_batch_size
 
@@ -113,20 +114,21 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
     gen = datagen(args, full_frames.copy(), mel_chunks, face_det_results.copy())
 
     for i, rez in enumerate(tqdm(gen, total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
+        print(i)
         (face_img_batch, mel_batch, frames, coords) = rez
 
         if i == 0:
             frame_h, frame_w = full_frames[0].shape[:-1]
             out = cv2.VideoWriter(f'{dirname}/result.avi',
                                     cv2.VideoWriter_fourcc(*'DIVX'), fps, (frame_w, frame_h))
-
+        print("-")
         face_img_batch = torch.FloatTensor(np.transpose(face_img_batch, (0, 3, 1, 2))).to(device)
         mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
-
+        print("--")
         with torch.no_grad():
-            with torch.amp.autocast("cuda"):
-                pred = model(mel_batch, face_img_batch)
-
+            #with torch.amp.autocast("cuda"):
+            pred = model(mel_batch, face_img_batch)
+        print("---")
         pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.
 
         for p, f, c in zip(pred, frames, coords):
@@ -136,10 +138,11 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
             out.write(f)
 
     out.release()
+    print("wav2lip_exec Done")
     return out_path
 
 
-def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, Any]:
+async def process_video(question_data: QuestionData, gpt_response: str, base_url: str) -> Dict[str, Any]:
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
     os.makedirs("./temp", exist_ok=True)
@@ -158,6 +161,7 @@ def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, A
         # Assuming txt_to_speech_call is synchronous for now
         # If it becomes async, use 'await'
         txt_to_speech_call(gpt_response, "male-pt-3%0A", audio_outpath)
+        #audio_outpath = "/home/amor/Downloads/1_PèreFouras_true.wav"
         if not os.path.exists(audio_outpath):
              raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
     except Exception as e:
@@ -320,7 +324,8 @@ async def run_wav2lip(payload: Wav2LipRequest):
     try:
         # Use a generic question string as it's only used for tagging output files inside wav2lip_exec
         # The actual output path is determined here.
-        raw_outfile_path = wav2lip_exec(run_dirname, audio_path, "wav2lip_direct_call", face_det_group)
+        print("wav2lip started")
+        raw_outfile_path = wav2lip_exec(run_dirname, audio_path, face_det_group)
         print("wav2lip prediction time:", time.time() - s)
     except Exception as e:
         shutil.rmtree(run_dirname, ignore_errors=True) # Clean up temp dir on error

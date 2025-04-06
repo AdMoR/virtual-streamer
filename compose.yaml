@@ -16,6 +16,8 @@ services:
     networks:
       - tts
   virtual_streamer:
+    ports:
+      - 8000:8000
     build:
       context: .
       dockerfile: docker/docker_worker/Dockerfile
@@ -26,11 +28,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
     depends_on:
       - tts
       - rabbitmq
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -46,8 +48,8 @@ services:
     volumes:
       - $HOME/.aws/credentials:/root/.aws/credentials
       - $HOME/.aws/config:/root/.aws/config
-      - generations:/src/generations
-      - prompts:/src/prompts
+      - videos:/src/generations
+      - traces:/src/prompts
     env_file:
       - .env
     restart: always
@@ -66,7 +68,7 @@ services:
       context: .
       dockerfile: docker/docker_entity_api/Dockerfile
     ports:
-      - "8000:8000"
+      - "8002:8002"
     environment:
       # Pass environment variables from your host or a .env file
       - AWS_REGION_NAME=${AWS_REGION_NAME}
@@ -78,24 +80,25 @@ services:
       # Optional: For local S3 like MinIO
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
     networks:
-      - video_net
+      - video_entity_net
 
 
 volumes:
-  generations:
+  videos:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data/videos
+      device: /media/amor/data/virtual_streamer_folder/videos
       o: bind
-  prompts:
+  traces:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data/prompts
+      device: /media/amor/data/virtual_streamer_folder/prompts
       o: bind
 
 
 networks:
   tts:
   rabbit:
+  video_entity_net:

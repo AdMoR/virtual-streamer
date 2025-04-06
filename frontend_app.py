@@ -5,7 +5,7 @@ import time
 
 # --- Configuration ---
 # Get the backend URL from environment variable or use a default
-BACKEND_URL = os.environ.get("BACKEND_WEBSERVICE_URL", "http://localhost:5000")
+BACKEND_URL = os.environ.get("BACKEND_WEBSERVICE_URL", "http://localhost:8000")
 PROCESS_ENDPOINT = f"{BACKEND_URL}/process"
 
 # --- Helper Functions ---
