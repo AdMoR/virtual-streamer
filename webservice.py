@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Optional, Any
+import httpx
 import torch
 import uuid
 import os
@@ -164,19 +165,61 @@ def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, A
             # Default to first character if not found
             default_char = next(iter(face_detection_groups.values()))
             face_det_group = default_char
-    else:
-        face_det_group = face_detection_groups[character_name]
-    
-    # Wav2lip video generation
+    # --- Step 1: Get the audio for the response ---
+    # Use a unique filename in the temp directory
+    audio_filename = f"response_{hash(gpt_response) % 100000}_{uuid.uuid4()}.wav"
+    audio_outpath = os.path.join(temp_dir, audio_filename)
+    try:
+        # Assuming txt_to_speech_call is synchronous for now
+        # If it becomes async, use 'await'
+        txt_to_speech_call(gpt_response, "male-pt-3%0A", audio_outpath)
+        if not os.path.exists(audio_outpath):
+             raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
+    except Exception as e:
+        print(f"Error during TTS call: {e}")
+        raise HTTPException(status_code=500, detail=f"Text-to-speech generation failed: {e}")
+
+
+    # --- Step 2: Call Wav2Lip endpoint ---
+    wav2lip_request_payload = Wav2LipRequest(
+        audio_path=os.path.abspath(audio_outpath), # Send absolute path
+        character_name=character_name,
+        # Let the wav2lip endpoint manage its own temp output location initially
+        output_dir=None
+    )
+    wav2lip_url = f"{base_url.rstrip('/')}/wav2lip"
+    raw_video_path = None
     s = time.time()
-    outfile_path = wav2lip_exec(dirname, audio_outpath, question_text, face_det_group)
-    print("wav2lip prediction time:", time.time() - s)
-    
-    # Recombination and add subtitles
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client: # Use a timeout matching gunicorn
+            response = await client.post(wav2lip_url, json=wav2lip_request_payload.dict())
+            response.raise_for_status() # Raise exception for 4xx/5xx responses
+            wav2lip_response_data = response.json()
+            raw_video_path = wav2lip_response_data.get("raw_video_path")
+            if not raw_video_path or not os.path.exists(raw_video_path):
+                raise HTTPException(status_code=500, detail="Wav2Lip endpoint did not return a valid video path.")
+        print("Wav2Lip API call time:", time.time() - s)
+    except httpx.RequestError as e:
+        print(f"Error calling Wav2Lip endpoint {wav2lip_url}: {e}")
+        raise HTTPException(status_code=503, detail=f"Wav2Lip service request failed: {e}")
+    except httpx.HTTPStatusError as e:
+        print(f"Wav2Lip endpoint returned error {e.response.status_code}: {e.response.text}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Wav2Lip service error: {e.response.text}")
+    except Exception as e: # Catch other potential errors like JSON parsing
+        print(f"Unexpected error processing Wav2Lip response: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process Wav2Lip result: {e}")
+
+
+    # --- Step 3: Recombination and add subtitles ---
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question_text[:30])
-    outfile_combined_path = f'./temp/result_combined_{tag}.mp4'
-    combine_video_and_audio(outfile_path, audio_outpath, outfile_combined_path)
-    
+    outfile_combined_path = os.path.join(temp_dir, f'result_combined_{tag}.mp4')
+    try:
+        # Assuming combine_video_and_audio is synchronous
+        combine_video_and_audio(raw_video_path, audio_outpath, outfile_combined_path)
+    except Exception as e:
+        print(f"Error combining video and audio: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to combine video/audio: {e}")
+
     # Add subtitles if needed
     if subtitle_mode == "QUESTION":
         subtitle = f"Question de {name} : {question_text}"
@@ -189,15 +232,50 @@ def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, A
     else:
         outfile_titled_path = outfile_combined_path
     
-    # Move the file to final location
+    # --- Step 4: Move the file to final location ---
     final_outfile_path = os.path.join(dirname, f"result_{tag}.mp4")
-    shutil.copyfile(outfile_titled_path, final_outfile_path)
-    
-    # Upload to S3 if needed
-    s3_path = s3_upload(final_outfile_path, UPLOAD_BUCKET) if UPLOAD_BUCKET != "default-bucket" else None # Return None if not uploaded
+    try:
+        shutil.move(outfile_titled_path, final_outfile_path) # Use move instead of copy
+    except Exception as e:
+        print(f"Error moving final video file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save final video: {e}")
 
+
+    # --- Step 5: Upload to S3 if needed ---
+    s3_path = None
+    if UPLOAD_BUCKET != "default-bucket":
+        try:
+            # Assuming s3_upload is synchronous
+            s3_path = s3_upload(final_outfile_path, UPLOAD_BUCKET)
+        except Exception as e:
+            print(f"Error uploading to S3: {e}")
+            # Decide if upload failure is critical. Maybe just log and continue?
+            # For now, let's make it non-critical.
+            pass # Logged error, but don't fail the request
+
+
+    # --- Step 6: Cleanup temporary files ---
+    # Clean up intermediate files from temp_dir (raw video, combined video, audio)
+    # Be careful not to delete files needed elsewhere if temp_dir is shared.
+    try:
+        if os.path.exists(audio_outpath): os.remove(audio_outpath)
+        # The raw_video_path might be inside a temp dir created by /wav2lip endpoint.
+        # If that endpoint cleans up its own temp dir, we don't need to delete raw_video_path.
+        # If it doesn't, we might need to delete it here, but need to know its location.
+        # Assuming /wav2lip cleans up its own temp files if output_dir wasn't specified.
+        # If raw_video_path was placed directly in *our* temp_dir (e.g., if output_dir was set), delete it.
+        if raw_video_path and os.path.dirname(raw_video_path) == os.path.abspath(temp_dir) and os.path.exists(raw_video_path):
+             os.remove(raw_video_path)
+        if outfile_combined_path != outfile_titled_path and os.path.exists(outfile_combined_path):
+             os.remove(outfile_combined_path)
+        # outfile_titled_path was moved, not copied, so no need to delete original.
+    except OSError as e:
+        print(f"Warning: Error during temporary file cleanup: {e}")
+
+
+    # --- Step 7: Return response ---
     return ProcessResponse(
-        video_path=final_outfile_path,
+        video_path=final_outfile_path, # Path on the server's filesystem
         s3_path=s3_path,
         response_text=gpt_response
     )
@@ -265,7 +343,7 @@ async def run_wav2lip(payload: Wav2LipRequest):
 
 
 @app.post("/process", response_model=ProcessResponse)
-async def process(payload: ProcessRequest):
+async def process(payload: ProcessRequest, request: Request):
     """
     Process the request to generate a video response.
     """
@@ -277,7 +355,8 @@ async def process(payload: ProcessRequest):
 
     # Process the video (run potentially long-running task in background if needed)
     # For now, running synchronously as the original code did
-    result = process_video(question_data, gpt_response)
+    base_url = str(request.base_url) # Get base URL (e.g., "http://localhost:5000/")
+    result = await process_video(question_data, gpt_response, base_url)
 
     return result
 
