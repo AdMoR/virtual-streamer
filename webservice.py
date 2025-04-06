@@ -105,7 +105,7 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
     return out_path
 
 
-def process_video(question_data, gpt_response):
+def process_video(question_data, gpt_response: str):
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
     os.makedirs("./temp", exist_ok=True)
@@ -117,14 +117,16 @@ def process_video(question_data, gpt_response):
     name = question_data.get("name", "User")
     
     # Get the audio for the response
-    audio_outpath = txt_to_speech_call(gpt_response, "male-pt-3%0A", f"./temp/response_{hash(gpt_response) % 100000}.wav")
+    audio_outpath = txt_to_speech_call(gpt_response, "male-pt-3%0A",
+                                       f"./temp/response_{hash(gpt_response) % 100000}.wav")
     
     # Get the face detection group for the character
     if character_name not in face_detection_groups:
         # Handle case where character is not precomputed
         if character_name in CHARACTERS:
             character = CHARACTERS[character_name]
-            face_det_group = preprocess(args, character.video_clip_path, character_name, detector, None)
+            face_det_group = preprocess(args, character.video_clip_path, character_name, detector,
+                                        None)
         else:
             # Default to first character if not found
             default_char = next(iter(face_detection_groups.values()))
@@ -171,9 +173,10 @@ def process_video(question_data, gpt_response):
 @app.route('/process', methods=['POST'])
 def process():
     data = request.json
+    print(data)
     
     # Extract data from request
-    question_data = data.get("question", {})
+    question_data = data.get("question", "")
     gpt_response = data.get("gpt_response", "")
     
     # Process the video
