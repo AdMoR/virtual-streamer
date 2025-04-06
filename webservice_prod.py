@@ -7,24 +7,15 @@ import multiprocessing
 
 # Gunicorn config
 bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
-workers = min(multiprocessing.cpu_count() + 1, 4)  # Max 4 workers
+# Number of workers based on CPU count, max 4 as before. Uvicorn workers handle concurrency differently.
+# Start with a reasonable number, maybe fewer than sync workers depending on workload.
+workers = min(multiprocessing.cpu_count() + 1, 4)
 timeout = 300  # 5 minutes timeout for long-running requests
-worker_class = "sync"  # Use sync workers for GPU processing
+# Use Uvicorn workers for FastAPI (ASGI)
+worker_class = "uvicorn.workers.UvicornWorker"
 preload_app = True  # Preload the application to share the ML model
 
-# Import the Flask app
-from webservice import app as application
-
-if __name__ == "__main__":
-    # This block is for running with gunicorn directly
-    import sys
-    from gunicorn.app.wsgiapp import WSGIApplication
-    
-    sys.argv = ["gunicorn", "webservice:app", 
-                f"--bind={bind}", 
-                f"--workers={workers}", 
-                f"--timeout={timeout}", 
-                f"--worker-class={worker_class}",
-                "--preload"]
-    
-    WSGIApplication().run()
+# NOTE: The application (`webservice:app`) should be specified when running gunicorn,
+# e.g., `gunicorn -c webservice_prod.py webservice:app`
+# The `if __name__ == "__main__":` block has been removed as it's not standard
+# for a gunicorn config file and assumes direct execution.

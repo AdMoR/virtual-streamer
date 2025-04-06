@@ -21,6 +21,6 @@ botocore
 llama-index
 g2p_en
 syllable
-flask
+fastapi
+uvicorn[standard]
 requests
-gunicorn

@@ -1,4 +1,6 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
+from typing import Dict, Optional, Any
 import torch
 import os
 import numpy as np
@@ -15,9 +17,31 @@ from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_
 from virtual_streamer.utils.utils import sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle, s3_upload, SubtitleMode
 from virtual_streamer.workflows.prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
-from typing import Dict, Optional
 
-app = Flask(__name__)
+
+# --- Pydantic Models ---
+class QuestionData(BaseModel):
+    question: str = ""
+    character_name: str = ""
+    subtitle_mode: str = "NONE"
+    name: str = "User"
+
+class ProcessRequest(BaseModel):
+    question: QuestionData
+    gpt_response: str
+
+class ProcessResponse(BaseModel):
+    video_path: str
+    s3_path: Optional[str] = None
+    response_text: str
+
+class HealthResponse(BaseModel):
+    status: str
+    device: str
+
+
+# --- FastAPI App ---
+app = FastAPI()
 
 # Initialize global variables
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -105,17 +129,17 @@ def wav2lip_exec(dirname, audio_path: str, question: str, det_results: FaceDetec
     return out_path
 
 
-def process_video(question_data, gpt_response: str):
+def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, Any]:
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
     os.makedirs("./temp", exist_ok=True)
-    
-    # Extract data from question
-    question_text = question_data.get("question", "")
-    character_name = question_data.get("character_name", "")
-    subtitle_mode = question_data.get("subtitle_mode", "NONE")
-    name = question_data.get("name", "User")
-    
+
+    # Extract data from question model
+    question_text = question_data.question
+    character_name = question_data.character_name
+    subtitle_mode = question_data.subtitle_mode
+    name = question_data.name
+
     # Get the audio for the response
     audio_outpath = txt_to_speech_call(gpt_response, "male-pt-3%0A",
                                        f"./temp/response_{hash(gpt_response) % 100000}.wav")
@@ -161,35 +185,36 @@ def process_video(question_data, gpt_response: str):
     shutil.copyfile(outfile_titled_path, final_outfile_path)
     
     # Upload to S3 if needed
-    s3_path = s3_upload(final_outfile_path, UPLOAD_BUCKET) if UPLOAD_BUCKET != "default-bucket" else final_outfile_path
-    
-    return {
-        "video_path": final_outfile_path,
-        "s3_path": s3_path,
-        "response_text": gpt_response
-    }
+    s3_path = s3_upload(final_outfile_path, UPLOAD_BUCKET) if UPLOAD_BUCKET != "default-bucket" else None # Return None if not uploaded
+
+    return ProcessResponse(
+        video_path=final_outfile_path,
+        s3_path=s3_path,
+        response_text=gpt_response
+    )
 
 
-@app.route('/process', methods=['POST'])
-def process():
-    data = request.json
-    print(data)
-    
-    # Extract data from request
-    question_data = data.get("question", "")
-    gpt_response = data.get("gpt_response", "")
-    
-    # Process the video
+@app.post("/process", response_model=ProcessResponse)
+async def process(payload: ProcessRequest):
+    """
+    Process the request to generate a video response.
+    """
+    print(f"Received request: {payload}")
+
+    # Extract data from request model
+    question_data = payload.question
+    gpt_response = payload.gpt_response
+
+    # Process the video (run potentially long-running task in background if needed)
+    # For now, running synchronously as the original code did
     result = process_video(question_data, gpt_response)
-    
-    return jsonify(result)
+
+    return result
 
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({"status": "healthy", "device": device})
-
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """
+    Health check endpoint.
+    """
+    return HealthResponse(status="healthy", device=device)
