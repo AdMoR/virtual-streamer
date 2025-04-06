@@ -1,5 +1,4 @@
 import boto3
-from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException, Depends, status, Body, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -9,8 +8,7 @@ import os
 import json
 
 # Assuming models.py is in the same directory or accessible via PYTHONPATH
-try:
-    from models import (
+from virtual_streamer.video_server.models import (
         VideoClip, VideoClipCreate, VideoClipMetadataInput, VideoClipBase,
         Collection, CollectionCreate, CollectionUpdate, CollectionBase,
         Character, CharacterCreate, CharacterBase, VoiceSample,
@@ -19,93 +17,20 @@ try:
         JobStatus, ValidationStatus, ValidationIssue, ProjectValidationResult,
         CharacterPresence # Ensure all needed models are imported
     )
-except ImportError:
-    # Fallback or error handling if models.py is not found
-    print("Error: models.py not found. Please ensure it's in the Python path.")
-    # Define dummy classes to allow the rest of the file to parse
-    class BaseModel: pass
-    class VideoClip: pass
-    class VideoClipCreate: pass
-    class VideoClipMetadataInput: pass
-    class Collection: pass
-    class CollectionCreate: pass
-    class CollectionUpdate: pass
-    class Character: pass
-    class CharacterCreate: pass
-    class VideoProject: pass
-    class VideoProjectCreate: pass
-    class VideoProjectUpdate: pass
-    class Scene: pass
-    class SceneCreate: pass
-    class JobStatus: pass
-    class ValidationStatus: pass
+from virtual_streamer.utils.s3_client import AsyncS3Client
 
 
 # --- Configuration ---
 S3_BUCKET_NAME = os.environ.get("ENTITY_S3_BUCKET", "your-entity-bucket-name") # Use a dedicated bucket or prefix
+s3_cli = AsyncS3Client(S3_BUCKET_NAME)
+
 S3_PREFIX_CLIPS = "entities/clips/"
 S3_PREFIX_COLLECTIONS = "entities/collections/"
 S3_PREFIX_CHARACTERS = "entities/characters/"
 S3_PREFIX_PROJECTS = "entities/projects/"
 
-# --- S3 Client ---
-# Ensure AWS credentials are configured (e.g., via environment variables, ~/.aws/credentials, or IAM role)
-s3_client = boto3.client("s3")
-s3_resource = boto3.resource("s3")
-bucket = s3_resource.Bucket(S3_BUCKET_NAME)
 
-# --- S3 Helper Functions ---
 
-async def s3_put_json(key: str, data: dict):
-    """Uploads a dictionary as a JSON object to S3."""
-    try:
-        s3_client.put_object(
-            Bucket=S3_BUCKET_NAME,
-            Key=key,
-            Body=json.dumps(data, indent=2, default=str), # Use default=str for datetime
-            ContentType="application/json"
-        )
-    except ClientError as e:
-        print(f"Error uploading to S3 key {key}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"S3 upload error: {e}")
-
-async def s3_get_json(key: str) -> Optional[dict]:
-    """Downloads and parses a JSON object from S3."""
-    try:
-        response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=key)
-        content = response['Body'].read().decode('utf-8')
-        return json.loads(content)
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'NoSuchKey':
-            return None
-        print(f"Error downloading from S3 key {key}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"S3 download error: {e}")
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from S3 key {key}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="S3 object is not valid JSON.")
-
-async def s3_delete_object(key: str):
-    """Deletes an object from S3."""
-    try:
-        s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=key)
-    except ClientError as e:
-        print(f"Error deleting S3 key {key}: {e}")
-        # Decide if this should be a critical error or just logged
-        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"S3 delete error: {e}")
-
-async def s3_list_keys(prefix: str) -> List[str]:
-    """Lists keys within a given prefix in S3."""
-    keys = []
-    paginator = s3_client.get_paginator('list_objects_v2')
-    try:
-        for page in paginator.paginate(Bucket=S3_BUCKET_NAME, Prefix=prefix):
-            if "Contents" in page:
-                for item in page['Contents']:
-                    keys.append(item['Key'])
-    except ClientError as e:
-        print(f"Error listing S3 prefix {prefix}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"S3 list error: {e}")
-    return keys
 
 # --- FastAPI App ---
 app = FastAPI(
@@ -137,7 +62,7 @@ async def create_video_clip(clip_data: VideoClipCreate):
         updated_at=now
     )
     s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    await s3_put_json(s3_key, clip.dict())
+    await s3_cli.s3_put_json(s3_key, clip.dict())
     # Potential: Update collections if clip_data.collection_ids is not empty
     return clip
 
@@ -145,7 +70,7 @@ async def create_video_clip(clip_data: VideoClipCreate):
 async def get_video_clip(clip_id: str):
     """Retrieves a specific Video Clip by its ID."""
     s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Clip not found")
     return VideoClip(**data)
@@ -154,7 +79,7 @@ async def get_video_clip(clip_id: str):
 async def update_video_clip_metadata(clip_id: str, metadata: VideoClipMetadataInput):
     """Adds or replaces the metadata for a specific Video Clip."""
     s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Clip not found")
 
@@ -162,7 +87,7 @@ async def update_video_clip_metadata(clip_id: str, metadata: VideoClipMetadataIn
     clip.metadata = metadata
     clip.updated_at = datetime.utcnow()
 
-    await s3_put_json(s3_key, clip.dict())
+    await s3_cli.s3_put_json(s3_key, clip.dict())
     return clip
 
 @app.get("/clips", response_model=List[VideoClip], tags=["Video Clips"])
@@ -171,13 +96,13 @@ async def list_video_clips(limit: int = Query(100, ge=1, le=1000), prefix: Optio
     # Note: This lists keys and fetches each JSON individually. Can be slow/costly.
     # Consider alternative listing/indexing for large scale.
     target_prefix = f"{S3_PREFIX_CLIPS}{prefix if prefix else ''}"
-    keys = await s3_list_keys(target_prefix)
+    keys = await s3_cli.s3_list_keys(target_prefix)
     clips = []
     count = 0
     for key in keys:
         if key.endswith('.json'): # Basic check
              # Optimization: Could use list_objects_v2 metadata if sufficient
-            data = await s3_get_json(key)
+            data = await s3_cli.s3_get_json(key)
             if data:
                 clips.append(VideoClip(**data))
                 count += 1
@@ -190,7 +115,7 @@ async def delete_video_clip(clip_id: str):
     """Deletes the metadata record of a Video Clip. Does NOT delete the video file."""
     s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
     # Check if exists first? Optional, delete is idempotent.
-    await s3_delete_object(s3_key)
+    await s3_cli.s3_delete_object(s3_key)
     # Potential: Remove clip_id from associated collections
     return None
 
@@ -211,7 +136,7 @@ async def create_collection(collection_data: CollectionCreate):
         updated_at=now
     )
     s3_key = f"{S3_PREFIX_COLLECTIONS}{collection_id}.json"
-    await s3_put_json(s3_key, collection.dict())
+    await s3_cli.s3_put_json(s3_key, collection.dict())
     # Potential: Update clips if collection_data.clip_ids is not empty
     return collection
 
@@ -219,7 +144,7 @@ async def create_collection(collection_data: CollectionCreate):
 async def get_collection(collection_id: str):
     """Retrieves a specific Collection by its ID."""
     s3_key = f"{S3_PREFIX_COLLECTIONS}{collection_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return Collection(**data)
@@ -228,7 +153,7 @@ async def get_collection(collection_id: str):
 async def update_collection(collection_id: str, update_data: CollectionUpdate):
     """Updates specific fields of a Collection."""
     s3_key = f"{S3_PREFIX_COLLECTIONS}{collection_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
@@ -241,18 +166,18 @@ async def update_collection(collection_id: str, update_data: CollectionUpdate):
     # For simplicity, this PATCH only updates the collection's own record.
     # Managing relationships might need dedicated endpoints or background tasks.
 
-    await s3_put_json(s3_key, updated_collection.dict())
+    await s3_cli.s3_put_json(s3_key, updated_collection.dict())
     return updated_collection
 
 @app.get("/collections", response_model=List[Collection], tags=["Collections"])
 async def list_collections(limit: int = Query(100, ge=1, le=1000)):
     """Lists Collections. Limited results."""
-    keys = await s3_list_keys(S3_PREFIX_COLLECTIONS)
+    keys = await s3_cli.s3_list_keys(S3_PREFIX_COLLECTIONS)
     collections = []
     count = 0
     for key in keys:
          if key.endswith('.json'):
-            data = await s3_get_json(key)
+            data = await s3_cli.s3_get_json(key)
             if data:
                 collections.append(Collection(**data))
                 count += 1
@@ -264,7 +189,7 @@ async def list_collections(limit: int = Query(100, ge=1, le=1000)):
 async def delete_collection(collection_id: str):
     """Deletes a Collection metadata record."""
     s3_key = f"{S3_PREFIX_COLLECTIONS}{collection_id}.json"
-    await s3_delete_object(s3_key)
+    await s3_cli.s3_delete_object(s3_key)
     # Potential: Remove this collection_id from associated clips
     return None
 
@@ -284,14 +209,14 @@ async def create_character(character_data: CharacterCreate):
         updated_at=now
     )
     s3_key = f"{S3_PREFIX_CHARACTERS}{character_id}.json"
-    await s3_put_json(s3_key, character.dict())
+    await s3_cli.s3_put_json(s3_key, character.dict())
     return character
 
 @app.get("/characters/{character_id}", response_model=Character, tags=["Characters"])
 async def get_character(character_id: str):
     """Retrieves a specific Character by ID."""
     s3_key = f"{S3_PREFIX_CHARACTERS}{character_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Character not found")
     return Character(**data)
@@ -299,12 +224,12 @@ async def get_character(character_id: str):
 @app.get("/characters", response_model=List[Character], tags=["Characters"])
 async def list_characters(limit: int = Query(100, ge=1, le=1000)):
     """Lists Characters. Limited results."""
-    keys = await s3_list_keys(S3_PREFIX_CHARACTERS)
+    keys = await s3_cli.s3_list_keys(S3_PREFIX_CHARACTERS)
     characters = []
     count = 0
     for key in keys:
         if key.endswith('.json'):
-            data = await s3_get_json(key)
+            data = await s3_cli.s3_get_json(key)
             if data:
                 characters.append(Character(**data))
                 count += 1
@@ -316,7 +241,7 @@ async def list_characters(limit: int = Query(100, ge=1, le=1000)):
 async def delete_character(character_id: str):
     """Deletes a Character definition."""
     s3_key = f"{S3_PREFIX_CHARACTERS}{character_id}.json"
-    await s3_delete_object(s3_key)
+    await s3_cli.s3_delete_object(s3_key)
     return None
 
 
@@ -360,14 +285,14 @@ async def create_video_project(project_data: VideoProjectCreate):
         updated_at=now
     )
     s3_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    await s3_put_json(s3_key, project.dict())
+    await s3_cli.s3_put_json(s3_key, project.dict())
     return project
 
 @app.get("/projects/{project_id}", response_model=VideoProject, tags=["Video Projects"])
 async def get_video_project(project_id: str):
     """Retrieves a specific Video Project by ID."""
     s3_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Project not found")
     # Ensure scenes are loaded correctly if nested
@@ -380,7 +305,7 @@ async def get_video_project(project_id: str):
 async def update_video_project(project_id: str, update_data: VideoProjectUpdate):
     """Updates basic properties (title, description, user_id) of a Video Project. Does not modify scenes."""
     s3_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    data = await s3_get_json(s3_key)
+    data = await s3_cli.s3_get_json(s3_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Project not found")
 
@@ -389,7 +314,7 @@ async def update_video_project(project_id: str, update_data: VideoProjectUpdate)
     updated_project = project.copy(update=update_dict)
     updated_project.updated_at = datetime.utcnow()
 
-    await s3_put_json(s3_key, updated_project.dict())
+    await s3_cli.s3_put_json(s3_key, updated_project.dict())
     # Re-sort scenes just to be safe
     updated_project.scenes.sort(key=lambda s: s.order)
     return updated_project
@@ -397,12 +322,12 @@ async def update_video_project(project_id: str, update_data: VideoProjectUpdate)
 @app.get("/projects", response_model=List[VideoProject], tags=["Video Projects"])
 async def list_video_projects(limit: int = Query(100, ge=1, le=1000)):
     """Lists Video Projects. Limited results."""
-    keys = await s3_list_keys(S3_PREFIX_PROJECTS)
+    keys = await s3_cli.s3_list_keys(S3_PREFIX_PROJECTS)
     projects = []
     count = 0
     for key in keys:
         if key.endswith('.json'):
-            data = await s3_get_json(key)
+            data = await s3_cli.s3_get_json(key)
             if data:
                 project = VideoProject(**data)
                 # Re-sort scenes just to be safe
@@ -417,7 +342,7 @@ async def list_video_projects(limit: int = Query(100, ge=1, le=1000)):
 async def delete_video_project(project_id: str):
     """Deletes a Video Project metadata record."""
     s3_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    await s3_delete_object(s3_key)
+    await s3_cli.s3_delete_object(s3_key)
     return None
 
 # --- Scene Endpoints (within Projects) ---
@@ -426,7 +351,7 @@ async def delete_video_project(project_id: str):
 async def add_scene_to_project(project_id: str, scene_data: SceneCreate):
     """Adds a new Scene to an existing Video Project."""
     s3_project_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    project_data = await s3_get_json(s3_project_key)
+    project_data = await s3_cli.s3_get_json(s3_project_key)
     if project_data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Project not found")
 
@@ -457,7 +382,7 @@ async def add_scene_to_project(project_id: str, scene_data: SceneCreate):
         s.order = i
 
     project.updated_at = datetime.utcnow()
-    await s3_put_json(s3_project_key, project.dict())
+    await s3_cli.s3_put_json(s3_project_key, project.dict())
 
     return scene # Return the newly created scene
 
@@ -480,7 +405,7 @@ async def get_project_scene(project_id: str, scene_id: str):
 async def update_project_scene(project_id: str, scene_id: str, scene_update_data: SceneBase):
     """Updates an existing Scene within a Video Project."""
     s3_project_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    project_data = await s3_get_json(s3_project_key)
+    project_data = await s3_cli.s3_get_json(s3_project_key)
     if project_data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Project not found")
 
@@ -514,7 +439,7 @@ async def update_project_scene(project_id: str, scene_id: str, scene_update_data
         s.order = i
 
     project.updated_at = datetime.utcnow()
-    await s3_put_json(s3_project_key, project.dict())
+    await s3_cli.s3_put_json(s3_project_key, project.dict())
 
     return updated_scene
 
@@ -522,7 +447,7 @@ async def update_project_scene(project_id: str, scene_id: str, scene_update_data
 async def delete_project_scene(project_id: str, scene_id: str):
     """Deletes a Scene from a Video Project."""
     s3_project_key = f"{S3_PREFIX_PROJECTS}{project_id}.json"
-    project_data = await s3_get_json(s3_project_key)
+    project_data = await s3_cli.s3_get_json(s3_project_key)
     if project_data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video Project not found")
 
@@ -539,7 +464,7 @@ async def delete_project_scene(project_id: str, scene_id: str):
         s.order = i
 
     project.updated_at = datetime.utcnow()
-    await s3_put_json(s3_project_key, project.dict())
+    await s3_cli.s3_put_json(s3_project_key, project.dict())
 
     return None
 
