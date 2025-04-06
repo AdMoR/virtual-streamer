@@ -150,21 +150,6 @@ def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, A
     subtitle_mode = question_data.subtitle_mode
     name = question_data.name
 
-    # Get the audio for the response
-    audio_outpath = txt_to_speech_call(gpt_response, "male-pt-3%0A",
-                                       f"./temp/response_{hash(gpt_response) % 100000}.wav")
-    
-    # Get the face detection group for the character
-    if character_name not in face_detection_groups:
-        # Handle case where character is not precomputed
-        if character_name in CHARACTERS:
-            character = CHARACTERS[character_name]
-            face_det_group = preprocess(args, character.video_clip_path, character_name, detector,
-                                        None)
-        else:
-            # Default to first character if not found
-            default_char = next(iter(face_detection_groups.values()))
-            face_det_group = default_char
     # --- Step 1: Get the audio for the response ---
     # Use a unique filename in the temp directory
     audio_filename = f"response_{hash(gpt_response) % 100000}_{uuid.uuid4()}.wav"
@@ -221,17 +206,24 @@ def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, A
         raise HTTPException(status_code=500, detail=f"Failed to combine video/audio: {e}")
 
     # Add subtitles if needed
-    if subtitle_mode == "QUESTION":
-        subtitle = f"Question de {name} : {question_text}"
-        outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
-        add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
-    elif subtitle_mode == "VOICE_SUBTITLE":
-        subtitle = gpt_response
-        outfile_titled_path = f'./temp/result_titled_{tag}.mp4'
-        add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
-    else:
-        outfile_titled_path = outfile_combined_path
-    
+    outfile_titled_path = outfile_combined_path # Default to combined path
+    try:
+        if subtitle_mode == "QUESTION":
+            subtitle = f"Question de {name} : {question_text}"
+            outfile_titled_path = os.path.join(temp_dir, f'result_titled_{tag}.mp4')
+            # Assuming add_subtitle is synchronous
+            add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
+        elif subtitle_mode == "VOICE_SUBTITLE":
+            subtitle = gpt_response
+            outfile_titled_path = os.path.join(temp_dir, f'result_titled_{tag}.mp4')
+            # Assuming add_subtitle is synchronous
+            add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
+    except Exception as e:
+        print(f"Error adding subtitles: {e}")
+        # Non-fatal? Continue with the combined video if subtitling fails?
+        # For now, let's raise an error.
+        raise HTTPException(status_code=500, detail=f"Failed to add subtitles: {e}")
+
     # --- Step 4: Move the file to final location ---
     final_outfile_path = os.path.join(dirname, f"result_{tag}.mp4")
     try:
