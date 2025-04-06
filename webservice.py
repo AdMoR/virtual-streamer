@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Optional, Any
 import torch
+import uuid
 import os
 import numpy as np
 import cv2
@@ -38,6 +39,14 @@ class ProcessResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     device: str
+
+class Wav2LipRequest(BaseModel):
+    audio_path: str # Path accessible by the server
+    character_name: str
+    output_dir: Optional[str] = None # Optional: Specify where to save, otherwise use temp
+
+class Wav2LipResponse(BaseModel):
+    raw_video_path: str # Path to the generated video (no audio)
 
 
 # --- FastAPI App ---
@@ -192,6 +201,67 @@ def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, A
         s3_path=s3_path,
         response_text=gpt_response
     )
+
+
+@app.post("/wav2lip", response_model=Wav2LipResponse)
+async def run_wav2lip(payload: Wav2LipRequest):
+    """
+    Runs Wav2Lip generation on a given audio file and character.
+    Returns the path to the raw generated video (without audio combined).
+    """
+    print(f"Received Wav2Lip request: {payload}")
+    character_name = payload.character_name
+    audio_path = payload.audio_path
+    output_dir = payload.output_dir
+
+    # Basic validation
+    if not os.path.exists(audio_path):
+         raise HTTPException(status_code=400, detail=f"Audio file not found at path: {audio_path}")
+
+    # Determine output directory
+    if output_dir:
+        run_dirname = output_dir
+        os.makedirs(run_dirname, exist_ok=True)
+    else:
+        # Create a unique temporary directory for this run
+        run_dirname = f"./temp/wav2lip_run_{uuid.uuid4()}"
+        os.makedirs(run_dirname, exist_ok=True)
+
+    # Get the face detection group for the character
+    if character_name not in face_detection_groups:
+        # Handle case where character is not precomputed
+        if character_name in CHARACTERS:
+            character = CHARACTERS[character_name]
+            # Note: Preprocessing here might be slow, ideally done beforehand
+            print(f"Warning: Preprocessing character '{character_name}' on the fly.")
+            face_det_group = preprocess(args, character.video_clip_path, character_name, detector, None)
+            if face_det_group is None: # Check if preprocess failed
+                 shutil.rmtree(run_dirname, ignore_errors=True) # Clean up temp dir
+                 raise HTTPException(status_code=500, detail=f"Failed to preprocess character: {character_name}")
+        else:
+            # Character not found
+            shutil.rmtree(run_dirname, ignore_errors=True) # Clean up temp dir
+            raise HTTPException(status_code=404, detail=f"Character '{character_name}' not found or preprocessed.")
+    else:
+        face_det_group = face_detection_groups[character_name]
+
+    # Wav2lip video generation
+    s = time.time()
+    try:
+        # Use a generic question string as it's only used for tagging output files inside wav2lip_exec
+        # The actual output path is determined here.
+        raw_outfile_path = wav2lip_exec(run_dirname, audio_path, "wav2lip_direct_call", face_det_group)
+        print("wav2lip prediction time:", time.time() - s)
+    except Exception as e:
+        shutil.rmtree(run_dirname, ignore_errors=True) # Clean up temp dir on error
+        print(f"Error during wav2lip_exec: {e}")
+        raise HTTPException(status_code=500, detail=f"Wav2Lip execution failed: {e}")
+
+    # If output_dir was not specified, the result is in the temp dir.
+    # The caller might want to move/delete it. For now, just return the path.
+    # If output_dir *was* specified, the result is already there.
+
+    return Wav2LipResponse(raw_video_path=raw_outfile_path)
 
 
 @app.post("/process", response_model=ProcessResponse)
