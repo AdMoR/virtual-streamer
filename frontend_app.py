@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import os
 import time
+from virtual_streamer.utils.utils import speech_to_text_call, get_rmq_channel, ChatQuestion, \
+    VideoResponse, SubtitleMode, s3_download
 
 # --- Configuration ---
 # Get the backend URL from environment variable or use a default
@@ -103,6 +105,7 @@ if generate_button:
                 # A better approach is needed for distributed setups (e.g., backend returns
                 # a URL or streams the file).
                 # For local testing where both run on host or share volumes, this might work.
+                video_path = s3_download(s3_path)
                 with open(video_path, 'rb') as video_file:
                     video_bytes = video_file.read()
                     video_placeholder.video(video_bytes)
