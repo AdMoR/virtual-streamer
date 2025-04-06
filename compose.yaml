@@ -62,7 +62,9 @@ services:
     networks:
       - rabbit
   entity-api:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/docker_entity_api/Dockerfile
     ports:
       - "8000:8000"
     environment:
