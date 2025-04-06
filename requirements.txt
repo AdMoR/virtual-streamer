@@ -24,3 +24,4 @@ syllable
 fastapi
 uvicorn[standard]
 requests
+boto3
