@@ -49,6 +49,17 @@ class Wav2LipRequest(BaseModel):
 class Wav2LipResponse(BaseModel):
     raw_video_path: str # Path to the generated video (no audio)
 
+# Models for the new /generate-tts endpoint
+class TTSApiRequest(BaseModel):
+    entry_id: str
+    character_id: str
+    text: str
+
+class TTSApiResponse(BaseModel):
+    entry_id: str
+    audio_path: str # Path accessible by subsequent services (e.g., Wav2Lip)
+    # Potentially add duration or other metadata if needed
+
 
 # --- FastAPI App ---
 app = FastAPI()
@@ -154,18 +165,22 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
     name = question_data.name
 
     # --- Step 1: Get the audio for the response ---
-    # Use a unique filename in the temp directory
+    # This endpoint uses a fixed speaker for now. If it needs dynamic characters,
+    # it would need modification or potentially call the new /generate-tts endpoint.
+    # For now, keep the original direct TTS call logic for this specific workflow.
     audio_filename = f"response_{hash(gpt_response) % 100000}_{uuid.uuid4()}.wav"
     audio_outpath = os.path.join(temp_dir, audio_filename)
     try:
+        # Using a fixed speaker for this endpoint's purpose
+        fixed_speaker_id = "male-pt-3%0A" # Or fetch from config if needed
+        print(f"Generating TTS for /process request with speaker: {fixed_speaker_id}")
         # Assuming txt_to_speech_call is synchronous for now
-        # If it becomes async, use 'await'
-        txt_to_speech_call(gpt_response, "male-pt-3%0A", audio_outpath)
-        #audio_outpath = "/home/amor/Downloads/1_PèreFouras_true.wav"
+        txt_to_speech_call(gpt_response, fixed_speaker_id, audio_outpath)
+        #audio_outpath = "/home/amor/Downloads/1_PèreFouras_true.wav" # Example override for testing
         if not os.path.exists(audio_outpath):
              raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
     except Exception as e:
-        print(f"Error during TTS call: {e}")
+        print(f"Error during TTS call in /process: {e}")
         raise HTTPException(status_code=500, detail=f"Text-to-speech generation failed: {e}")
 
     # --- Step 2: Call Wav2Lip endpoint ---
@@ -336,6 +351,63 @@ async def run_wav2lip(payload: Wav2LipRequest):
     # If output_dir *was* specified, the result is already there.
 
     return Wav2LipResponse(raw_video_path=raw_outfile_path)
+
+
+@app.post("/generate-tts", response_model=TTSApiResponse)
+async def generate_tts(payload: TTSApiRequest):
+    """
+    Generates Text-to-Speech audio for a given dialogue entry.
+    """
+    print(f"Received TTS generation request for entry: {payload.entry_id}")
+
+    # Validate character_id and get speaker info
+    if payload.character_id not in CHARACTERS:
+        raise HTTPException(status_code=404, detail=f"Character ID '{payload.character_id}' not found.")
+
+    # --- Assumption: CHARACTERS[character_id] has a 'speaker_id' attribute ---
+    # Replace 'speaker_id' with the actual attribute name if different.
+    # If no such mapping exists, this logic needs adjustment.
+    try:
+        # TODO: Confirm the actual attribute name for the speaker identifier in CHARACTERS
+        speaker_id = CHARACTERS[payload.character_id].speaker_id
+    except AttributeError:
+         print(f"Error: Character '{payload.character_id}' found but missing 'speaker_id' attribute.")
+         raise HTTPException(status_code=500, detail=f"Configuration error: Speaker ID not found for character '{payload.character_id}'.")
+    except Exception as e:
+         # Catch other potential errors accessing CHARACTERS
+         print(f"Error accessing speaker info for character '{payload.character_id}': {e}")
+         raise HTTPException(status_code=500, detail=f"Internal error retrieving character speaker info.")
+
+
+    # Generate a unique filename in the temp directory
+    # Using entry_id and a UUID ensures uniqueness and traceability
+    audio_filename = f"tts_{payload.entry_id}_{uuid.uuid4()}.wav"
+    audio_outpath = os.path.join(temp_dir, audio_filename)
+    os.makedirs(temp_dir, exist_ok=True) # Ensure temp dir exists
+
+    try:
+        print(f"Generating TTS for entry {payload.entry_id} with speaker {speaker_id}...")
+        # Assuming txt_to_speech_call is synchronous
+        txt_to_speech_call(payload.text, speaker_id, audio_outpath)
+
+        if not os.path.exists(audio_outpath):
+             raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
+        print(f"TTS audio generated successfully at: {audio_outpath}")
+
+    except Exception as e:
+        print(f"Error during TTS call for entry {payload.entry_id}: {e}")
+        # Clean up potentially empty file if created
+        if os.path.exists(audio_outpath):
+            try:
+                os.remove(audio_outpath)
+            except OSError:
+                pass # Ignore cleanup error
+        raise HTTPException(status_code=500, detail=f"Text-to-speech generation failed: {e}")
+
+    # Return the path relative to the server or an absolute path
+    # depending on how the next service (e.g., Wav2Lip) accesses files.
+    # Using absolute path for clarity here.
+    return TTSApiResponse(entry_id=payload.entry_id, audio_path=os.path.abspath(audio_outpath))
 
 
 @app.post("/process", response_model=ProcessResponse)
