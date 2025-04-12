@@ -19,9 +19,13 @@ from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_
 from virtual_streamer.utils.utils import sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle, s3_upload, SubtitleMode
 from virtual_streamer.workflows.prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
+# Import relevant models from video_server if needed, or define specific API models
+# from virtual_streamer.video_server.models import DialogueEntry
 
 
 # --- Pydantic Models ---
+
+# Models for the existing /process endpoint
 class QuestionData(BaseModel):
     question: str = ""
     character_name: str = ""
