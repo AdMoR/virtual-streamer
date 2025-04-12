@@ -13,7 +13,7 @@ import datetime
 import subprocess
 import shutil
 from tqdm import tqdm
-from virtual_streamer.workflows.character_setup import CHARACTERS
+# Removed: from virtual_streamer.workflows.character_setup import CHARACTERS
 from virtual_streamer.wav2lip import audio
 from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load, FaceDetectionGroup
 from virtual_streamer.utils.utils import sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle, s3_upload, SubtitleMode
@@ -67,6 +67,7 @@ app = FastAPI()
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
 UPLOAD_BUCKET = os.environ.get("S3_BUCKET_URL", "default-bucket")
+ENTITY_SERVICE_URL = os.environ.get("ENTITY_SERVICE_URL", "http://localhost:8000").rstrip('/') # Ensure no trailing slash
 args = Config()
 args.checkpoint_path = os.environ.get("CHECKPOINT_PATH", "./checkpoints/Wav2Lip.pth")
 print(f"Using checkpoint: {args.checkpoint_path}")
@@ -74,11 +75,34 @@ model, detector, detector_model = do_load(args.checkpoint_path, device)
 mel_step_size = 16
 temp_dir = "./temp"
 
-# Initialize face detection groups
-print('Reading video frames...')
-face_detection_groups: Dict[str, FaceDetectionGroup] = dict()
-for k, v in CHARACTERS.items():
-    preprocess(args, v.video_clip_path, k, detector, face_detection_groups)
+# Face detection groups will be loaded on demand
+face_detection_groups: Dict[str, FaceDetectionGroup] = {}
+# Lock for thread-safe access to face_detection_groups if needed (FastAPI runs async, but GIL might suffice for dict access)
+# import asyncio
+# face_detection_lock = asyncio.Lock()
+
+
+async def get_character_data(character_id: str) -> Dict[str, Any]:
+    """Helper function to fetch character data from the entity service."""
+    character_url = f"{ENTITY_SERVICE_URL}/characters/{character_id}"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(character_url)
+            response.raise_for_status() # Raise exception for 4xx/5xx responses
+            return response.json()
+    except httpx.RequestError as e:
+        print(f"Error calling Entity Service endpoint {character_url}: {e}")
+        raise HTTPException(status_code=503, detail=f"Entity service request failed: {e}")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            print(f"Character '{character_id}' not found in Entity Service.")
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+        else:
+            print(f"Entity Service returned error {e.response.status_code}: {e.response.text}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"Entity service error: {e.response.text}")
+    except Exception as e: # Catch other potential errors like JSON parsing
+        print(f"Unexpected error processing Entity Service response: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process entity service result: {e}")
 
 
 def wav2lip_exec(dirname: str, audio_path: str, det_results: FaceDetectionGroup):
@@ -314,23 +338,51 @@ async def run_wav2lip(payload: Wav2LipRequest):
         run_dirname = f"./temp/wav2lip_run_{uuid.uuid4()}"
         os.makedirs(run_dirname, exist_ok=True)
 
-    # Get the face detection group for the character
+    # Get the face detection group for the character, loading if necessary
+    # TODO: Consider adding locking if high concurrency is expected
     if character_name not in face_detection_groups:
-        # Handle case where character is not precomputed
-        if character_name in CHARACTERS:
-            character = CHARACTERS[character_name]
-            # Note: Preprocessing here might be slow, ideally done beforehand
-            print(f"Warning: Preprocessing character '{character_name}' on the fly.")
-            face_det_group = preprocess(args, character.video_clip_path, character_name, detector, None)
+        print(f"Face detection data for character '{character_name}' not cached. Fetching from entity service...")
+        try:
+            # Fetch character data from Entity Service
+            # Note: Using character_name as character_id here. Adjust if they differ.
+            character_data = await get_character_data(character_name)
+
+            # --- Assumption: Character data contains 'representative_video_clip_path' ---
+            video_path = character_data.get("representative_video_clip_path")
+            if not video_path:
+                 shutil.rmtree(run_dirname, ignore_errors=True)
+                 raise HTTPException(status_code=500, detail=f"Character '{character_name}' data from entity service is missing 'representative_video_clip_path'.")
+
+            if not os.path.exists(video_path):
+                 # Handle case where the path exists in metadata but file is missing locally
+                 # Maybe attempt to download from S3 if path is an S3 key? Needs more logic.
+                 shutil.rmtree(run_dirname, ignore_errors=True)
+                 raise HTTPException(status_code=500, detail=f"Representative video clip not found at path: {video_path}")
+
+            print(f"Preprocessing character '{character_name}' using video: {video_path}")
+            # Preprocess and cache the result. Pass None for the dict to get the result back.
+            face_det_group = preprocess(args, video_path, character_name, detector, None)
+
             if face_det_group is None: # Check if preprocess failed
-                 shutil.rmtree(run_dirname, ignore_errors=True) # Clean up temp dir
+                 shutil.rmtree(run_dirname, ignore_errors=True)
                  raise HTTPException(status_code=500, detail=f"Failed to preprocess character: {character_name}")
-        else:
-            # Character not found
-            shutil.rmtree(run_dirname, ignore_errors=True) # Clean up temp dir
-            raise HTTPException(status_code=404, detail=f"Character '{character_name}' not found or preprocessed.")
+            else:
+                 face_detection_groups[character_name] = face_det_group # Cache it
+                 print(f"Successfully preprocessed and cached face data for '{character_name}'.")
+
+        except HTTPException as e:
+             # Propagate HTTPException (e.g., 404 Not Found from entity service)
+             shutil.rmtree(run_dirname, ignore_errors=True)
+             raise e
+        except Exception as e:
+             # Catch any other unexpected errors during fetch/preprocess
+             shutil.rmtree(run_dirname, ignore_errors=True)
+             print(f"Error during on-demand character preprocessing for '{character_name}': {e}")
+             raise HTTPException(status_code=500, detail=f"Failed to load or preprocess character '{character_name}': {e}")
     else:
+        print(f"Using cached face detection data for character '{character_name}'.")
         face_det_group = face_detection_groups[character_name]
+
 
     # Wav2lip video generation
     s = time.time()
@@ -360,23 +412,28 @@ async def generate_tts(payload: DialogueEntry):
     """
     print(f"Received TTS generation request for entry: {payload.entry_id}")
 
-    # Validate character_id and get speaker info
-    if payload.character_id not in CHARACTERS:
-        raise HTTPException(status_code=404, detail=f"Character ID '{payload.character_id}' not found.")
-
-    # --- Assumption: CHARACTERS[character_id] has a 'speaker_id' attribute ---
-    # Replace 'speaker_id' with the actual attribute name if different.
-    # If no such mapping exists, this logic needs adjustment.
+    # Fetch character data from Entity Service to get speaker info
     try:
-        # TODO: Confirm the actual attribute name for the speaker identifier in CHARACTERS
-        speaker_id = CHARACTERS[payload.character_id].speaker_id
-    except AttributeError:
-         print(f"Error: Character '{payload.character_id}' found but missing 'speaker_id' attribute.")
-         raise HTTPException(status_code=500, detail=f"Configuration error: Speaker ID not found for character '{payload.character_id}'.")
+        character_data = await get_character_data(payload.character_id)
+
+        # --- Assumption: Character data contains tts_model_config['speaker_id'] ---
+        tts_config = character_data.get("tts_model_config")
+        if not tts_config or "speaker_id" not in tts_config:
+            print(f"Error: TTS config or speaker_id missing for character '{payload.character_id}' in entity service.")
+            raise HTTPException(status_code=500, detail=f"Configuration error: Speaker ID not found for character '{payload.character_id}'.")
+
+        speaker_id = tts_config["speaker_id"]
+        if not speaker_id: # Check if speaker_id is empty
+             print(f"Error: Speaker ID is empty for character '{payload.character_id}'.")
+             raise HTTPException(status_code=500, detail=f"Configuration error: Speaker ID is empty for character '{payload.character_id}'.")
+
+    except HTTPException as e:
+        # Propagate HTTPException (e.g., 404 Not Found, 503 Service Unavailable)
+        raise e
     except Exception as e:
-         # Catch other potential errors accessing CHARACTERS
-         print(f"Error accessing speaker info for character '{payload.character_id}': {e}")
-         raise HTTPException(status_code=500, detail=f"Internal error retrieving character speaker info.")
+        # Catch other unexpected errors during fetch/lookup
+        print(f"Unexpected error retrieving speaker info for character '{payload.character_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error retrieving character speaker info: {e}")
 
 
     # Generate a unique filename in the temp directory
