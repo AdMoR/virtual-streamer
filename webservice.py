@@ -19,8 +19,8 @@ from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_
 from virtual_streamer.utils.utils import sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle, s3_upload, SubtitleMode
 from virtual_streamer.workflows.prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
-# Import relevant models from video_server if needed, or define specific API models
-# from virtual_streamer.video_server.models import DialogueEntry
+# Import relevant models from video_server
+from virtual_streamer.video_server.models import DialogueEntry
 
 
 # --- Pydantic Models ---
@@ -53,12 +53,7 @@ class Wav2LipRequest(BaseModel):
 class Wav2LipResponse(BaseModel):
     raw_video_path: str # Path to the generated video (no audio)
 
-# Models for the new /generate-tts endpoint
-class TTSApiRequest(BaseModel):
-    entry_id: str
-    character_id: str
-    text: str
-
+# Model for the /generate-tts endpoint response
 class TTSApiResponse(BaseModel):
     entry_id: str
     audio_path: str # Path accessible by subsequent services (e.g., Wav2Lip)
@@ -358,9 +353,10 @@ async def run_wav2lip(payload: Wav2LipRequest):
 
 
 @app.post("/generate-tts", response_model=TTSApiResponse)
-async def generate_tts(payload: TTSApiRequest):
+async def generate_tts(payload: DialogueEntry):
     """
     Generates Text-to-Speech audio for a given dialogue entry.
+    Expects a DialogueEntry object as the request body.
     """
     print(f"Received TTS generation request for entry: {payload.entry_id}")
 
