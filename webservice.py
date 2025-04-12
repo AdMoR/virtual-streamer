@@ -20,7 +20,7 @@ from virtual_streamer.utils.utils import sanitize_str, txt_to_speech_call, combi
 from virtual_streamer.workflows.prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
     STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
 # Import relevant models from video_server
-from virtual_streamer.video_server.models import DialogueEntry
+from virtual_streamer.video_server.models import DialogueEntry, Character, VideoClip, VideoOptions
 
 
 # --- Pydantic Models ---
@@ -47,7 +47,9 @@ class HealthResponse(BaseModel):
 
 class Wav2LipRequest(BaseModel):
     audio_path: str # Path accessible by the server
-    character_name: str
+    video: VideoClip
+    options: VideoOptions
+    character_id: str
     output_dir: Optional[str] = None # Optional: Specify where to save, otherwise use temp
 
 class Wav2LipResponse(BaseModel):
@@ -66,8 +68,6 @@ app = FastAPI()
 # Initialize global variables
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
-UPLOAD_BUCKET = os.environ.get("S3_BUCKET_URL", "default-bucket")
-ENTITY_SERVICE_URL = os.environ.get("ENTITY_SERVICE_URL", "http://localhost:8000").rstrip('/') # Ensure no trailing slash
 args = Config()
 args.checkpoint_path = os.environ.get("CHECKPOINT_PATH", "./checkpoints/Wav2Lip.pth")
 print(f"Using checkpoint: {args.checkpoint_path}")
@@ -81,15 +81,20 @@ face_detection_groups: Dict[str, FaceDetectionGroup] = {}
 # import asyncio
 # face_detection_lock = asyncio.Lock()
 
+UPLOAD_BUCKET = os.environ.get("S3_BUCKET_URL", "default-bucket")
+ENTITY_SERVICE_URL = os.environ.get("ENTITY_SERVICE_URL", "http://localhost:8000").rstrip('/') # Ensure no trailing slash
 
-async def get_character_data(character_id: str) -> Dict[str, Any]:
+
+async def get_character_data(character_id: str) -> Character:
     """Helper function to fetch character data from the entity service."""
     character_url = f"{ENTITY_SERVICE_URL}/characters/{character_id}"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(character_url)
             response.raise_for_status() # Raise exception for 4xx/5xx responses
-            return response.json()
+            result_dict = response.json()
+            character = Character.model_validate(result_dict)
+            return character
     except httpx.RequestError as e:
         print(f"Error calling Entity Service endpoint {character_url}: {e}")
         raise HTTPException(status_code=503, detail=f"Entity service request failed: {e}")
@@ -176,7 +181,7 @@ def wav2lip_exec(dirname: str, audio_path: str, det_results: FaceDetectionGroup)
     return out_path
 
 
-async def process_video(question_data: QuestionData, gpt_response: str, base_url: str) -> Dict[str, Any]:
+async def process_video(question_data: QuestionData, gpt_response: str) -> Dict[str, Any]:
     dirname = os.environ.get("OUT_VIDEO_FOLDER", "./out_video_folder")
     os.makedirs(dirname, exist_ok=True)
     os.makedirs("./temp", exist_ok=True)
@@ -191,16 +196,16 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
     # This endpoint uses a fixed speaker for now. If it needs dynamic characters,
     # it would need modification or potentially call the new /generate-tts endpoint.
     # For now, keep the original direct TTS call logic for this specific workflow.
-    audio_filename = f"response_{hash(gpt_response) % 100000}_{uuid.uuid4()}.wav"
-    audio_outpath = os.path.join(temp_dir, audio_filename)
     try:
         # Using a fixed speaker for this endpoint's purpose
         fixed_speaker_id = "male-pt-3%0A" # Or fetch from config if needed
         print(f"Generating TTS for /process request with speaker: {fixed_speaker_id}")
         # Assuming txt_to_speech_call is synchronous for now
-        txt_to_speech_call(gpt_response, fixed_speaker_id, audio_outpath)
+        #txt_to_speech_call(gpt_response, fixed_speaker_id, audio_outpath)
+        response = await generate_tts(DialogueEntry())
+        audio_path = response.audio_path
         #audio_outpath = "/home/amor/Downloads/1_PèreFouras_true.wav" # Example override for testing
-        if not os.path.exists(audio_outpath):
+        if not os.path.exists(audio_path):
              raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
     except Exception as e:
         print(f"Error during TTS call in /process: {e}")
@@ -208,40 +213,24 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
 
     # --- Step 2: Call Wav2Lip endpoint ---
     wav2lip_request_payload = Wav2LipRequest(
-        audio_path=os.path.abspath(audio_outpath), # Send absolute path
+        audio_path=os.path.abspath(audio_path), # Send absolute path
         character_name=character_name,
         # Let the wav2lip endpoint manage its own temp output location initially
         output_dir=None
     )
-    wav2lip_url = f"{base_url.rstrip('/')}/wav2lip"
-    raw_video_path = None
-    s = time.time()
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client: # Use a timeout matching gunicorn
-            response = await client.post(wav2lip_url, json=wav2lip_request_payload.dict())
-            response.raise_for_status() # Raise exception for 4xx/5xx responses
-            wav2lip_response_data = response.json()
-            raw_video_path = wav2lip_response_data.get("raw_video_path")
-            if not raw_video_path or not os.path.exists(raw_video_path):
-                raise HTTPException(status_code=500, detail="Wav2Lip endpoint did not return a valid video path.")
-        print("Wav2Lip API call time:", time.time() - s)
-    except httpx.RequestError as e:
-        print(f"Error calling Wav2Lip endpoint {wav2lip_url}: {e}")
-        raise HTTPException(status_code=503, detail=f"Wav2Lip service request failed: {e}")
-    except httpx.HTTPStatusError as e:
-        print(f"Wav2Lip endpoint returned error {e.response.status_code}: {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail=f"Wav2Lip service error: {e.response.text}")
+        resp: Wav2LipResponse = await run_wav2lip(wav2lip_request_payload)
     except Exception as e: # Catch other potential errors like JSON parsing
         print(f"Unexpected error processing Wav2Lip response: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process Wav2Lip result: {e}")
-
+    raw_video_path = resp.raw_video_path
 
     # --- Step 3: Recombination and add subtitles ---
     tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question_text[:30])
     outfile_combined_path = os.path.join(temp_dir, f'result_combined_{tag}.mp4')
     try:
         # Assuming combine_video_and_audio is synchronous
-        combine_video_and_audio(raw_video_path, audio_outpath, outfile_combined_path)
+        combine_video_and_audio(resp.raw_video_path, audio_path, outfile_combined_path)
     except Exception as e:
         print(f"Error combining video and audio: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to combine video/audio: {e}")
@@ -273,7 +262,6 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
         print(f"Error moving final video file: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save final video: {e}")
 
-
     # --- Step 5: Upload to S3 if needed ---
     s3_path = None
     if UPLOAD_BUCKET != "default-bucket":
@@ -291,7 +279,7 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
     # Clean up intermediate files from temp_dir (raw video, combined video, audio)
     # Be careful not to delete files needed elsewhere if temp_dir is shared.
     try:
-        if os.path.exists(audio_outpath): os.remove(audio_outpath)
+        if os.path.exists(audio_path): os.remove(audio_path)
         # The raw_video_path might be inside a temp dir created by /wav2lip endpoint.
         # If that endpoint cleans up its own temp dir, we don't need to delete raw_video_path.
         # If it doesn't, we might need to delete it here, but need to know its location.
@@ -304,7 +292,6 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
         # outfile_titled_path was moved, not copied, so no need to delete original.
     except OSError as e:
         print(f"Warning: Error during temporary file cleanup: {e}")
-
 
     # --- Step 7: Return response ---
     return ProcessResponse(
@@ -321,9 +308,14 @@ async def run_wav2lip(payload: Wav2LipRequest):
     Returns the path to the raw generated video (without audio combined).
     """
     print(f"Received Wav2Lip request: {payload}")
-    character_name = payload.character_name
+    character_id = payload.character_id
     audio_path = payload.audio_path
     output_dir = payload.output_dir
+    video = payload.video
+    video_path = video.storage_path
+
+    # Retrieve the objects from entity server
+    character = await get_character_data(character_id)
 
     # Basic validation
     if not os.path.exists(audio_path):
@@ -340,18 +332,13 @@ async def run_wav2lip(payload: Wav2LipRequest):
 
     # Get the face detection group for the character, loading if necessary
     # TODO: Consider adding locking if high concurrency is expected
-    if character_name not in face_detection_groups:
-        print(f"Face detection data for character '{character_name}' not cached. Fetching from entity service...")
+    if character.name not in face_detection_groups:
+        print(f"Face detection data for character '{character_id}' not cached. Fetching from entity service...")
         try:
             # Fetch character data from Entity Service
             # Note: Using character_name as character_id here. Adjust if they differ.
-            character_data = await get_character_data(character_name)
 
             # --- Assumption: Character data contains 'representative_video_clip_path' ---
-            video_path = character_data.get("representative_video_clip_path")
-            if not video_path:
-                 shutil.rmtree(run_dirname, ignore_errors=True)
-                 raise HTTPException(status_code=500, detail=f"Character '{character_name}' data from entity service is missing 'representative_video_clip_path'.")
 
             if not os.path.exists(video_path):
                  # Handle case where the path exists in metadata but file is missing locally
@@ -359,16 +346,16 @@ async def run_wav2lip(payload: Wav2LipRequest):
                  shutil.rmtree(run_dirname, ignore_errors=True)
                  raise HTTPException(status_code=500, detail=f"Representative video clip not found at path: {video_path}")
 
-            print(f"Preprocessing character '{character_name}' using video: {video_path}")
+            print(f"Preprocessing character '{character.name}' using video: {video_path}")
             # Preprocess and cache the result. Pass None for the dict to get the result back.
-            face_det_group = preprocess(args, video_path, character_name, detector, None)
+            face_det_group = preprocess(args, video_path, character.id, detector, None)
 
             if face_det_group is None: # Check if preprocess failed
                  shutil.rmtree(run_dirname, ignore_errors=True)
-                 raise HTTPException(status_code=500, detail=f"Failed to preprocess character: {character_name}")
+                 raise HTTPException(status_code=500, detail=f"Failed to preprocess character: {character.name}")
             else:
-                 face_detection_groups[character_name] = face_det_group # Cache it
-                 print(f"Successfully preprocessed and cached face data for '{character_name}'.")
+                 face_detection_groups[character.name] = face_det_group # Cache it
+                 print(f"Successfully preprocessed and cached face data for '{character.name}'.")
 
         except HTTPException as e:
              # Propagate HTTPException (e.g., 404 Not Found from entity service)
@@ -377,11 +364,11 @@ async def run_wav2lip(payload: Wav2LipRequest):
         except Exception as e:
              # Catch any other unexpected errors during fetch/preprocess
              shutil.rmtree(run_dirname, ignore_errors=True)
-             print(f"Error during on-demand character preprocessing for '{character_name}': {e}")
-             raise HTTPException(status_code=500, detail=f"Failed to load or preprocess character '{character_name}': {e}")
+             print(f"Error during on-demand character preprocessing for '{character.name}': {e}")
+             raise HTTPException(status_code=500, detail=f"Failed to load or preprocess character '{character.name}': {e}")
     else:
-        print(f"Using cached face detection data for character '{character_name}'.")
-        face_det_group = face_detection_groups[character_name]
+        print(f"Using cached face detection data for character '{character.name}'.")
+        face_det_group = face_detection_groups[character.name]
 
 
     # Wav2lip video generation
@@ -412,40 +399,29 @@ async def generate_tts(payload: DialogueEntry):
     """
     print(f"Received TTS generation request for entry: {payload.entry_id}")
 
-    # Fetch character data from Entity Service to get speaker info
+    # 1 - Fetch character data from Entity Service to get speaker info
     try:
         character_data = await get_character_data(payload.character_id)
-
-        # --- Assumption: Character data contains tts_model_config['speaker_id'] ---
-        tts_config = character_data.get("tts_model_config")
-        if not tts_config or "speaker_id" not in tts_config:
-            print(f"Error: TTS config or speaker_id missing for character '{payload.character_id}' in entity service.")
-            raise HTTPException(status_code=500, detail=f"Configuration error: Speaker ID not found for character '{payload.character_id}'.")
-
-        speaker_id = tts_config["speaker_id"]
-        if not speaker_id: # Check if speaker_id is empty
-             print(f"Error: Speaker ID is empty for character '{payload.character_id}'.")
-             raise HTTPException(status_code=500, detail=f"Configuration error: Speaker ID is empty for character '{payload.character_id}'.")
+        result_dict = character_data.json()
+        character = Character.model_validate(result_dict)
 
     except HTTPException as e:
         # Propagate HTTPException (e.g., 404 Not Found, 503 Service Unavailable)
         raise e
     except Exception as e:
         # Catch other unexpected errors during fetch/lookup
-        print(f"Unexpected error retrieving speaker info for character '{payload.character_id}': {e}")
+        print(f"Unexpected error retrieving speaker info for character '{character.character_id}': {e}")
         raise HTTPException(status_code=500, detail=f"Internal error retrieving character speaker info: {e}")
 
-
-    # Generate a unique filename in the temp directory
+    # 2 - Generate a unique filename in the temp directory
     # Using entry_id and a UUID ensures uniqueness and traceability
     audio_filename = f"tts_{payload.entry_id}_{uuid.uuid4()}.wav"
     audio_outpath = os.path.join(temp_dir, audio_filename)
     os.makedirs(temp_dir, exist_ok=True) # Ensure temp dir exists
-
     try:
-        print(f"Generating TTS for entry {payload.entry_id} with speaker {speaker_id}...")
+        print(f"Generating TTS for entry {payload.entry_id} with speaker {character.character_id}...")
         # Assuming txt_to_speech_call is synchronous
-        txt_to_speech_call(payload.text, speaker_id, audio_outpath)
+        txt_to_speech_call(payload.text, character.character_id, audio_outpath)
 
         if not os.path.exists(audio_outpath):
              raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
@@ -481,7 +457,7 @@ async def process(payload: ProcessRequest, request: Request):
     # Process the video (run potentially long-running task in background if needed)
     # For now, running synchronously as the original code did
     base_url = str(request.base_url) # Get base URL (e.g., "http://localhost:5000/")
-    result = await process_video(question_data, gpt_response, base_url)
+    result = await process_video(question_data, gpt_response)
 
     return result
 

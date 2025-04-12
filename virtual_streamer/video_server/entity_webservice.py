@@ -18,18 +18,18 @@ from virtual_streamer.video_server.models import (
         CharacterPresence # Ensure all needed models are imported
     )
 from virtual_streamer.utils.s3_client import AsyncS3Client
+from virtual_streamer.utils.local_fs_client import LocalFSClient
 
 
 # --- Configuration ---
 S3_BUCKET_NAME = os.environ.get("ENTITY_S3_BUCKET", "your-entity-bucket-name") # Use a dedicated bucket or prefix
-s3_cli = AsyncS3Client(S3_BUCKET_NAME)
+#s3_cli = AsyncS3Client(S3_BUCKET_NAME)
+s3_cli = LocalFSClient("/media/amor/data/virtual_streamer_folder")
 
 S3_PREFIX_CLIPS = "entities/clips/"
 S3_PREFIX_COLLECTIONS = "entities/collections/"
 S3_PREFIX_CHARACTERS = "entities/characters/"
 S3_PREFIX_PROJECTS = "entities/projects/"
-
-
 
 
 # --- FastAPI App ---

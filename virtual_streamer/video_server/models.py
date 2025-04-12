@@ -43,7 +43,8 @@ class VideoClipBase(BaseModel):
     """Base model for a clip, used for creation request."""
     storage_path: str = Field(..., description="Path/key to the video file (e.g., S3 key)")
     # Metadata might be added later via a separate endpoint
-    collection_ids: List[str] = Field(default_factory=list, description="List of collection IDs this clip belongs to initially")
+    collection_ids: List[str] = Field(default_factory=list,
+                                      description="List of collection IDs this clip belongs to initially")
 
 class VideoClipCreate(VideoClipBase):
     """Data needed to initially create a video clip record."""
@@ -104,7 +105,7 @@ class CharacterCreate(CharacterBase):
 class Character(CharacterBase):
     character_id: str = Field(..., description="Unique identifier for the character/voice")
     voice_samples: List[VoiceSample] = Field(..., description="Samples used to define/clone the voice")
-    # tts_model_config: Optional[Dict[str, Any]] = None
+    tts_model_config: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
