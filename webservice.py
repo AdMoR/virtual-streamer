@@ -168,7 +168,6 @@ async def process_video(question_data: QuestionData, gpt_response: str, base_url
         print(f"Error during TTS call: {e}")
         raise HTTPException(status_code=500, detail=f"Text-to-speech generation failed: {e}")
 
-
     # --- Step 2: Call Wav2Lip endpoint ---
     wav2lip_request_payload = Wav2LipRequest(
         audio_path=os.path.abspath(audio_outpath), # Send absolute path
