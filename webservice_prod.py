@@ -9,7 +9,7 @@ import multiprocessing
 bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 # Number of workers based on CPU count, max 4 as before. Uvicorn workers handle concurrency differently.
 # Start with a reasonable number, maybe fewer than sync workers depending on workload.
-workers = min(multiprocessing.cpu_count() + 1, 4)
+workers = 1
 timeout = 300  # 5 minutes timeout for long-running requests
 # Use Uvicorn workers for FastAPI (ASGI)
 worker_class = "uvicorn.workers.UvicornWorker"
