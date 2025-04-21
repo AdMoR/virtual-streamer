@@ -99,11 +99,12 @@ class CharacterBase(BaseModel):
     description: Optional[str] = Field(None, description="Optional description")
 
 class CharacterCreate(CharacterBase):
-    voice_samples: List[VoiceSample] = Field(..., min_items=1, description="Samples used to define/clone the voice")
-    # tts_model_config: Optional[Dict[str, Any]] = None # Optional: Specific TTS config
+    voice_samples: List[VoiceSample] = Field(..., min_items=0, description="Samples used to define/clone the voice")
+    tts_model_config: Optional[Dict[str, Any]] = None # Optional: Specific TTS config
 
 class Character(CharacterBase):
     character_id: str = Field(..., description="Unique identifier for the character/voice")
+    name: str = Field(None, description="Optional description")
     voice_samples: List[VoiceSample] = Field(..., description="Samples used to define/clone the voice")
     tts_model_config: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

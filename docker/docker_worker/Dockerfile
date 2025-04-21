@@ -47,17 +47,17 @@ WORKDIR $WORKDIR
 # install requirements
 COPY requirements.txt .
 RUN pip install -r requirements.txt && pip install git+https://github.com/elliottzheng/batch-face.git@master
+RUN pip install fastapi[standard]==0.113.0
+# Create necessary directories
+RUN mkdir -p /data/out_video_folder /data/temp
 
 # copy sources
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
 
-# Create necessary directories
-RUN mkdir -p /data/out_video_folder /data/temp
-
 # run inference script
 RUN pip install -e .
-RUN pip install fastapi[standard]==0.113.0
+
 # Default command to run the webservice with Gunicorn and the production config
 CMD ["fastapi", "run", "/src/webservice.py"]

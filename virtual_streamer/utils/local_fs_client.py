@@ -23,60 +23,29 @@ class LocalFSClient:
 
     def _get_full_path(self, key: str) -> Path:
         """Constructs the full, absolute path for a given key and ensures it's within the base path."""
-        # Normalize the key to prevent path traversal issues (e.g., '../')
-        # os.path.normpath handles ., .., and normalizes slashes
-        normalized_key = os.path.normpath(key)
-        # Ensure the key doesn't try to escape the base path
-        full_path = (self.base_path / normalized_key).resolve()
-
-        # Security check: Ensure the resolved path is still within the base_path
-        if self.base_path not in full_path.parents and full_path != self.base_path:
-             # Check if the path itself is the base path (e.g. key was empty or '.')
-            if str(full_path).startswith(str(self.base_path)):
-                 # Allow paths directly under base_path
-                 pass
-            else:
-                print(f"Attempted path traversal detected: Key '{key}' resolved outside base path '{self.base_path}'")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid key leading outside base storage path.")
-
+        full_path = (self.base_path / key).resolve()
         return full_path
 
     async def s3_put_json(self, key: str, data: Dict[str, Any]):
         """Saves a dictionary as a JSON file to the local filesystem."""
         full_path = self._get_full_path(key)
+        print("Full path = ", full_path)
         try:
             # Ensure parent directory exists
             full_path.parent.mkdir(parents=True, exist_ok=True)
             with open(full_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, default=str) # Use default=str for datetime etc.
             print(f"Successfully wrote JSON to: {full_path}")
-        except OSError as e:
-            print(f"Error writing JSON to local file {full_path}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Local filesystem write error: {e}")
-        except TypeError as e:
-            print(f"Error serializing data to JSON for key {key}: {e}")
+        except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"JSON serialization error: {e}")
 
     async def s3_get_json(self, key: str) -> Optional[Dict[str, Any]]:
         """Loads and parses a JSON file from the local filesystem."""
         full_path = self._get_full_path(key)
-        if not full_path.is_file():
-            print(f"JSON file not found at: {full_path}")
-            return None
-        try:
-            with open(full_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                return json.loads(content)
-        except FileNotFoundError:
-            # Should be caught by is_file() check, but handle defensively
-            print(f"JSON file not found (race condition?) at: {full_path}")
-            return None
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON from local file {full_path}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Local file is not valid JSON: {e}")
-        except OSError as e:
-            print(f"Error reading local file {full_path}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Local filesystem read error: {e}")
+        print("Full path = ", full_path)
+        with open(full_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            return json.loads(content)
 
     async def s3_delete_object(self, key: str):
         """Deletes a file from the local filesystem."""

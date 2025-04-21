@@ -32,4 +32,4 @@ EXPOSE 8000
 # Run the FastAPI app located at virtual_streamer/video_server/entity_webservice.py
 # The module path is virtual_streamer.video_server.entity_webservice
 # The FastAPI app instance is named 'app'
-CMD ["uvicorn", "virtual_streamer.video_server.entity_webservice:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "virtual_streamer.video_server.entity_webservice:app", "--host", "0.0.0.0", "--port", "8002"]

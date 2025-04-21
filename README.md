@@ -3,17 +3,48 @@
 This is the codebase to run [AlloJesusChrist](https://www.twitch.tv/allojesuschrist)
 
 
-## Setup of the environnement
+## Query the api
 
-Using conda 
-
+```JSON
+{
+  "audio_path": "string",
+  "video": {
+    "storage_path": "string",
+    "collection_ids": [
+      "string"
+    ],
+    "clip_id": "string",
+    "metadata": {
+      "duration": 1,
+      "scene_description_text": "string",
+      "scene_keywords": [
+        "string"
+      ],
+      "character_presences": [
+        {
+          "character_id": "string",
+          "start_time": 0,
+          "end_time": 1
+        }
+      ],
+      "source_show_name": "string",
+      "source_episode_name": "string",
+      "start_time_in_source": 0,
+      "end_time_in_source": 1
+    },
+    "created_at": "2025-04-21T14:12:17.730Z",
+    "updated_at": "2025-04-21T14:12:17.730Z"
+  },
+  "options": {
+    "subtitles_enabled": false,
+    "subtitle_style": {
+      "additionalProp1": {}
+    }
+  },
+  "character_id": "string",
+  "output_dir": "string"
+}
 ```
-conda create -p ./venv python=3.9
-conda activate ./venv
-pip install -r requirements.txt
-```
-
-The code was tested with cuda 11.8
 
 
 # Running the code

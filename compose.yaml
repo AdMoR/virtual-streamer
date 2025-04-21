@@ -1,20 +1,5 @@
 version: '3'
 services:
-  tts:
-    build:
-      context: .
-      dockerfile: docker/docker_fr_tts/Dockerfile
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    ports:
-      - 8001:8001
-    networks:
-      - tts
   virtual_streamer:
     ports:
       - 8000:8000
@@ -27,24 +12,24 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     devices:
       - /dev/nvidia0:/dev/nvidia0
     depends_on:
       - tts
-      - rabbitmq
+      - entity_api
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-      - RMQ_HOST=rabbitmq
       - TTS_HOST=tts
       - OUT_VIDEO_FOLDER=/src/generations
       - S3_BUCKET_URL=virtual-streamer-output
       - AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
       - AWS_CONFIG_FILE=/root/.aws/config
+      - ENTITY_SERVICE_HOST=entity_api
     networks:
       - tts
-      - rabbit
+      - entity_api
     volumes:
       - $HOME/.aws/credentials:/root/.aws/credentials
       - $HOME/.aws/config:/root/.aws/config
@@ -53,17 +38,23 @@ services:
     env_file:
       - .env
     restart: always
-  rabbitmq:
-    image: rabbitmq:latest
+
+  tts:
+    build:
+      dockerfile: docker/docker_fr_tts/Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     ports:
-      - 5672:5672
-      - 15672:15672
-    volumes:
-      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
-      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+      - 8001:8001
     networks:
-      - rabbit
-  entity-api:
+      - tts
+
+  entity_api:
     build:
       context: .
       dockerfile: docker/docker_entity_api/Dockerfile
@@ -79,8 +70,10 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       # Optional: For local S3 like MinIO
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+    volumes:
+      - entities:/data
     networks:
-      - video_entity_net
+      - entity_api
 
 
 volumes:
@@ -88,17 +81,22 @@ volumes:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data/virtual_streamer_folder/videos
+      device: /media/amor/data1/virtual_streamer_folder/videos
       o: bind
   traces:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data/virtual_streamer_folder/prompts
+      device: /media/amor/data1/virtual_streamer_folder/prompts
+      o: bind
+  entities:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /media/amor/data1/virtual_streamer_folder/entities
       o: bind
 
 
 networks:
   tts:
-  rabbit:
-  video_entity_net:
+  entity_api:

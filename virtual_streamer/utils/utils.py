@@ -139,6 +139,7 @@ def speech_to_text_call(audio_path, prompt=""):
 def txt_to_speech_call(speech_lines, speaker, outpath):
     host = os.environ.get("TTS_HOST", "localhost")
     safe_string = parse.quote_plus(speech_lines)
+    speaker = "male-pt-3%0A"
     url = f"http://{host}:5002/api/tts?text={safe_string}&speaker_id={speaker}&style_wav=&language_id=fr-fr"
 
     rez = subprocess.run(["curl", "-L", "-X", "GET", url, "--output", outpath])

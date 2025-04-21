@@ -70,7 +70,7 @@ def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_resu
 
 
 def preprocess(args: Config, video_path: str, name: str, detector: Callable[Any, Any],
-               face_detection_groups: Dict[str, FaceDetectionGroup]):
+               face_detection_groups: Dict[str, FaceDetectionGroup]) -> None:
     video_stream = cv2.VideoCapture(video_path)
     fps = video_stream.get(cv2.CAP_PROP_FPS)
     full_frames = list()
