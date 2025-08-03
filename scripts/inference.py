@@ -13,13 +13,11 @@ WEBSERVICE_URL = os.environ.get("WEBSERVICE_URL", "http://localhost:5000")
 
 def main(question):
     """Process a question by calling the web service"""
-    # Step 1 - Get the response from GPT 3.5
+    # Step 1 - Get the response from GPT
     if question.prompt is None:
         question.prompt = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
     query = question.render()
-
-    completion = gpt_call(query)
-    text = completion
+    text = gpt_call(query)
     
     # Save the query and response for debugging
     os.makedirs("prompts", exist_ok=True)
