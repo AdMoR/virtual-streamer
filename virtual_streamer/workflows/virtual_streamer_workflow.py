@@ -28,7 +28,7 @@ class VideoEvent(Event):
 
 class VirtualStreamerWorkflow(Workflow):
 
-    llm = OpenAI(model="gpt-4o-mini", temperature=0.1)
+    llm = OpenAI(model="gpt-4.1-mini", temperature=0.1)
     wav2lip_fn: Callable[[str, str, str, FaceDetectionGroup], str] = None
     txt_to_speech_call: Callable[[str, str, str], str] = None
 

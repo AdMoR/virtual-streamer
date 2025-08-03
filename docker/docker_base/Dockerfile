@@ -13,4 +13,4 @@ COPY ./demo.py .
 COPY ./character_setup.py .
 COPY ./utils.py .
 
-ENTRYPOINT ["python3", "demo.py"]
+ENTRYPOINT ["python3", "apps/demo.py"]

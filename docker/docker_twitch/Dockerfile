@@ -7,8 +7,8 @@ WORKDIR $WORKDIR
 COPY ./requirements_cpu.txt .
 RUN pip install -r requirements_cpu.txt
 
-COPY ./prompts.py .
-COPY ./utils.py .
-COPY ./chat_reader.py .
+COPY ./virtual_streamer .
+COPY ./setup.py .
+RUN pip install -e .
 
-ENTRYPOINT ["python3", "chat_reader.py"]
+ENTRYPOINT ["python3", "virtual_streamer/twitch/chat_reader.py"]

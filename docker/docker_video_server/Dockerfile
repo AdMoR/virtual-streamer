@@ -9,8 +9,10 @@ RUN apt update && apt install ffmpeg -y
 COPY ./requirements_cpu.txt .
 RUN pip install -r requirements_cpu.txt
 
-COPY ./video_server.py .
-COPY ./utils.py .
-COPY ./prompts.py .
+COPY ./virtual_streamer .
+COPY ./setup.py .
+RUN pip install -e .
 
-ENTRYPOINT ["python3", "video_server.py"]
+COPY ./apps/obs_video_server.py .
+
+ENTRYPOINT ["python3", "obs_video_server.py"]
