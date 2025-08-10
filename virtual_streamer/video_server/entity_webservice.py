@@ -1,5 +1,5 @@
 import boto3
-from fastapi import FastAPI, HTTPException, Depends, status, Body, Query
+from fastapi import FastAPI, HTTPException, Depends, status, Body, Query, Form, File, UploadFile
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
@@ -19,6 +19,7 @@ from virtual_streamer.video_server.models import (
     )
 from virtual_streamer.utils.s3_client import AsyncS3Client
 from virtual_streamer.utils.local_fs_client import LocalFSClient
+import aiofiles
 
 
 # --- Configuration ---
@@ -196,15 +197,37 @@ async def delete_collection(collection_id: str):
 # --- Character Endpoints ---
 
 @app.post("/characters", response_model=Character, status_code=status.HTTP_201_CREATED, tags=["Characters"])
-async def create_character(character_data: CharacterCreate):
-    """Creates a new Character definition."""
-    character_id = character_data.name
+async def create_character(
+    name: str = Form(...),
+    description: str = Form(None),
+    voice_samples: str = Form(...),
+    tts_model_config: Optional[str] = Form(None),
+    video_file: UploadFile = File(None)
+):
+    """Creates a new Character definition with optional representative video upload."""
+    character_id = name
     now = datetime.utcnow()
+    # Parse voice_samples JSON string into list of VoiceSample objects
+    voice_samples_list = [VoiceSample(**vs) for vs in json.loads(voice_samples)]
+    tts_config = json.loads(tts_model_config) if tts_model_config else None
+
+    video_path = None
+    if video_file:
+        ext = os.path.splitext(video_file.filename)[1]
+        video_key = f"{S3_PREFIX_CHARACTERS}{character_id}{ext}"
+        full_path = s3_cli._get_full_path(video_key)
+        async with aiofiles.open(full_path, "wb") as out_file:
+            content = await video_file.read()
+            await out_file.write(content)
+        video_path = video_key
+
     character = Character(
-        character_id=character_data.name,
-        name=character_data.name,
-        description=character_data.description,
-        voice_samples=character_data.voice_samples,
+        character_id=character_id,
+        name=name,
+        description=description,
+        voice_samples=voice_samples_list,
+        tts_model_config=tts_config,
+        video_clip_path=video_path,
         created_at=now,
         updated_at=now
     )

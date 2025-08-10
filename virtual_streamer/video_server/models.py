@@ -97,6 +97,7 @@ class VoiceSample(BaseModel):
 class CharacterBase(BaseModel):
     name: str = Field(..., description="Display name of the character/voice")
     description: Optional[str] = Field(None, description="Optional description")
+    video_clip_path: Optional[str] = Field(None, description="Storage path or URL to the representative video clip")
 
 class CharacterCreate(CharacterBase):
     voice_samples: List[VoiceSample] = Field(..., min_items=0, description="Samples used to define/clone the voice")
