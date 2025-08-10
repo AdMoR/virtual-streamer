@@ -47,6 +47,7 @@ def call_process_endpoint(question_text, character_name, subtitle_mode, gpt_resp
 
 st.set_page_config(page_title="GenAI Video Builder", layout="wide")
 st.title("🎬 GenAI Video Builder")
+tab1, tab2 = st.tabs(["Generate Video", "Create Character"])
 
 # Import the characters from the backend configuration module
 # Ensure this path is correct relative to where you run streamlit
@@ -129,6 +130,32 @@ if generate_button:
             status_placeholder.error("❌ Video generation failed.")
 
 # --- Optional: Add instructions or info ---
+with tab2:
+    st.header("Create New Character")
+    name = st.text_input("Name", key="new_char_name")
+    description = st.text_area("Description", key="new_char_desc")
+    voice_samples = st.text_area("Voice Samples (JSON)", "[]", key="new_char_vs")
+    tts_config = st.text_area("TTS Model Config (JSON)", "", key="new_char_tts")
+    video_file = st.file_uploader("Representative Video", type=["mp4", "mov", "avi"], key="new_char_video")
+    if st.button("Create Character", key="create_char_btn"):
+        if not name:
+            st.warning("Character name is required.")
+        else:
+            data = {
+                "name": name,
+                "description": description,
+                "voice_samples": voice_samples,
+                "tts_model_config": tts_config
+            }
+            files = {"video_file": (video_file.name, video_file.getvalue(), video_file.type)} if video_file else {}
+            try:
+                resp = requests.post(f"{BACKEND_URL}/characters", data=data, files=files, timeout=60)
+                resp.raise_for_status()
+                st.success(f"Character '{name}' created successfully!")
+                # Optionally reload or update available_characters list here
+            except requests.RequestException as e:
+                st.error(f"Failed to create character: {e}")
+    st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.info(f"Backend Service URL: {BACKEND_URL}")
 st.sidebar.markdown("""
