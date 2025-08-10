@@ -18,7 +18,7 @@ from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_
 from virtual_streamer.utils.utils import (sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle,
                                           s3_upload, SubtitleMode)
 # Import relevant models from video_server
-from virtual_streamer.video_server.models import DialogueEntry, Character, VideoClipBase, VideoOptions, CharacterCreate
+from virtual_streamer.video_server.models import DialogueEntry, Character, VideoClipBase, VideoOptions, CharacterBase
 from virtual_streamer.workflows.character_setup import CHARACTERS
 from virtual_streamer.video_server.utils import get_character_data
 
@@ -268,19 +268,7 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
         character: Character = await get_character_data(character_name)
     except HTTPException:
         character_url = f"http://{ENTITY_SERVICE_HOST}:8002/characters"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(character_url,
-                                         data=CharacterCreate(
-                                            name="Jesus",
-                                            description="This is Jesus",
-                                            voice_samples=list(),
-                                            tts_model_config={"voice": "male-en-fr"}).model_dump(),
-                                         headers={"Content-Type": "application/json"},
-                                         )
-            response.raise_for_status()  # Raise exception for 4xx/5xx responses
-            result_dict = response.json()
-            character: Character = Character.model_validate(result_dict)
-
+        raise Exception(f"Failed to fetch character '{character.name}': {character_url}")
 
     # --- Step 1: Get the audio for the response ---
     # This endpoint uses a fixed speaker for now. If it needs dynamic characters,

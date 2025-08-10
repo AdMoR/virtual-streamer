@@ -10,10 +10,7 @@ import json
 # Assuming models.py is in the same directory or accessible via PYTHONPATH
 from virtual_streamer.video_server.models import (
         VideoClip, VideoClipCreate, VideoClipMetadataInput, VideoClipBase,
-        Collection, CollectionCreate, CollectionUpdate, CollectionBase,
-        Character, CharacterCreate, CharacterBase, VoiceSample,
-        VideoProject, VideoProjectCreate, VideoProjectUpdate, VideoProjectBase,
-        Scene, SceneCreate, SceneBase, DialogueEntry, VideoOptions,
+        Character, CharacterBase, VoiceSample,DialogueEntry, VideoOptions,
         JobStatus, ValidationStatus, ValidationIssue, ProjectValidationResult,
         CharacterPresence # Ensure all needed models are imported
     )
@@ -120,79 +117,6 @@ async def delete_video_clip(clip_id: str):
     # Potential: Remove clip_id from associated collections
     return None
 
-# --- Collection Endpoints ---
-
-@app.post("/collections", response_model=Collection, status_code=status.HTTP_201_CREATED, tags=["Collections"])
-async def create_collection(collection_data: CollectionCreate):
-    """Creates a new Collection."""
-    collection_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-    collection = Collection(
-        collection_id=collection_id,
-        name=collection_data.name,
-        description=collection_data.description,
-        metadata=collection_data.metadata,
-        clip_ids=collection_data.clip_ids, # Validate these clip IDs exist?
-        created_at=now,
-        updated_at=now
-    )
-    s3_key = f"{S3_PREFIX_COLLECTIONS}/{collection_id}.json"
-    await s3_cli.s3_put_json(s3_key, collection.dict())
-    # Potential: Update clips if collection_data.clip_ids is not empty
-    return collection
-
-@app.get("/collections/{collection_id}", response_model=Collection, tags=["Collections"])
-async def get_collection(collection_id: str):
-    """Retrieves a specific Collection by its ID."""
-    s3_key = f"{S3_PREFIX_COLLECTIONS}/{collection_id}.json"
-    data = await s3_cli.s3_get_json(s3_key)
-    if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
-    return Collection(**data)
-
-@app.patch("/collections/{collection_id}", response_model=Collection, tags=["Collections"])
-async def update_collection(collection_id: str, update_data: CollectionUpdate):
-    """Updates specific fields of a Collection."""
-    s3_key = f"{S3_PREFIX_COLLECTIONS}/{collection_id}.json"
-    data = await s3_cli.s3_get_json(s3_key)
-    if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
-
-    collection = Collection(**data)
-    update_dict = update_data.dict(exclude_unset=True) # Get only fields that were provided
-    updated_collection = collection.copy(update=update_dict)
-    updated_collection.updated_at = datetime.utcnow()
-
-    # Handle potential changes in clip_ids (add/remove from clips?) - Complex interaction
-    # For simplicity, this PATCH only updates the collection's own record.
-    # Managing relationships might need dedicated endpoints or background tasks.
-
-    await s3_cli.s3_put_json(s3_key, updated_collection.dict())
-    return updated_collection
-
-@app.get("/collections", response_model=List[Collection], tags=["Collections"])
-async def list_collections(limit: int = Query(100, ge=1, le=1000)):
-    """Lists Collections. Limited results."""
-    keys = await s3_cli.s3_list_keys(S3_PREFIX_COLLECTIONS)
-    collections = []
-    count = 0
-    for key in keys:
-         if key.endswith('.json'):
-            data = await s3_cli.s3_get_json(key)
-            if data:
-                collections.append(Collection(**data))
-                count += 1
-                if count >= limit:
-                    break
-    return collections
-
-@app.delete("/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Collections"])
-async def delete_collection(collection_id: str):
-    """Deletes a Collection metadata record."""
-    s3_key = f"{S3_PREFIX_COLLECTIONS}/{collection_id}.json"
-    await s3_cli.s3_delete_object(s3_key)
-    # Potential: Remove this collection_id from associated clips
-    return None
 
 # --- Character Endpoints ---
 
