@@ -16,6 +16,7 @@ from virtual_streamer.video_server.models import (
     )
 from virtual_streamer.utils.s3_client import AsyncS3Client
 from virtual_streamer.utils.local_fs_client import LocalFSClient
+import aiofiles
 
 
 # --- Configuration ---
@@ -123,15 +124,24 @@ async def delete_video_clip(clip_id: str):
 async def create_character(
     name: str = Form(...),
     description: str = Form(None),
-    voice_samples: str = Form(...),
+    voice_files: List[UploadFile] = File(...),
+    transcripts: List[str] = Form(...),
     tts_model_config: Optional[str] = Form(None),
     video_file: UploadFile = File(None)
 ):
     """Creates a new Character definition with optional representative video upload."""
     character_id = name
     now = datetime.utcnow()
-    # Parse voice_samples JSON string into list of VoiceSample objects
-    voice_samples_list = [VoiceSample(**vs) for vs in json.loads(voice_samples)]
+    # Save uploaded voice sample files and build VoiceSample objects
+    voice_samples_list = []
+    for vf, tr in zip(voice_files, transcripts):
+        file_ext = os.path.splitext(vf.filename)[1]
+        sample_key = f"{S3_PREFIX_CHARACTERS}{character_id}/voice_samples/{uuid.uuid4()}{file_ext}"
+        full_path = s3_cli._get_full_path(sample_key)
+        async with aiofiles.open(full_path, "wb") as out_file:
+            content = await vf.read()
+            await out_file.write(content)
+        voice_samples_list.append(VoiceSample(sample_storage_path=sample_key, transcript=tr))
     tts_config = json.loads(tts_model_config) if tts_model_config else None
 
     video_path = None
