@@ -26,3 +26,4 @@ uvicorn[standard]
 requests
 httpx
 boto3
+python-multipart

@@ -1,6 +1,7 @@
 temp
 tmp
-venv
+.venv
 .ipynb_checkpoints
 prompts/*.json
 notebooks/*
+out_video_folder

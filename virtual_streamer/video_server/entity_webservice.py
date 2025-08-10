@@ -16,8 +16,6 @@ from virtual_streamer.video_server.models import (
     )
 from virtual_streamer.utils.s3_client import AsyncS3Client
 from virtual_streamer.utils.local_fs_client import LocalFSClient
-import aiofiles
-
 
 # --- Configuration ---
 S3_BUCKET_NAME = os.environ.get("ENTITY_S3_BUCKET", "your-entity-bucket-name") # Use a dedicated bucket or prefix
@@ -25,7 +23,7 @@ S3_BUCKET_NAME = os.environ.get("ENTITY_S3_BUCKET", "your-entity-bucket-name") #
 s3_cli = LocalFSClient("/data")
 
 S3_PREFIX_CLIPS = "clips/"
-S3_PREFIX_COLLECTIONS = "collections/"
+S3_PREFIX_AUDIO = "audios/"
 S3_PREFIX_CHARACTERS = "characters/"
 S3_PREFIX_PROJECTS = "projects/"
 
@@ -127,7 +125,7 @@ async def create_character(
     voice_files: List[UploadFile] = File(...),
     transcripts: List[str] = Form(...),
     tts_model_config: Optional[str] = Form(None),
-    video_file: UploadFile = File(None)
+    video_file: UploadFile = File(...)
 ):
     """Creates a new Character definition with optional representative video upload."""
     character_id = name
@@ -135,17 +133,18 @@ async def create_character(
     # Save uploaded voice sample files and build VoiceSample objects
     voice_samples_list = []
     for vf, tr in zip(voice_files, transcripts):
-        file_ext = os.path.splitext(vf.filename)[1]
-        sample_key = f"{S3_PREFIX_CHARACTERS}{character_id}/voice_samples/{uuid.uuid4()}{file_ext}"
-        full_path = s3_cli._get_full_path(sample_key)
-        async with aiofiles.open(full_path, "wb") as out_file:
-            content = await vf.read()
-            await out_file.write(content)
-        voice_samples_list.append(VoiceSample(sample_storage_path=sample_key, transcript=tr))
-    tts_config = json.loads(tts_model_config) if tts_model_config else None
+        if not os.path.exists(vf.filename):
+            with open(vf.filename, 'wb') as file:
+                file.write(await vf.read())
+        print(">>>>> ", len(vf.file.read()), vf.filename, os.listdir())
+        s3_path = await s3_cli.s3_put_file(vf.filename, s3_prefix=S3_PREFIX_AUDIO)
+        voice_samples_list.append(VoiceSample(sample_storage_path=s3_path, transcript=tr))
 
     video_path = None
     if video_file:
+        if not os.path.exists(video_file.filename):
+            with open(video_file.filename, 'wb') as file:
+                file.write(await video_file.read())
         video_path = await s3_cli.s3_put_file(video_file.filename, s3_prefix=S3_PREFIX_CLIPS)
 
     character = Character(
@@ -153,7 +152,7 @@ async def create_character(
         name=name,
         description=description,
         voice_samples=voice_samples_list,
-        tts_model_config=tts_config,
+        tts_model_config=None,
         video_clip_path=video_path,
         created_at=now,
         updated_at=now

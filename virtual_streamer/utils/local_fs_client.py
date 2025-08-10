@@ -19,22 +19,22 @@ class LocalFSClient:
     def _get_full_path(self, key: str, prefix: str="") -> Path:
         """Constructs the full, absolute path for a given key and ensures it's within the base path."""
         full_path = (self.base_path / prefix / key).resolve()
+        full_path.parent.mkdir(parents=True, exist_ok=True)
         return full_path
 
     async def s3_put_json(self, key: str, data: Dict[str, Any]):
         """Saves a dictionary as a JSON file to the local filesystem."""
         full_path = self._get_full_path(key)
-        full_path.parent.mkdir(parents=True, exist_ok=True)
         with open(full_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, default=str) # Use default=str for datetime etc.
         print(f"Successfully wrote JSON to: {full_path}")
 
     async def s3_put_file(self, file_path: str, s3_prefix: str):
         """Saves a dictionary as a JSON file to the local filesystem."""
-        full_path = self._get_full_path(os.path.basename(file_path), s3_prefix)
+        full_path = self._get_full_path(os.path.basename(file_path), prefix=s3_prefix)
         shutil.copyfile(file_path, full_path)
         print(f"Successfully wrote file to: {full_path}")
-        return full_path
+        return str(full_path)
 
     async def s3_get_json(self, key: str) -> Optional[Dict[str, Any]]:
         """Loads and parses a JSON file from the local filesystem."""

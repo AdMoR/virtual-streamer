@@ -26,7 +26,7 @@ COPY ./virtual_streamer ./virtual_streamer
 # COPY ./other_needed_file.py .
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE 8002
 
 # Define the command to run the application using Uvicorn
 # Run the FastAPI app located at virtual_streamer/video_server/entity_webservice.py

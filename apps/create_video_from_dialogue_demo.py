@@ -53,12 +53,9 @@ tab1, tab2 = st.tabs(["Generate Video", "Create Character"])
 # Import the characters from the backend configuration module
 # Ensure this path is correct relative to where you run streamlit
 # or that the virtual_streamer package is installed/in PYTHONPATH
-try:
-    from virtual_streamer.workflows.character_setup import CHARACTERS
-    available_characters = list(CHARACTERS.keys())
-except ImportError:
-    st.error("Could not import character list from backend configuration. Using default.")
-    available_characters = ["Jesus", "Jamie", "de"] # Fallback list - ADJUST AS NEEDED
+from virtual_streamer.workflows.character_setup import CHARACTERS
+available_characters = list(CHARACTERS.keys())
+
 
 st.sidebar.header("Configuration")
 character_name = st.sidebar.selectbox("Select Character:", available_characters)
@@ -158,13 +155,10 @@ with tab2:
                     files.append(("voice_files", (vf.name, vf.getvalue(), vf.type)))
                 if video_file:
                     files.append(("video_file", (video_file.name, video_file.getvalue(), video_file.type)))
-                try:
-                    resp = requests.post(f"{ENTITY_URL}/characters", data=data, files=files, timeout=60)
+                resp = requests.post(f"{ENTITY_URL}/characters", data=data, files=files, timeout=60)
                 resp.raise_for_status()
                 st.success(f"Character '{name}' created successfully!")
                 # Optionally reload or update available_characters list here
-            except requests.RequestException as e:
-                st.error(f"Failed to create character: {e}")
     st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.info(f"Backend Service URL: {BACKEND_URL}")
