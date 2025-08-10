@@ -135,22 +135,31 @@ with tab2:
     st.header("Create New Character")
     name = st.text_input("Name", key="new_char_name")
     description = st.text_area("Description", key="new_char_desc")
-    voice_samples = st.text_area("Voice Samples (JSON)", "[]", key="new_char_vs")
+    voice_files = st.file_uploader("Voice Sample Files", type=["wav","mp3"], accept_multiple_files=True, key="new_char_voice_files")
+    transcripts_text = st.text_area("Transcripts (newline separated for each voice file)", "", key="new_char_transcripts")
     tts_config = st.text_area("TTS Model Config (JSON)", "", key="new_char_tts")
     video_file = st.file_uploader("Representative Video", type=["mp4", "mov", "avi"], key="new_char_video")
     if st.button("Create Character", key="create_char_btn"):
         if not name:
             st.warning("Character name is required.")
         else:
-            data = {
-                "name": name,
-                "description": description,
-                "voice_samples": voice_samples,
-                "tts_model_config": tts_config
-            }
-            files = {"video_file": (video_file.name, video_file.getvalue(), video_file.type)} if video_file else {}
-            try:
-                resp = requests.post(f"{ENTITY_URL}/characters", data=data, files=files, timeout=60)
+            transcripts_list = transcripts_text.splitlines()
+            if len(transcripts_list) != len(voice_files):
+                st.warning("Number of transcripts must match number of voice files.")
+            else:
+                data = {
+                    "name": name,
+                    "description": description,
+                    "transcripts": transcripts_list,
+                    "tts_model_config": tts_config
+                }
+                files = []
+                for vf in voice_files:
+                    files.append(("voice_files", (vf.name, vf.getvalue(), vf.type)))
+                if video_file:
+                    files.append(("video_file", (video_file.name, video_file.getvalue(), video_file.type)))
+                try:
+                    resp = requests.post(f"{ENTITY_URL}/characters", data=data, files=files, timeout=60)
                 resp.raise_for_status()
                 st.success(f"Character '{name}' created successfully!")
                 # Optionally reload or update available_characters list here
