@@ -180,6 +180,8 @@ async def list_characters(limit: int = Query(100, ge=1, le=1000)):
         if key.endswith('.json'):
             data = await s3_cli.s3_get_json(key)
             if data:
+                print(data)
+                data["video_clip_path"] = data.get("video_clip_path", "")
                 characters.append(Character(**data))
                 count += 1
                 if count >= limit:

@@ -3,16 +3,15 @@ import requests
 import os
 import time
 import httpx
-from virtual_streamer.utils.utils import speech_to_text_call, get_rmq_channel, ChatQuestion, \
-    VideoResponse, SubtitleMode, s3_download
+from virtual_streamer.utils.utils import s3_download
 from virtual_streamer.video_server.models import Character
-from virtual_streamer.video_server.utils import get_character_data_sync
+from virtual_streamer.video_server.utils import get_character_data_sync, get_characters_data
 
 # --- Configuration ---
 # Get the backend URL from environment variable or use a default
 BACKEND_URL = os.environ.get("BACKEND_WEBSERVICE_URL", "http://localhost:8000")
 PROCESS_ENDPOINT = f"{BACKEND_URL}/process"
-ENTITY_URL = os.environ.get("BACKEND_WEBSERVICE_URL", "http://localhost:8002")
+ENTITY_URL = os.environ.get("ENTITY_WEBSERVICE_URL", "http://localhost:8002")
 
 # --- Helper Functions ---
 
@@ -53,12 +52,11 @@ tab1, tab2 = st.tabs(["Generate Video", "Create Character"])
 # Import the characters from the backend configuration module
 # Ensure this path is correct relative to where you run streamlit
 # or that the virtual_streamer package is installed/in PYTHONPATH
-from virtual_streamer.workflows.character_setup import CHARACTERS
-available_characters = list(CHARACTERS.keys())
+available_characters = get_characters_data()
 
 
 st.sidebar.header("Configuration")
-character_name = st.sidebar.selectbox("Select Character:", available_characters)
+character = st.sidebar.selectbox("Select Character:", options=available_characters, format_func=lambda x: x.name)
 
 subtitle_options = ["NONE", "QUESTION", "VOICE_SUBTITLE"]
 subtitle_mode = st.sidebar.selectbox("Select Subtitle Mode:", subtitle_options)
@@ -79,14 +77,14 @@ if generate_button:
         st.warning("Please enter a question.")
     elif not gpt_response:
         st.warning("Please enter the desired response text.")
-    elif not character_name:
+    elif not character:
         st.warning("Please select a character.")
     else:
         video_placeholder.empty() # Clear previous video
         status_placeholder.info("🚀 Sending request to backend... Please wait.")
         start_time = time.time()
 
-        result = call_process_endpoint(question, character_name, subtitle_mode, gpt_response)
+        result = call_process_endpoint(question, character.name, subtitle_mode, gpt_response)
 
         end_time = time.time()
         processing_time = end_time - start_time

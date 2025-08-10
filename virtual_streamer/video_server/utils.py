@@ -30,13 +30,14 @@ def get_character_data_sync(character_id: str) -> Character:
         return character
 
 
-async def get_character_data(character_id: str) -> Character:
+def get_characters_data() -> list[Character]:
     """Helper function to fetch character data from the entity service."""
     character_url = f"http://{ENTITY_SERVICE_HOST}:8002/characters"
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0) as client:
         print(character_url)
-        response = await client.get(character_url)
+        response = client.get(character_url)
         response.raise_for_status() # Raise exception for 4xx/5xx responses
         result_dict = response.json()
-        character = Character.model_validate(k)
-        return character
+        print(result_dict)
+        characters = [Character.model_validate(k) for k in result_dict]
+        return characters
