@@ -16,7 +16,6 @@ from virtual_streamer.video_server.models import (
     )
 from virtual_streamer.utils.s3_client import AsyncS3Client
 from virtual_streamer.utils.local_fs_client import LocalFSClient
-import aiofiles
 
 
 # --- Configuration ---
