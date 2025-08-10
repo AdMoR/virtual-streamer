@@ -108,6 +108,7 @@ class Character(CharacterBase):
     name: str = Field(None, description="Optional description")
     voice_samples: List[VoiceSample] = Field(..., description="Samples used to define/clone the voice")
     tts_model_config: Optional[Dict[str, Any]] = None
+    video_clip_path: Optional[str] = Field(None, description="Storage path or URL to the representative video clip")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
