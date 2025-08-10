@@ -2,8 +2,11 @@ import streamlit as st
 import requests
 import os
 import time
+import httpx
 from virtual_streamer.utils.utils import speech_to_text_call, get_rmq_channel, ChatQuestion, \
     VideoResponse, SubtitleMode, s3_download
+from virtual_streamer.video_server.models import Character
+from virtual_streamer.video_server.utils import get_character_data_sync
 
 # --- Configuration ---
 # Get the backend URL from environment variable or use a default
@@ -23,6 +26,12 @@ def call_process_endpoint(question_text, character_name, subtitle_mode, gpt_resp
         },
         "gpt_response": gpt_response_text
     }
+    try:
+        character: Character = get_character_data_sync(character_name)
+    except httpx.HTTPStatusError:
+        st.error("Invalid character name")
+        return None
+
     try:
         response = requests.post(PROCESS_ENDPOINT, json=payload, timeout=360) # Increased timeout for potentially long process
         response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)

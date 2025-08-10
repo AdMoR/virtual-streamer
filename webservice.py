@@ -13,16 +13,14 @@ import datetime
 import subprocess
 import shutil
 from tqdm import tqdm
-# Removed: from virtual_streamer.workflows.character_setup import CHARACTERS
 from virtual_streamer.wav2lip import audio
 from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load, FaceDetectionGroup
 from virtual_streamer.utils.utils import (sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle,
                                           s3_upload, SubtitleMode)
-from virtual_streamer.workflows.prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
-    STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
 # Import relevant models from video_server
 from virtual_streamer.video_server.models import DialogueEntry, Character, VideoClipBase, VideoOptions, CharacterCreate
 from virtual_streamer.workflows.character_setup import CHARACTERS
+from virtual_streamer.video_server.utils import get_character_data
 
 
 # --- Pydantic Models ---
@@ -86,18 +84,6 @@ face_detection_groups: Dict[str, FaceDetectionGroup] = {}
 UPLOAD_BUCKET = os.environ.get("S3_BUCKET_URL", "default-bucket")
 ENTITY_SERVICE_HOST = os.environ.get("ENTITY_SERVICE_HOST", "0.0.0.0").rstrip('/') # Ensure no trailing slash
 
-
-async def get_character_data(character_id: str) -> Character:
-    """Helper function to fetch character data from the entity service."""
-    character_url = f"http://{ENTITY_SERVICE_HOST}:8002/characters/{character_id}"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        print(character_url)
-        response = await client.get(character_url)
-        response.raise_for_status() # Raise exception for 4xx/5xx responses
-        result_dict = response.json()
-        print(">>>> ", result_dict)
-        character = Character.model_validate(result_dict)
-        return character
 
 
 @app.post("/generate-tts", response_model=TTSApiResponse)
@@ -279,7 +265,7 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
     name = question_data.name
 
     try:
-        character: Character = await get_character_data("Jesus")
+        character: Character = await get_character_data(character_name)
     except HTTPException:
         character_url = f"http://{ENTITY_SERVICE_HOST}:8002/characters"
         async with httpx.AsyncClient(timeout=30.0) as client:
