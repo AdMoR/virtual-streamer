@@ -12,6 +12,7 @@ from virtual_streamer.video_server.utils import get_character_data_sync
 # Get the backend URL from environment variable or use a default
 BACKEND_URL = os.environ.get("BACKEND_WEBSERVICE_URL", "http://localhost:8000")
 PROCESS_ENDPOINT = f"{BACKEND_URL}/process"
+ENTITY_URL = os.environ.get("BACKEND_WEBSERVICE_URL", "http://localhost:8002")
 
 # --- Helper Functions ---
 
@@ -149,7 +150,7 @@ with tab2:
             }
             files = {"video_file": (video_file.name, video_file.getvalue(), video_file.type)} if video_file else {}
             try:
-                resp = requests.post(f"{BACKEND_URL}/characters", data=data, files=files, timeout=60)
+                resp = requests.post(f"{ENTITY_URL}/characters", data=data, files=files, timeout=60)
                 resp.raise_for_status()
                 st.success(f"Character '{name}' created successfully!")
                 # Optionally reload or update available_characters list here
