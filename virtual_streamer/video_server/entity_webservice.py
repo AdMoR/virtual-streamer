@@ -213,13 +213,7 @@ async def create_character(
 
     video_path = None
     if video_file:
-        ext = os.path.splitext(video_file.filename)[1]
-        video_key = f"{S3_PREFIX_CHARACTERS}{character_id}{ext}"
-        full_path = s3_cli._get_full_path(video_key)
-        async with aiofiles.open(full_path, "wb") as out_file:
-            content = await video_file.read()
-            await out_file.write(content)
-        video_path = video_key
+        video_path = await s3_cli.s3_put_file(video_file.filename, s3_prefix=S3_PREFIX_CLIPS)
 
     character = Character(
         character_id=character_id,

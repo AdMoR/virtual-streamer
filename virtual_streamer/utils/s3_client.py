@@ -14,16 +14,16 @@ class AsyncS3Client:
 
     async def s3_put_json(self, key: str, data: dict):
         """Uploads a dictionary as a JSON object to S3."""
-        try:
-            self.s3_client.put_object(
-                Bucket=self.S3_BUCKET_NAME,
-                Key=key,
-                Body=json.dumps(data, indent=2, default=str), # Use default=str for datetime
-                ContentType="application/json"
-            )
-        except ClientError as e:
-            print(f"Error uploading to S3 key {key}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"S3 upload error: {e}")
+        self.s3_client.put_object(
+            Bucket=self.S3_BUCKET_NAME,
+            Key=key,
+            Body=json.dumps(data, indent=2, default=str), # Use default=str for datetime
+            ContentType="application/json"
+        )
+
+    async def s3_put_video_file(self, video_path: str, s3_prefix: str):
+        """Uploads a dictionary as a JSON object to S3."""
+        self.s3_client.upload_file(video_path, self.S3_BUCKET_NAME, f"{s3_prefix}/{os.path.basename(video_path)}")
 
     async def s3_get_json(self, key: str) -> Optional[dict]:
         """Downloads and parses a JSON object from S3."""
@@ -35,10 +35,7 @@ class AsyncS3Client:
             if e.response['Error']['Code'] == 'NoSuchKey':
                 return None
             print(f"Error downloading from S3 key {key}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"S3 download error: {e}")
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON from S3 key {key}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="S3 object is not valid JSON.")
+            raise e
 
     async def s3_delete_object(self, key: str):
         """Deletes an object from S3."""

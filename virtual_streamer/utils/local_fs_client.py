@@ -13,31 +13,28 @@ class LocalFSClient:
     def __init__(self, base_path: str):
         self.base_path = Path(base_path).resolve()
         # Ensure the base directory exists
-        try:
-            self.base_path.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            print(f"Error creating base directory {self.base_path}: {e}")
-            # Depending on use case, might want to raise an exception here
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to initialize local storage base path: {e}")
+        self.base_path.mkdir(parents=True, exist_ok=True)
         print(f"Initialized LocalFSClient with base path: {self.base_path}")
 
-    def _get_full_path(self, key: str) -> Path:
+    def _get_full_path(self, key: str, prefix: str="") -> Path:
         """Constructs the full, absolute path for a given key and ensures it's within the base path."""
-        full_path = (self.base_path / key).resolve()
+        full_path = (self.base_path / prefix / key).resolve()
         return full_path
 
     async def s3_put_json(self, key: str, data: Dict[str, Any]):
         """Saves a dictionary as a JSON file to the local filesystem."""
         full_path = self._get_full_path(key)
-        print("Full path = ", full_path)
-        try:
-            # Ensure parent directory exists
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(full_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, default=str) # Use default=str for datetime etc.
-            print(f"Successfully wrote JSON to: {full_path}")
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"JSON serialization error: {e}")
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, default=str) # Use default=str for datetime etc.
+        print(f"Successfully wrote JSON to: {full_path}")
+
+    async def s3_put_file(self, file_path: str, s3_prefix: str):
+        """Saves a dictionary as a JSON file to the local filesystem."""
+        full_path = self._get_full_path(os.path.basename(file_path), s3_prefix)
+        shutil.copyfile(file_path, full_path)
+        print(f"Successfully wrote file to: {full_path}")
+        return full_path
 
     async def s3_get_json(self, key: str) -> Optional[Dict[str, Any]]:
         """Loads and parses a JSON file from the local filesystem."""
@@ -50,20 +47,16 @@ class LocalFSClient:
     async def s3_delete_object(self, key: str):
         """Deletes a file from the local filesystem."""
         full_path = self._get_full_path(key)
-        try:
-            if full_path.is_file():
-                os.remove(full_path)
-                print(f"Successfully deleted file: {full_path}")
-            elif full_path.exists():
-                print(f"Path exists but is not a file, not deleting: {full_path}")
-                # Or raise error if deleting non-files is unexpected
-            else:
-                 print(f"File not found, nothing to delete: {full_path}")
-                 pass # Deleting non-existent is often treated as success (idempotent)
-        except OSError as e:
-            print(f"Error deleting local file {full_path}: {e}")
-            # Decide if this should be a critical error or just logged
-            # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Local filesystem delete error: {e}")
+        if full_path.is_file():
+            os.remove(full_path)
+            print(f"Successfully deleted file: {full_path}")
+        elif full_path.exists():
+            print(f"Path exists but is not a file, not deleting: {full_path}")
+            # Or raise error if deleting non-files is unexpected
+        else:
+             print(f"File not found, nothing to delete: {full_path}")
+             pass # Deleting non-existent is often treated as success (idempotent)
+
 
     async def s3_list_keys(self, prefix: str) -> List[str]:
         """Lists keys (relative paths) matching a prefix within the base path."""
@@ -94,21 +87,16 @@ class LocalFSClient:
                      return [] # Should not happen if logic is correct
              return []
 
-
-        try:
-            for item in prefix_path.rglob('*'): # Recursive glob
-                if item.is_file():
-                    # Convert absolute path back to relative key
-                    try:
-                        relative_path = item.relative_to(self.base_path)
-                        # Normalize slashes to be consistent with S3 keys (forward slash)
-                        keys.append(str(relative_path).replace(os.sep, '/'))
-                    except ValueError:
-                        # This shouldn't happen if item is within prefix_path which is within base_path
-                        print(f"Warning: Found item {item} outside base path during listing?")
-                        continue
-        except OSError as e:
-            print(f"Error listing local directory {prefix_path}: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Local filesystem list error: {e}")
+        for item in prefix_path.rglob('*'): # Recursive glob
+            if item.is_file():
+                # Convert absolute path back to relative key
+                try:
+                    relative_path = item.relative_to(self.base_path)
+                    # Normalize slashes to be consistent with S3 keys (forward slash)
+                    keys.append(str(relative_path).replace(os.sep, '/'))
+                except ValueError:
+                    # This shouldn't happen if item is within prefix_path which is within base_path
+                    print(f"Warning: Found item {item} outside base path during listing?")
+                    continue
 
         return keys
