@@ -4,9 +4,16 @@ from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import anthropic
+import mlflow
 
 # Initialize Anthropic client
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+# MLflow configuration
+MLFLOW_TRACKING_URI = "http://localhost:5000"
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+EXPERIMENT_NAME = "cest_pas_sorcier_parody_evaluation"
+mlflow.set_experiment(EXPERIMENT_NAME)
 
 
 @dataclass
@@ -45,9 +52,15 @@ class CestPasSorcierParodyScorer:
     1. Character Voice & Personality Authenticity
     2. Comedic Structure & Absurdity
     3. Cultural & Contextual Relevance
+    
+    Prompts are stored and retrieved from MLflow for version control.
     """
 
-    RUBRIC_1_PROMPT = """You are an expert evaluator of "C'est pas Sorcier" parody humor.
+    RUBRIC_1_PROMPT_NAME = "rubric_1_character_voice"
+    RUBRIC_2_PROMPT_NAME = "rubric_2_comedic_structure"
+    RUBRIC_3_PROMPT_NAME = "rubric_3_cultural_relevance"
+
+    RUBRIC_1_PROMPT_TEMPLATE = """You are an expert evaluator of "C'est pas Sorcier" parody humor.
 
 Evaluate the following story based on RUBRIC 1: Character Voice & Personality Authenticity
 
@@ -71,7 +84,7 @@ Provide your evaluation in the following JSON format:
     "feedback": "<overall feedback for this rubric>"
 }}"""
 
-    RUBRIC_2_PROMPT = """You are an expert evaluator of "C'est pas Sorcier" parody humor.
+    RUBRIC_2_PROMPT_TEMPLATE = """You are an expert evaluator of "C'est pas Sorcier" parody humor.
 
 Evaluate the following story based on RUBRIC 2: Comedic Structure & Absurdity
 
@@ -95,7 +108,7 @@ Provide your evaluation in the following JSON format:
     "feedback": "<overall feedback for this rubric>"
 }}"""
 
-    RUBRIC_3_PROMPT = """You are an expert evaluator of "C'est pas Sorcier" parody humor.
+    RUBRIC_3_PROMPT_TEMPLATE = """You are an expert evaluator of "C'est pas Sorcier" parody humor.
 
 Evaluate the following story based on RUBRIC 3: Cultural & Contextual Relevance
 
@@ -122,6 +135,75 @@ Provide your evaluation in the following JSON format:
     def __init__(self):
         """Initialize the scorer"""
         self.model = "claude-3-5-sonnet-20241022"
+        self._initialize_prompts_in_mlflow()
+
+    def _initialize_prompts_in_mlflow(self):
+        """Initialize prompts in MLflow if they don't exist"""
+        try:
+            # Check if prompts already exist in MLflow
+            self._get_prompt_from_mlflow(self.RUBRIC_1_PROMPT_NAME)
+        except Exception:
+            # If not, register them
+            self._register_prompt_in_mlflow(
+                self.RUBRIC_1_PROMPT_NAME,
+                self.RUBRIC_1_PROMPT_TEMPLATE,
+                "Rubric 1: Character Voice & Personality Authenticity"
+            )
+            self._register_prompt_in_mlflow(
+                self.RUBRIC_2_PROMPT_NAME,
+                self.RUBRIC_2_PROMPT_TEMPLATE,
+                "Rubric 2: Comedic Structure & Absurdity"
+            )
+            self._register_prompt_in_mlflow(
+                self.RUBRIC_3_PROMPT_NAME,
+                self.RUBRIC_3_PROMPT_TEMPLATE,
+                "Rubric 3: Cultural & Contextual Relevance"
+            )
+
+    def _register_prompt_in_mlflow(self, prompt_name: str, prompt_template: str, description: str):
+        """Register a prompt in MLflow"""
+        with mlflow.start_run():
+            mlflow.log_param("prompt_name", prompt_name)
+            mlflow.log_param("description", description)
+            mlflow.log_text(prompt_template, f"{prompt_name}.txt")
+            mlflow.set_tag("prompt_type", "evaluation_rubric")
+
+    def _get_prompt_from_mlflow(self, prompt_name: str) -> str:
+        """Retrieve a prompt from MLflow"""
+        experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
+        if not experiment:
+            raise ValueError(f"Experiment {EXPERIMENT_NAME} not found")
+        
+        runs = mlflow.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            filter_string=f"params.prompt_name = '{prompt_name}'",
+            max_results=1
+        )
+        
+        if not runs.empty:
+            run_id = runs.iloc[0]["run_id"]
+            artifacts = mlflow.artifacts.download_artifacts(
+                run_id=run_id,
+                artifact_path="",
+                dst_path=None
+            )
+            # Return the template based on prompt name
+            if prompt_name == self.RUBRIC_1_PROMPT_NAME:
+                return self.RUBRIC_1_PROMPT_TEMPLATE
+            elif prompt_name == self.RUBRIC_2_PROMPT_NAME:
+                return self.RUBRIC_2_PROMPT_TEMPLATE
+            elif prompt_name == self.RUBRIC_3_PROMPT_NAME:
+                return self.RUBRIC_3_PROMPT_TEMPLATE
+        
+        # Fallback to template if not found in MLflow
+        if prompt_name == self.RUBRIC_1_PROMPT_NAME:
+            return self.RUBRIC_1_PROMPT_TEMPLATE
+        elif prompt_name == self.RUBRIC_2_PROMPT_NAME:
+            return self.RUBRIC_2_PROMPT_TEMPLATE
+        elif prompt_name == self.RUBRIC_3_PROMPT_NAME:
+            return self.RUBRIC_3_PROMPT_TEMPLATE
+        
+        raise ValueError(f"Prompt {prompt_name} not found")
 
     def _call_claude_for_rubric(self, prompt: str) -> Dict:
         """Call Claude API to evaluate a rubric"""
@@ -184,46 +266,67 @@ Provide your evaluation in the following JSON format:
         Returns:
             ParodyEvaluation object with all scores and feedback
         """
-        print("Evaluating story with Rubric 1: Character Voice & Personality Authenticity...")
-        rubric_1_response = self._call_claude_for_rubric(
-            self.RUBRIC_1_PROMPT.format(story=story)
-        )
-        rubric_1_result = self._parse_rubric_response(rubric_1_response, "Character Voice & Personality Authenticity")
-        
-        print("Evaluating story with Rubric 2: Comedic Structure & Absurdity...")
-        rubric_2_response = self._call_claude_for_rubric(
-            self.RUBRIC_2_PROMPT.format(story=story)
-        )
-        rubric_2_result = self._parse_rubric_response(rubric_2_response, "Comedic Structure & Absurdity")
-        
-        print("Evaluating story with Rubric 3: Cultural & Contextual Relevance...")
-        rubric_3_response = self._call_claude_for_rubric(
-            self.RUBRIC_3_PROMPT.format(story=story)
-        )
-        rubric_3_result = self._parse_rubric_response(rubric_3_response, "Cultural & Contextual Relevance")
-        
-        # Calculate overall score
-        total_score = (rubric_1_result.total_score + 
-                      rubric_2_result.total_score + 
-                      rubric_3_result.total_score)
-        max_total = (rubric_1_result.max_total_score + 
-                    rubric_2_result.max_total_score + 
-                    rubric_3_result.max_total_score)
-        overall_score = (total_score / max_total) * 100 if max_total > 0 else 0
-        
-        # Generate overall feedback
-        overall_feedback = self._generate_overall_feedback(
-            rubric_1_result, rubric_2_result, rubric_3_result, overall_score
-        )
-        
-        return ParodyEvaluation(
-            story=story,
-            rubric_1_result=rubric_1_result,
-            rubric_2_result=rubric_2_result,
-            rubric_3_result=rubric_3_result,
-            overall_score=overall_score,
-            overall_feedback=overall_feedback
-        )
+        with mlflow.start_run():
+            # Log the story being evaluated
+            mlflow.log_text(story, "story_evaluated.txt")
+            
+            print("Evaluating story with Rubric 1: Character Voice & Personality Authenticity...")
+            rubric_1_prompt = self._get_prompt_from_mlflow(self.RUBRIC_1_PROMPT_NAME)
+            rubric_1_response = self._call_claude_for_rubric(
+                rubric_1_prompt.format(story=story)
+            )
+            rubric_1_result = self._parse_rubric_response(rubric_1_response, "Character Voice & Personality Authenticity")
+            
+            print("Evaluating story with Rubric 2: Comedic Structure & Absurdity...")
+            rubric_2_prompt = self._get_prompt_from_mlflow(self.RUBRIC_2_PROMPT_NAME)
+            rubric_2_response = self._call_claude_for_rubric(
+                rubric_2_prompt.format(story=story)
+            )
+            rubric_2_result = self._parse_rubric_response(rubric_2_response, "Comedic Structure & Absurdity")
+            
+            print("Evaluating story with Rubric 3: Cultural & Contextual Relevance...")
+            rubric_3_prompt = self._get_prompt_from_mlflow(self.RUBRIC_3_PROMPT_NAME)
+            rubric_3_response = self._call_claude_for_rubric(
+                rubric_3_prompt.format(story=story)
+            )
+            rubric_3_result = self._parse_rubric_response(rubric_3_response, "Cultural & Contextual Relevance")
+            
+            # Calculate overall score
+            total_score = (rubric_1_result.total_score + 
+                          rubric_2_result.total_score + 
+                          rubric_3_result.total_score)
+            max_total = (rubric_1_result.max_total_score + 
+                        rubric_2_result.max_total_score + 
+                        rubric_3_result.max_total_score)
+            overall_score = (total_score / max_total) * 100 if max_total > 0 else 0
+            
+            # Generate overall feedback
+            overall_feedback = self._generate_overall_feedback(
+                rubric_1_result, rubric_2_result, rubric_3_result, overall_score
+            )
+            
+            # Log metrics to MLflow
+            mlflow.log_metric("overall_score", overall_score)
+            mlflow.log_metric("rubric_1_score", rubric_1_result.total_score)
+            mlflow.log_metric("rubric_2_score", rubric_2_result.total_score)
+            mlflow.log_metric("rubric_3_score", rubric_3_result.total_score)
+            
+            # Log individual dimension scores
+            for score in rubric_1_result.scores:
+                mlflow.log_metric(f"rubric_1_{score.dimension.lower().replace(' ', '_')}", score.score)
+            for score in rubric_2_result.scores:
+                mlflow.log_metric(f"rubric_2_{score.dimension.lower().replace(' ', '_')}", score.score)
+            for score in rubric_3_result.scores:
+                mlflow.log_metric(f"rubric_3_{score.dimension.lower().replace(' ', '_')}", score.score)
+            
+            return ParodyEvaluation(
+                story=story,
+                rubric_1_result=rubric_1_result,
+                rubric_2_result=rubric_2_result,
+                rubric_3_result=rubric_3_result,
+                overall_score=overall_score,
+                overall_feedback=overall_feedback
+            )
 
     def _generate_overall_feedback(self, r1: RubricResult, r2: RubricResult, 
                                    r3: RubricResult, score: float) -> str:
@@ -318,6 +421,8 @@ Alors, qu'est-ce que t'en penses, Jamy ?"""
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(report)
     print(f"\nReport saved to {output_file}")
+    print(f"\nMLflow tracking URI: {MLFLOW_TRACKING_URI}")
+    print("View results at: http://localhost:5000")
 
 
 if __name__ == "__main__":
