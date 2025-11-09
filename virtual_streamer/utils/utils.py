@@ -18,6 +18,7 @@ import abc
 from abc import ABC
 import boto3
 from botocore.exceptions import NoCredentialsError
+import ormsgpack
 
 
 queue_directory = "./"
@@ -186,6 +187,89 @@ def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
     with open(outpath, "wb") as f:
         f.write(response.content)
     return outpath
+
+
+def txt_to_speech_call_fish(speech_lines, reference_audio=None, reference_text=None, 
+                            reference_id=None, outpath=None, format="wav",
+                            max_new_tokens=1024, chunk_length=300, top_p=0.8,
+                            repetition_penalty=1.1, temperature=0.8, 
+                            use_memory_cache="off", seed=None):
+    """
+    Call fish-speech TTS API to generate speech.
+    
+    Args:
+        speech_lines: Text to be synthesized
+        reference_audio: Path to reference audio file (optional)
+        reference_text: Reference text for voice cloning (optional)
+        reference_id: ID of pre-configured reference (optional)
+        outpath: Output file path
+        format: Output format (wav, mp3, flac)
+        max_new_tokens: Maximum new tokens to generate (0 means no limit)
+        chunk_length: Chunk length for synthesis
+        top_p: Top-p sampling parameter
+        repetition_penalty: Repetition penalty
+        temperature: Temperature for sampling
+        use_memory_cache: Cache encoded references in memory ("on" or "off")
+        seed: Random seed for deterministic generation (None for random)
+    
+    Returns:
+        Path to generated audio file
+    """
+    host = os.environ.get("FISH_TTS_HOST", "fish-speech-server")
+    port = os.environ.get("FISH_TTS_PORT", "8080")
+    api_key = os.environ.get("FISH_TTS_API_KEY", "YOUR_API_KEY")
+    url = f"http://{host}:{port}/v1/tts"
+    
+    if outpath is None:
+        outpath = tempfile.mktemp(suffix=f".{format}")
+    
+    # Prepare reference audio if provided
+    references = []
+    if reference_audio is not None and reference_text is not None:
+        with open(reference_audio, 'rb') as f:
+            audio_bytes = f.read()
+        references.append({
+            "audio": audio_bytes,
+            "text": reference_text
+        })
+    
+    # Prepare request data
+    data = {
+        "text": speech_lines,
+        "references": references,
+        "reference_id": reference_id,
+        "format": format,
+        "max_new_tokens": max_new_tokens,
+        "chunk_length": chunk_length,
+        "top_p": top_p,
+        "repetition_penalty": repetition_penalty,
+        "temperature": temperature,
+        "streaming": False,
+        "use_memory_cache": use_memory_cache,
+        "seed": seed,
+    }
+    
+    # Send request
+    try:
+        response = requests.post(
+            url,
+            params={"format": "msgpack"},
+            data=ormsgpack.packb(data),
+            headers={
+                "authorization": f"Bearer {api_key}",
+                "content-type": "application/msgpack",
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            with open(outpath, "wb") as f:
+                f.write(response.content)
+            return outpath
+        else:
+            raise Exception(f"Fish TTS request failed with status code {response.status_code}: {response.text}")
+    except Exception as e:
+        raise Exception(f"Fish TTS call failed: {str(e)}")
 
 
 class SubtitleMode(enum.Enum):
