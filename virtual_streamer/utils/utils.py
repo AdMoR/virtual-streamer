@@ -395,7 +395,7 @@ def replace_number_to_text(str_):
     """
     str_ = "souvenez-vous toujours de ce sage conseil du 'Livre des Saveurs Éternelles', chapitre trois, verset 10.13"
     >>> def replace_number_to_text(str_):
-    ...     pattern = "\d+\.?\d{0,2}"
+    ...     pattern = r"\d+\.?\d{0,2}"
     ...     for p in sorted(re.findall(pattern, str_), key=lambda x: len(x), reverse=True):
     ...         str_ = str_.replace(p, num2words.num2words(p, lang="fr"))
     ...     return str_
@@ -404,7 +404,7 @@ def replace_number_to_text(str_):
     "souvenez-vous toujours de ce sage conseil du 'Livre des Saveurs Éternelles', chapitre trois,
     verset dix virgule un trois"
     """
-    pattern = "\d+\.?\d{0,2}"
+    pattern = r"\d+\.?\d{0,2}"
     for p in sorted(re.findall(pattern, str_), key=lambda x: len(x), reverse=True):
         str_ = str_.replace(p, num2words.num2words(p, lang="fr"))
     return str_
