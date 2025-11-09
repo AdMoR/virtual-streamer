@@ -48,6 +48,7 @@ WORKDIR $WORKDIR
 COPY requirements.txt .
 RUN pip install -r requirements.txt && pip install git+https://github.com/elliottzheng/batch-face.git@master
 RUN pip install fastapi[standard]==0.113.0
+RUN pip install ormsgpack
 # Create necessary directories
 RUN mkdir -p /data/out_video_folder /data/temp
 

@@ -15,7 +15,7 @@ import shutil
 from tqdm import tqdm
 from virtual_streamer.wav2lip import audio
 from virtual_streamer.wav2lip.main_logic import preprocess, Config, datagen, do_load, FaceDetectionGroup
-from virtual_streamer.utils.utils import (sanitize_str, txt_to_speech_call, combine_video_and_audio, add_subtitle,
+from virtual_streamer.utils.utils import (sanitize_str, txt_to_speech_call_fish, combine_video_and_audio, add_subtitle,
                                           s3_upload, SubtitleMode)
 # Import relevant models from video_server
 from virtual_streamer.video_server.models import DialogueEntry, Character, VideoClipBase, VideoOptions, CharacterBase
@@ -89,7 +89,7 @@ ENTITY_SERVICE_HOST = os.environ.get("ENTITY_SERVICE_HOST", "0.0.0.0").rstrip('/
 @app.post("/generate-tts", response_model=TTSApiResponse)
 async def generate_tts(payload: DialogueEntry):
     """
-    Generates Text-to-Speech audio for a given dialogue entry.
+    Generates Text-to-Speech audio for a given dialogue entry using fish-tts.
     Expects a DialogueEntry object as the request body.
     """
     print(f"Received TTS generation request for entry: {payload.entry_id}")
@@ -104,8 +104,23 @@ async def generate_tts(payload: DialogueEntry):
     os.makedirs(temp_dir, exist_ok=True) # Ensure temp dir exists
 
     print(f"Generating TTS for entry {payload.entry_id} with speaker {character.character_id}...")
-    # Assuming txt_to_speech_call is synchronous
-    txt_to_speech_call(payload.text, character.character_id, audio_outpath)
+    
+    # Use fish-tts for TTS generation
+    # You may need to configure reference_audio and reference_text based on character
+    # For now, using default parameters
+    try:
+        txt_to_speech_call_fish(
+            speech_lines=payload.text,
+            outpath=audio_outpath,
+            format="wav",
+            # Add character-specific reference audio/text if available
+            # reference_audio=character.reference_audio_path,
+            # reference_text=character.reference_text,
+            # reference_id=character.character_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fish TTS call failed: {str(e)}")
+    
     if not os.path.exists(audio_outpath):
          raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
     print(f"TTS audio generated successfully at: {audio_outpath}")
@@ -270,12 +285,8 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
         character_url = f"http://{ENTITY_SERVICE_HOST}:8002/characters"
         raise Exception(f"Failed to fetch character '{character.name}': {character_url}")
 
-    # --- Step 1: Get the audio for the response ---
-    # This endpoint uses a fixed speaker for now. If it needs dynamic characters,
-    # it would need modification or potentially call the new /generate-tts endpoint.
-    # For now, keep the original direct TTS call logic for this specific workflow.
+    # --- Step 1: Get the audio for the response using fish-tts ---
     try:
-        # Assuming txt_to_speech_call is synchronous for now
         response = await generate_tts(DialogueEntry(
             entry_id="",
             character_id=character.character_id,
@@ -283,7 +294,6 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
             timestamp=0
         ))
         audio_path = response.audio_path
-        #audio_outpath = "/home/amor/Downloads/1_PèreFouras_true.wav" # Example override for testing
         if not os.path.exists(audio_path):
              raise HTTPException(status_code=500, detail="TTS call failed to produce audio file.")
     except Exception as e:
@@ -291,13 +301,6 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
         raise HTTPException(status_code=500, detail=f"Text-to-speech generation failed: {e}")
 
     # --- Step 2: Call Wav2Lip endpoint ---
-    """
-        audio_path: str # Path accessible by the server
-    video: VideoClip
-    options: VideoOptions
-    character_id: str
-    output_dir: Optional[str] = None # Optional: Specify where to save, otherwise use temp
-    """
     wav2lip_request_payload = Wav2LipRequest(
         audio_path=os.path.abspath(audio_path),
         video=VideoClipBase(
