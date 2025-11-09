@@ -301,7 +301,7 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
     wav2lip_request_payload = Wav2LipRequest(
         audio_path=os.path.abspath(audio_path),
         video=VideoClipBase(
-            storage_path=CHARACTERS["Jesus"].video_clip_path,
+            storage_path=character.video_clip_path,
             collection_ids=list(),
         ),
         character_id=character.character_id,
