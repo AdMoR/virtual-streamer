@@ -249,7 +249,6 @@ COMMENTS :
 Now create a story based on the user proposition :                      
     """
 
-
 JUDGE_PROMPT = """
 You are contextual image rater, you grade if an image where a character is located and speaks a line of dialogue is contextual or not.
 
@@ -264,6 +263,27 @@ Grade : count the factors supporting one rating, this will be sued for ranking o
 
 Now do it with the following inputs  
 """
+
+KEYWORD_GENERATION_PROMPT = """You are a search keyword generator for finding video clips from the French educational TV show "C'est pas Sorcier".
+
+Given a dialogue line spoken by Fred (the presenter), generate a concise search keyword or phrase that would help find a relevant video clip where Fred could be saying this line.
+
+The keyword should focus on:
+- The main topic or subject matter of the dialogue
+- Visual elements that would match the context
+- Locations or settings mentioned
+- Actions or activities described
+
+Keep the keyword short (1-5 words) and in French.
+
+Previous search attempts that did not yield satisfactory results:
+{previous_keywords}
+
+Dialogue line: {dialogue}
+
+Generate a NEW search keyword that is different from the previous attempts and might find a better matching video clip.
+
+Return ONLY the keyword/phrase, nothing else."""
 
 
 SEPARATOR = "."
@@ -383,6 +403,35 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
         return None
 
 
+def generate_search_keyword(dialogue: str, previous_keywords: list[str]) -> Optional[str]:
+    """
+    Use LLM to generate a search keyword for finding relevant video clips.
+    
+    Args:
+        dialogue: The dialogue line to find a video for
+        previous_keywords: List of previously tried keywords that didn't work
+    
+    Returns:
+        A new search keyword or None if generation fails
+    """
+    try:
+        previous_keywords_str = "\n".join([f"- {kw}" for kw in previous_keywords]) if previous_keywords else "None"
+        
+        prompt = KEYWORD_GENERATION_PROMPT.format(
+            previous_keywords=previous_keywords_str,
+            dialogue=dialogue
+        )
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = completion(model="claude-sonnet-4-5-20250929", messages=messages)
+        keyword = response.choices[0].message.content.strip()
+        
+        return keyword
+    except Exception as e:
+        print(f"Error generating keyword: {e}")
+        return None
+
+
 def find_best_matching_video(videos: list[str], dialogue: str, max_attempts: int = 5) -> tuple[Optional[str], Optional[VideoDialogueJudgement]]:
     """
     Find the best matching video for a dialogue line.
@@ -412,280 +461,77 @@ def find_best_matching_video(videos: list[str], dialogue: str, max_attempts: int
     return best_video, best_judgement
 
 
-@st.cache_resource
-def load_retriever_bm25(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos", who="fred"):
-    nodes = prepare_nodes(load_json_documents(directory_path))
-    fred_nodes = [n for n in nodes if who == n.metadata["who"]]
-    bm25_retriever = BM25Retriever.from_defaults(
-        nodes=fred_nodes,
-        similarity_top_k=15,
-        # Optional: We can pass in the stemmer and set the language for stopwords
-        # This is important for removing stopwords and stemming the query + text
-        # The default is english for both
-        stemmer=Stemmer.Stemmer("french"),
-        language="french",
-    )
-    return bm25_retriever
-
-@st.cache_resource
-def load_retriever(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos", who="fred"):
-    embed_model = HuggingFaceEmbedding(model_name="lightonai/modernbert-embed-large")
-    Settings.embed_model = embed_model
-
-    # storage_context=storage_context
-    nodes = prepare_nodes_v2(load_json_documents(directory_path))
-    fred_nodes = [n for n in nodes if who == n.metadata["who"]]
-    index = VectorStoreIndex(fred_nodes)
-    index.storage_context.persist("/media/amor/data1/Downloads/CPS/vector_store")
-    retriever = index.as_retriever(verbose=True, similarity_top_k=5)
-    return retriever
-
-
-@st.cache_resource
-def load_transcripter():
-    model = stable_whisper.load_faster_whisper('base')
-    #model = stable_whisper.load_hf_whisper('large-v3', batch_size=4)
-    return model
-
-
-model = load_transcripter()
-bm25_retriever = load_retriever()
-DEFAULT_LENGTH = 35
-
-
-def separation_fn(raw_text, max_length=DEFAULT_LENGTH):
-    def split(txt, separator):
-        return [x for x in txt.split(separator) if len(x.replace(" ", "")) > 0]
-    parts = list()
-    for p in split(raw_text, "\n"):
-        if len(p) > max_length:
-            broken_down = False
-            for sep in [".", "!", "?"]:
-                sub_parts = split(p, sep)
-                if len(sub_parts) > 1:
-                    broken_down = True
-                    parts.extend(sub_parts)
-                    break
-            if not broken_down:
-                parts.append(p)
-        else:
-            parts.append(p)
-    return parts
-
-
-def build_id(object_type, sentence, extra_index=None) -> str:
-    str_ = f"{object_type}_{hash(sentence)}"
-    if extra_index:
-        str_ += f"_{extra_index}"
-    return str_
-
-
-def generate_text():
-    PROMPT = st.session_state["prompt"]
-    messages = [{"role": "user", "content": PROMPT}]
-    response = completion(model="claude-sonnet-4-5-20250929", messages=messages)
-    rez = response.choices[0].message.content
-    st.session_state["llm_result"] = rez
-
-
-def search_videos(kw):
-    retrieved_docs = bm25_retriever.retrieve(kw)
-    videos = list()
-    for x in retrieved_docs:
-        videos.append(x.metadata["path"])
-    return videos
-
-
-def tab1_ui():
-    st.title("Text Generation")
-    script = st.session_state.get("llm_result") or DEFAULT_SCRIPT
-    st.session_state["llm_result"] = script
-    st.text_area(label="LLM result here", key="llm_result", height=500, on_change=compute_generated_sentences)
-    st.text_area(label="Prompt text here", key="prompt", height=800, value=DEFAULT_PROMPT)
-    st.button("Generate Text", on_click=generate_text)
-
-
-# Tab 2: Video Search
-def make_search_fn(sentence_id, video_list_id):
-    def search():
-        kw = st.session_state[sentence_id]
-        videos = search_videos(kw)
+def find_best_matching_video_with_llm_search(
+    dialogue: str, 
+    used_videos: set[str],
+    max_llm_attempts: int = 3
+) -> tuple[Optional[str], Optional[VideoDialogueJudgement], Optional[str]]:
+    """
+    Find the best matching video for a dialogue line using multiple search strategies.
+    
+    First tries the dialogue itself as a search query. If no satisfactory video is found,
+    uses LLM to generate alternative search keywords (up to max_llm_attempts).
+    
+    Args:
+        dialogue: The dialogue line to find a video for
+        used_videos: Set of video paths that have already been used
+        max_llm_attempts: Maximum number of LLM-generated keyword attempts
+    
+    Returns:
+        Tuple of (best_video_path, judgement, keyword_used)
+    """
+    previous_keywords = []
+    
+    # First attempt: use the dialogue itself as the search keyword
+    current_keyword = dialogue
+    videos = search_videos(current_keyword)
+    videos = [x.replace("data", "data1") for x in videos]
+    
+    # Filter out already used videos
+    available_videos = [v for v in videos if v not in used_videos]
+    
+    if available_videos:
+        best_video, judgement = find_best_matching_video(available_videos, dialogue)
+        
+        # If we found a satisfactory match, return it
+        if judgement and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+            return best_video, judgement, current_keyword
+    
+    # Track the best result across all attempts
+    overall_best_video = None
+    overall_best_judgement = None
+    overall_best_keyword = current_keyword
+    overall_best_grade = -1
+    
+    if available_videos:
+        best_video, judgement = find_best_matching_video(available_videos, dialogue)
+        if judgement and judgement.grade > overall_best_grade:
+            overall_best_video = best_video
+            overall_best_judgement = judgement
+            overall_best_keyword = current_keyword
+            overall_best_grade = judgement.grade
+    
+    previous_keywords.append(current_keyword)
+    
+    # Additional attempts using LLM-generated keywords
+    for attempt in range(max_llm_attempts):
+        # Generate a new keyword using LLM
+        new_keyword = generate_search_keyword(dialogue, previous_keywords)
+        
+        if not new_keyword or new_keyword in previous_keywords:
+            continue
+        
+        current_keyword = new_keyword
+        previous_keywords.append(current_keyword)
+        
+        # Search with the new keyword
+        videos = search_videos(current_keyword)
         videos = [x.replace("data", "data1") for x in videos]
-        print("--- ", videos)
-        st.session_state[video_list_id] = videos
-    return search
-
-
-def default_selection():
-    generated_sentences = st.session_state["sentences"]
-
-    for i, sentence in enumerate(generated_sentences):
-        selected = build_id("selected_video", sentence, i)
-        video_list_id = build_id("videolist_", sentence, i)
-        keyword_id = build_id("keyword", sentence, i)
-        judgement_id = build_id("judgement", sentence, i)
         
-        videos = search_videos(sentence)
-        print("===> ", videos)
-        videos = [x.replace("data", "data1") for x in videos]
-        st.session_state[keyword_id] = sentence
-        st.session_state[video_list_id] = videos
+        # Filter out already used videos
+        available_videos = [v for v in videos if v not in used_videos]
         
-        # Find best matching video using AI judgement
-        best_video, judgement = find_best_matching_video(videos, sentence)
+        if not available_videos:
+            continue
         
-        if best_video:
-            st.session_state[selected] = best_video
-            st.session_state[judgement_id] = judgement
-        else:
-            # Fallback to random selection if AI judgement fails
-            st.session_state[selected] = videos[random.choice(list(range(len(videos))))]
-
-def compute_generated_sentences():
-    generated_sentences = separation_fn(st.session_state["llm_result"],
-                                        st.session_state.get("max_length", DEFAULT_LENGTH))
-    st.session_state["sentences"] = generated_sentences
-
-
-def tab2_ui():
-    st.title("Video Search")
-    st.slider("max sentence length", 40, 80, DEFAULT_LENGTH, key="max_length", on_change=compute_generated_sentences)
-    st.button("Default selection", key=build_id("button", "random"),
-              on_click=default_selection)
-
-    if "sentences" not in st.session_state:
-        compute_generated_sentences()
-    generated_sentences =st.session_state["sentences"]
-
-    for i, sentence in enumerate(generated_sentences):
-        with st.expander(sentence):
-            keyword_id = build_id("keyword", sentence, i)
-            video_list_id = build_id("videolist_", sentence, i)
-            judgement_id = build_id("judgement", sentence, i)
-            
-            st.text_input("Enter a keyword to search a corresponding video", key=keyword_id)
-            st.button("Search", key=build_id("button", sentence, i),
-                      on_click=make_search_fn(keyword_id, video_list_id))
-
-            # Display judgement if available
-            if judgement_id in st.session_state:
-                judgement = st.session_state[judgement_id]
-                if judgement:
-                    rating_color = {
-                        ContextualRating.CONTEXTUAL: "green",
-                        ContextualRating.NEUTRAL: "orange",
-                        ContextualRating.NOT_CONTEXTUAL: "red"
-                    }
-                    st.markdown(f"**AI Judgement:** :{rating_color[judgement.rating]}[{judgement.rating.value}] (Grade: {judgement.grade})")
-                    with st.expander("Reasoning"):
-                        st.write(judgement.reasoning)
-
-            if video_list_id in st.session_state:
-                # Perform video search based on the keyword
-                videos = st.session_state[video_list_id]
-                st.selectbox(f"Video for {sentence[:15]}", options=videos,
-                             key=build_id("selected_video", sentence, i),
-                             )
-                for j, video in enumerate(videos):
-                    st.subheader(j)
-                    st.video(video)
-
-# Tab 3: Audio Generation
-def make_audio_gen(sentence_id, audio_id):
-    def search():
-        sentence = st.session_state[sentence_id]
-        audio = txt_to_speech_call(sentence)
-        st.session_state[audio_id] = audio
-    return search
-
-
-def generate_all():
-    if "sentences" not in st.session_state:
-        compute_generated_sentences()
-    generated_sentences = st.session_state["sentences"]
-    for i, sentence in enumerate(generated_sentences):
-        selected_audio_id = build_id("selected_audio", sentence, i)
-        audio = txt_to_speech_call(sentence)
-        st.session_state[selected_audio_id] = audio
-
-
-def tab3_ui():
-    st.title("Audio Generation")
-    if "sentences" not in st.session_state:
-        compute_generated_sentences()
-    generated_sentences = st.session_state["sentences"]
-
-    st.button("Generate all", on_click=generate_all)
-
-    for i, sentence in enumerate(generated_sentences):
-        with st.expander(sentence):
-            sentence_id = build_id("sentence", sentence, i)
-            st.session_state[sentence_id] = sentence
-            video_id = build_id("selected_video", sentence, i)
-            if video_id in st.session_state:
-                video = st.session_state[video_id]
-                st.video(video)
-            selected_audio_id = build_id("selected_audio", sentence, i)
-            st.button("Generate Audio", key=build_id("audio", sentence, i),
-                      on_click=make_audio_gen(sentence_id, selected_audio_id))
-            if selected_audio_id in st.session_state:
-                st.audio(st.session_state[selected_audio_id])
-
-
-# Tab 4: Combined Results
-def tab4_ui():
-    st.title("Combined Results")
-    if "sentences" not in st.session_state:
-        compute_generated_sentences()
-    generated_sentences = st.session_state["sentences"]
-    video_chunks = list()
-
-    ready = st.toggle("create final video", value=False)
-
-    if ready:
-        for i, sentence in enumerate(generated_sentences):
-            selected_audio_id = build_id("selected_audio", sentence, i)
-            selected_video_id = build_id("selected_video", sentence, i)
-            if selected_audio_id in st.session_state and selected_video_id in st.session_state:
-                video = st.session_state[selected_video_id]
-                audio = st.session_state[selected_audio_id]
-                outfile = f"./temp_{build_id('gen', sentence, i)}.mp4"
-                combine_video_and_short_audio(video, audio, outfile)
-                outfile_bis = f"./temp_{build_id('gen_sub', sentence, i)}.mp4"
-                srt_path = f"./{i}.srt"
-                result = model.transcribe(audio)
-                result.to_srt_vtt(srt_path)
-                add_subtitle_from_srt(outfile, srt_path, outfile_bis)
-                video_chunks.append(outfile_bis)
-            else:
-                if selected_audio_id not in st.session_state:
-                    st.text(f"No audio for sentence {i}: {sentence}")
-                else:
-                    st.text(f"No video for sentence {i}: {sentence}")
-
-        if len(video_chunks) == len(generated_sentences):
-            final_video = "./final.mp4"
-            combine_part_in_concat_file(video_chunks, "./temp.txt", final_video)
-            st.video(final_video)
-
-    st.button("Dump state", on_click=lambda : json.dump({k: v for k, v in st.session_state.items() if "selected" in k},
-                                                        open("session_dump.json", "w")))
-
-
-
-# Main app
-def main():
-    st.sidebar.title("Navigation")
-    tab1, tab2, tab3, tab4 = st.tabs(["Text Generation", "Video Search", "Audio Generation", "Combined Results"])
-
-    with tab1:
-        tab1_ui()
-    with tab2:
-        tab2_ui()
-    with tab3:
-        tab3_ui()
-    with tab4:
-        tab4_ui()
-
-if __name__ == "__main__":
-    main()
+        best_video, judgement = find_best
