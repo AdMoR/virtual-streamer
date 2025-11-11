@@ -266,6 +266,29 @@ Now do it with the following inputs
 """
 
 
+KEYWORD_GENERATION_PROMPT = """You are a search keyword generator for finding video clips from the French educational TV show "C'est pas Sorcier".
+
+Given a dialogue line spoken by Fred (the presenter), generate a concise search keyword or phrase that would help find a relevant video clip where Fred could be saying this line.
+
+The keyword should focus on:
+- The main topic or subject matter of the dialogue
+- Visual elements that would match the context
+- Locations or settings mentioned
+- Actions or activities described
+
+Keep the keyword short (1-5 words) and in French.
+
+Previous search attempts that did not yield satisfactory results:
+{previous_keywords}
+
+Dialogue line: {dialogue}
+
+Generate a NEW search keyword that is different from the previous attempts and might find a better matching video clip.
+
+Return ONLY the keyword/phrase, nothing else.
+"""
+
+
 SEPARATOR = "."
 
 
@@ -372,7 +395,7 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
     try:
         # Call Anthropic API with structured output
         response = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             messages=[
                 {
@@ -435,6 +458,36 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
         
     except Exception as e:
         print(f"Error calling Anthropic API: {e}")
+        return None
+
+
+
+def generate_search_keyword(dialogue: str, previous_keywords: list[str]) -> Optional[str]:
+    """
+    Use LLM to generate a search keyword for finding relevant video clips.
+    
+    Args:
+        dialogue: The dialogue line to find a video for
+        previous_keywords: List of previously tried keywords that didn't work
+    
+    Returns:
+        A new search keyword or None if generation fails
+    """
+    try:
+        previous_keywords_str = "\n".join([f"- {kw}" for kw in previous_keywords]) if previous_keywords else "None"
+        
+        prompt = KEYWORD_GENERATION_PROMPT.format(
+            previous_keywords=previous_keywords_str,
+            dialogue=dialogue
+        )
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = completion(model="claude-haiku-4-5-20251001", messages=messages)
+        keyword = response.choices[0].message.content.strip()
+        
+        return keyword
+    except Exception as e:
+        print(f"Error generating keyword: {e}")
         return None
 
 
@@ -575,7 +628,7 @@ def default_selection():
     generated_sentences = st.session_state["sentences"]
 
     for i, sentence in enumerate(generated_sentences):
-        selected = build_id("selected_video", sentence, i)
+        video_id = build_id("selected_video", sentence, i)
         video_list_id = build_id("videolist_", sentence, i)
         keyword_id = build_id("keyword", sentence, i)
         judgement_id = build_id("judgement", sentence, i)
@@ -587,29 +640,30 @@ def default_selection():
         st.session_state[video_list_id] = videos
         
         # Find best matching video using AI judgement
-        best_video, judgement = find_best_matching_video(available_videos, dialogue)
+        best_video, judgement = find_best_matching_video(videos, sentence)
+        default_best_video = best_video
+        default_judgement = judgement
         
         # If we found a satisfactory match, return it
-        if judgement and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
-            return best_video, judgement, current_keyword
-        
-        # Track if this is the best result so far
-        if judgement and judgement.grade > overall_best_grade:
-            overall_best_video = best_video
-            overall_best_judgement = judgement
-            overall_best_keyword = current_keyword
-            overall_best_grade = judgement.grade
-    
-    # Return the best video we found across all attempts
-    return overall_best_video, overall_best_judgement, overall_best_keyword
-"""
-        if best_video:
-            st.session_state[selected] = best_video
+        if judgement and best_video and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+            st.session_state[video_id] = best_video
             st.session_state[judgement_id] = judgement
-        else:
-            # Fallback to random selection if AI judgement fails
-            st.session_state[selected] = videos[random.choice(list(range(len(videos))))]
-"""
+            return best_video, judgement
+
+        previous_kw = list()
+        for _ in range(3):
+            keyword = generate_search_keyword(sentence, previous_kw)
+            best_video, judgement = find_best_matching_video(videos, keyword)
+            previous_kw.append(keyword)
+            if judgement and best_video and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+                st.session_state[judgement_id] = judgement
+                st.session_state[video_id] = best_video
+                return best_video, judgement
+        
+        # Fallback on basic method
+        st.session_state[judgement_id] = default_judgement
+        st.session_state[video_id] = default_best_video
+
 
 def compute_generated_sentences():
     generated_sentences = separation_fn(st.session_state["llm_result"],
@@ -667,6 +721,36 @@ def make_audio_gen(sentence_id, audio_id):
         audio = txt_to_speech_call(sentence)
         st.session_state[audio_id] = audio
     return search
+
+
+def generate_search_keyword(dialogue: str, previous_keywords: list[str]) -> Optional[str]:
+    """
+    Use LLM to generate a search keyword for finding relevant video clips.
+
+    Args:
+        dialogue: The dialogue line to find a video for
+        previous_keywords: List of previously tried keywords that didn't work
+
+    Returns:
+        A new search keyword or None if generation fails
+    """
+    try:
+        previous_keywords_str = "\n".join([f"- {kw}" for kw in previous_keywords]) if previous_keywords else "None"
+
+
+        prompt = KEYWORD_GENERATION_PROMPT.format(
+            previous_keywords=previous_keywords_str,
+            dialogue=dialogue
+        )
+
+        messages = [{"role": "user", "content": prompt}]
+        response = completion(model="claude-sonnet-4-5-20250929", messages=messages)
+        keyword = response.choices[0].message.content.strip()
+
+        return keyword
+    except Exception as e:
+        print(f"Error generating keyword: {e}")
+        return None
 
 
 def generate_all():

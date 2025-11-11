@@ -63,7 +63,7 @@ async def create_video_clip(clip_data: VideoClipCreate):
     return clip
 
 @app.get("/clips/{clip_id}", response_model=VideoClip, tags=["Video Clips"])
-async def get_video_clip(clip_id: str):
+async def get_video_clip(clip_id: int):
     """Retrieves a specific Video Clip by its ID."""
     s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
     data = await s3_cli.s3_get_json(s3_key)

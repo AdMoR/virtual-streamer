@@ -115,7 +115,7 @@ Evaluate the following story based on RUBRIC 3: Cultural & Contextual Relevance
 RUBRIC 3 Dimensions:
 1. Modern vs. Retro Clash (1-5): Does it juxtapose outdated Fred/Jamy energy with current trends? (TikTok, Red Bull, energy drinks, "bobos")
 2. French Cultural Specificity (1-5): Does it use French slang, locations, and cultural references authentically?
-3. Entrepreneurial Delusion (1-5): Does Fred pitch a half-baked business idea with unwarranted confidence?
+3. Grandiose Delusion (1-5): Does Fred pitch a half-baked idea with unwarranted confidence? Will this idea bring some kind of fame to Fred ? 
 4. Accessibility (1-5): Would someone unfamiliar with C'est pas Sorcier still find it funny, or is it primarily for nostalgic fans?
 
 STORY TO EVALUATE:

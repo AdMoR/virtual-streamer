@@ -189,11 +189,11 @@ def txt_to_speech_call_solero(speech_lines, language, speaker, outpath):
     return outpath
 
 
-def txt_to_speech_call_fish(speech_lines, reference_audio=None, reference_text=None, 
+def txt_to_speech_call_fish(speech_lines: str, reference_audio=None, reference_text=None,
                             reference_id=None, outpath=None, format="wav",
                             max_new_tokens=1024, chunk_length=300, top_p=0.8,
                             repetition_penalty=1.1, temperature=0.8, 
-                            use_memory_cache="off", seed=None):
+                            use_memory_cache="off", seed=None, host: str = None, port: int = None,):
     """
     Call fish-speech TTS API to generate speech.
     
@@ -215,8 +215,8 @@ def txt_to_speech_call_fish(speech_lines, reference_audio=None, reference_text=N
     Returns:
         Path to generated audio file
     """
-    host = os.environ.get("FISH_TTS_HOST", "fish-speech-server")
-    port = os.environ.get("FISH_TTS_PORT", "8080")
+    host = host or os.environ.get("FISH_TTS_HOST", "localhost")
+    port = port or os.environ.get("FISH_TTS_PORT", "7860")
     api_key = os.environ.get("FISH_TTS_API_KEY", "YOUR_API_KEY")
     url = f"http://{host}:{port}/v1/tts"
     
