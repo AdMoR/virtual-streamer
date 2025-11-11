@@ -8,7 +8,7 @@ from virtual_streamer.utils.utils import (combine_video_and_short_audio, combine
 from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents, prepare_nodes_v2
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
 import stable_whisper
-from llama_index.llms.anthropic import Anthropic
+from litellm import completion
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
@@ -116,14 +116,9 @@ def load_transcripter():
     #model = stable_whisper.load_hf_whisper('large-v3', batch_size=4)
     return model
 
-@st.cache_resource
-def load_llm():
-    return Anthropic(model="claude-sonnet-4-5-20250929")
-
 
 model = load_transcripter()
 bm25_retriever = load_retriever()
-llm = load_llm()
 DEFAULT_LENGTH = 35
 
 
@@ -156,7 +151,9 @@ def build_id(object_type, sentence, extra_index=None):
 
 def generate_text():
     PROMPT = st.session_state["prompt"]
-    rez = llm.complete(PROMPT).text
+    messages = [{"role": "user", "content": PROMPT}]
+    response = completion(model="claude-opus-4-20250514", messages=messages)
+    rez = response.choices[0].message.content
     st.session_state["llm_result"] = rez
 
 
@@ -211,7 +208,7 @@ def tab2_ui():
 
     if "sentences" not in st.session_state:
         compute_generated_sentences()
-    generated_sentences = st.session_state["sentences"]
+    generated_sentences =st.session_state["sentences"]
 
     for i, sentence in enumerate(generated_sentences):
         with st.expander(sentence):
@@ -330,4 +327,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
