@@ -12,10 +12,29 @@ from litellm import completion
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+import anthropic
+import os
+import cv2
+import base64
+from enum import Enum
+from typing import Optional
+from pydantic import BaseModel
+
+
+class ContextualRating(str, Enum):
+    CONTEXTUAL = "CONTEXTUAL"
+    NEUTRAL = "NEUTRAL"
+    NOT_CONTEXTUAL = "NOT_CONTEXTUAL"
+
+
+class VideoDialogueJudgement(BaseModel):
+    rating: ContextualRating
+    grade: int
+    reasoning: str
 
 
 def txt_to_speech_call(text):
-    reference_fred = '/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp4'
+    reference_fred = '/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp3'
     reference_text_fred = "Là tu vois Jamy, je suis dans le Data Center de Youtube où sont Entreposées des tonnes de vidéos de pranks D'unboxing et aussi les vidéos du Studio Bubble Tea, tu sais le mec qui s'est"
     audio_path = txt_to_speech_call_fish(speech_lines=text, reference_audio=reference_fred, reference_text=reference_text_fred, host="127.0.0.1", port=8003)
     return audio_path
@@ -82,8 +101,8 @@ Tone elements :
 
 • Fred is overly excited by his brand new idea and overlook the absurdity of his idea. The text is told as Fred is speaking to Jamy, but the video is seen from Jamy's point of view, Fred speaks to the camera while showing things. 
 • Fred may explain how combining their strengths  would yield an incredible advantage in the newly found endavor
-•  Fred has a very casual language and can swear or be mean to illustrate better his ideas
- Ex: On va lancer la "Fred's kick", la boisson qui va déchirer tous ces petits machins marketing à deux balles genre Red Bull et Monster. 
+•  Fred has a very casual language and can swear or be mean to illustrate better his ideas
+ Ex: On va lancer la "Fred's kick", la boisson qui va déchirer tous ces petits machins marketing à deux balles genre Red Bull et Monster. 
 Reasoning : "à deux balles" indicates a judgement of the value of Redbull which is a leader than thus pushes the idea of Fred being overly confident.
 • Fred feels superior to the majority of the other people, even the most talented, he will often put himself and Jamy over the rest of the poulation
 Ex: "Pour des pro de l'audiovisuel comme nous, ça devrait être se faire une main dans le slip"
@@ -123,13 +142,13 @@ Je vais lancer ma boisson à mon nom : la Fred's kick
 Separate the two parts by a line like this : -----------------------------------------
 
 
-Other rules : 
+Other rules : 
 This script will be used to generate a humoristic video. Each entry like "Fred: ......" will be used for a single sequence.
 A sequence should convey a single idea, where Fred is doing a single Action.
 Ex: 
 Fred : Putain Jamy, hier soir, je me rematais notre épisode spécial noël 97 sur la moutarde de Dijon, un vrai bangeur
 Visual : Fred is sitting at his dining table
-Fred : Et c'est la que ça m'a frappé, aucun resto digne de ce nom sert de la vraie bouffe ! 
+Fred : Et c'est la que ça m'a frappé, aucun resto digne de ce nom sert de la vraie bouffe ! 
 Visual : zoom on fred face with a tense expression
 
 
@@ -250,6 +269,149 @@ Now do it with the following inputs
 SEPARATOR = "."
 
 
+def extract_middle_frame(video_path: str) -> Optional[str]:
+    """Extract the middle frame from a video and return as base64 encoded string."""
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return None
+        
+        # Get total frame count
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        middle_frame_idx = total_frames // 2
+        
+        # Set position to middle frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame_idx)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            return None
+        
+        # Encode frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        base64_image = base64.b64encode(buffer).decode('utf-8')
+        
+        return base64_image
+    except Exception as e:
+        print(f"Error extracting frame from {video_path}: {e}")
+        return None
+
+
+def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[VideoDialogueJudgement]:
+    """
+    Use Anthropic's vision API to judge if a video frame matches the dialogue.
+    Returns a structured judgement with rating, grade, and reasoning.
+    """
+    # Extract middle frame
+    base64_image = extract_middle_frame(video_path)
+    if not base64_image:
+        return None
+    
+    # Initialize Anthropic client
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    
+    # Construct the prompt
+    full_prompt = f"{JUDGE_PROMPT}\n\nDialogue line: {dialogue}"
+    
+    try:
+        # Call Anthropic API with structured output
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": base64_image,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": full_prompt
+                        }
+                    ],
+                }
+            ],
+        )
+        
+        # Parse the response
+        response_text = response.content[0].text
+        
+        # Extract rating and grade from response
+        lines = response_text.strip().split('\n')
+        rating_line = None
+        grade_line = None
+        reasoning_lines = []
+        
+        for line in lines:
+            if line.startswith("Rating"):
+                rating_line = line.split(":")[-1].strip()
+            elif line.startswith("Grade"):
+                grade_line = line.split(":")[-1].strip()
+            else:
+                reasoning_lines.append(line)
+        
+        if not rating_line:
+            return None
+        
+        # Map rating to enum
+        rating_map = {
+            "CONTEXTUAL": ContextualRating.CONTEXTUAL,
+            "NEUTRAL": ContextualRating.NEUTRAL,
+            "NOT CONTEXTUAL": ContextualRating.NOT_CONTEXTUAL,
+            "NOT_CONTEXTUAL": ContextualRating.NOT_CONTEXTUAL,
+        }
+        
+        rating = rating_map.get(rating_line, ContextualRating.NOT_CONTEXTUAL)
+        grade = int(grade_line) if grade_line and grade_line.isdigit() else 0
+        reasoning = "\n".join(reasoning_lines).strip()
+        
+        return VideoDialogueJudgement(
+            rating=rating,
+            grade=grade,
+            reasoning=reasoning
+        )
+        
+    except Exception as e:
+        print(f"Error calling Anthropic API: {e}")
+        return None
+
+
+def find_best_matching_video(videos: list[str], dialogue: str, max_attempts: int = 5) -> tuple[Optional[str], Optional[VideoDialogueJudgement]]:
+    """
+    Find the best matching video for a dialogue line.
+    Returns the first video that is CONTEXTUAL or NEUTRAL, or the best rated video after max_attempts.
+    """
+    best_video = None
+    best_judgement = None
+    best_grade = -1
+    
+    for i, video in enumerate(videos[:max_attempts]):
+        judgement = judge_video_dialogue_match(video, dialogue)
+        
+        if judgement is None:
+            continue
+        
+        # If we find a CONTEXTUAL or NEUTRAL match, return immediately
+        if judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+            return video, judgement
+        
+        # Track the best video so far
+        if judgement.grade > best_grade:
+            best_grade = judgement.grade
+            best_video = video
+            best_judgement = judgement
+    
+    # Return the best video we found, even if it's NOT_CONTEXTUAL
+    return best_video, best_judgement
+
+
 @st.cache_resource
 def load_retriever_bm25(directory_path = "/media/amor/data/Downloads/CPS/clip_infos", who="fred"):
     nodes = prepare_nodes(load_json_documents(directory_path))
@@ -359,12 +521,23 @@ def default_selection():
         selected = build_id("selected_video", sentence, i)
         video_list_id = build_id("videolist_", sentence, i)
         keyword_id = build_id("keyword", sentence, i)
+        judgement_id = build_id("judgement", sentence, i)
+        
         videos = search_videos(sentence)
         print("===> ", videos)
         videos = [x.replace("data", "data1") for x in videos]
         st.session_state[keyword_id] = sentence
         st.session_state[video_list_id] = videos
-        st.session_state[selected] = videos[random.choice(list(range(len(videos))))]
+        
+        # Find best matching video using AI judgement
+        best_video, judgement = find_best_matching_video(videos, sentence)
+        
+        if best_video:
+            st.session_state[selected] = best_video
+            st.session_state[judgement_id] = judgement
+        else:
+            # Fallback to random selection if AI judgement fails
+            st.session_state[selected] = videos[random.choice(list(range(len(videos))))]
 
 def compute_generated_sentences():
     generated_sentences = separation_fn(st.session_state["llm_result"],
@@ -386,9 +559,24 @@ def tab2_ui():
         with st.expander(sentence):
             keyword_id = build_id("keyword", sentence, i)
             video_list_id = build_id("videolist_", sentence, i)
+            judgement_id = build_id("judgement", sentence, i)
+            
             st.text_input("Enter a keyword to search a corresponding video", key=keyword_id)
             st.button("Search", key=build_id("button", sentence, i),
                       on_click=make_search_fn(keyword_id, video_list_id))
+
+            # Display judgement if available
+            if judgement_id in st.session_state:
+                judgement = st.session_state[judgement_id]
+                if judgement:
+                    rating_color = {
+                        ContextualRating.CONTEXTUAL: "green",
+                        ContextualRating.NEUTRAL: "orange",
+                        ContextualRating.NOT_CONTEXTUAL: "red"
+                    }
+                    st.markdown(f"**AI Judgement:** :{rating_color[judgement.rating]}[{judgement.rating.value}] (Grade: {judgement.grade})")
+                    with st.expander("Reasoning"):
+                        st.write(judgement.reasoning)
 
             if video_list_id in st.session_state:
                 # Perform video search based on the keyword
