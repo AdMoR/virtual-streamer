@@ -101,13 +101,11 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.video_generation_config import VideoGenerationConfig
-from scripts.video_generation_interfaces import SimpleProgressCallback
-from scripts.video_generation_impl import (
+from virtual_streamer.video_generation import (
+    VideoGenerationConfig,
+    SimpleProgressCallback,
     create_llm, create_tts, create_stt,
-    create_video_retriever, create_prompt_provider
-)
-from scripts.video_generation_core import (
+    create_video_retriever, create_prompt_provider,
     generate_story, generate_video_from_story, recreate_from_config_dump
 )
 

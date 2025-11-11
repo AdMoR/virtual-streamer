@@ -19,15 +19,15 @@ from pathlib import Path
 from typing import Optional, List, Any
 
 # Mock implementations for testing
-from scripts.video_generation_interfaces import (
+from virtual_streamer.video_generation.interfaces import (
     LLMInterface, TTSInterface, STTInterface,
     VideoRetrieverInterface, PromptProviderInterface
 )
-from scripts.video_generation_config import (
+from virtual_streamer.video_generation.config import (
     VideoGenerationConfig, LLMConfig, TTSConfig, STTConfig,
     VideoRetrievalConfig, PromptConfig, ConfigDump
 )
-from scripts.video_generation_core import (
+from virtual_streamer.video_generation.core import (
     separation_fn, generate_story, generate_video_from_story,
     create_config_dump, recreate_from_config_dump
 )
@@ -51,7 +51,7 @@ class MockLLM(LLMInterface):
     
     async def complete_structured(self, prompt: str, response_model, **kwargs):
         """Mock structured completion."""
-        from scripts.video_generation_config import StoryOutput
+                from virtual_streamer.video_generation.config import StoryOutput
         if response_model == StoryOutput:
             return StoryOutput(
                 title="Fred se lance dans l'IA (Version complète)",
@@ -273,7 +273,7 @@ class TestStoryGeneration:
         )
         
         # Check it returns StoryOutput
-        from scripts.video_generation_config import StoryOutput
+                from virtual_streamer.video_generation.config import StoryOutput
         assert isinstance(story_output, StoryOutput)
         assert len(story_output.title) > 0
         assert len(story_output.story_plan) > 0
@@ -353,8 +353,8 @@ class TestConfigDump:
     
     def test_config_dump_creation(self):
         """Test creating a config dump."""
-        from scripts.video_generation_core import create_config_dump
-        from scripts.video_generation_interfaces import VideoMatchResult
+        from virtual_streamer.video_generation.core import create_config_dump
+        from virtual_streamer.video_generation.interfaces import VideoMatchResult
         
         config = VideoGenerationConfig()
         
@@ -447,7 +447,7 @@ class TestIntegration:
             config=config
         )
         
-        from scripts.video_generation_config import StoryOutput
+                from virtual_streamer.video_generation.config import StoryOutput
         assert isinstance(story_output, StoryOutput)
         assert len(story_output.dialog) > 0
     

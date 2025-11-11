@@ -17,12 +17,12 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 import json
 
-from scripts.video_generation_interfaces import (
+from virtual_streamer.video_generation.interfaces import (
     LLMInterface, TTSInterface, STTInterface,
     VideoRetrieverInterface, PromptProviderInterface,
     VideoJudgementResult, VideoMatchResult, ProgressCallback
 )
-from scripts.video_generation_config import (
+from virtual_streamer.video_generation.config import (
     VideoGenerationConfig, ConfigDump, GenerationResult, StoryOutput
 )
 from virtual_streamer.utils.utils import (

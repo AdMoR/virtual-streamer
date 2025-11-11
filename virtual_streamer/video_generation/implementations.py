@@ -23,11 +23,11 @@ from llama_index.core import VectorStoreIndex, Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import Stemmer
 
-from scripts.video_generation_interfaces import (
+from virtual_streamer.video_generation.interfaces import (
     LLMInterface, TTSInterface, STTInterface,
     VideoRetrieverInterface, PromptProviderInterface
 )
-from scripts.video_generation_config import (
+from virtual_streamer.video_generation.config import (
     LLMConfig, TTSConfig, STTConfig,
     VideoRetrievalConfig, PromptConfig
 )

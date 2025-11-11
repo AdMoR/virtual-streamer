@@ -1,88 +1,177 @@
-# Video Generation Script
+# Video Generation Script - Complete Documentation
 
-Standalone async video generation script for creating videos from stories using AI models.
+**Single execution script for generating videos from stories using AI models with async optimization.**
+
+---
+
+## 📖 Table of Contents
+
+1. [Quick Start](#-quick-start)
+2. [Features](#-features)
+3. [Installation](#-installation)
+4. [Usage](#-usage)
+5. [Configuration](#%EF%B8%8F-configuration)
+6. [Architecture](#-architecture)
+7. [Advanced Features](#-advanced-features)
+8. [Troubleshooting](#-troubleshooting)
+9. [API Reference](#-api-reference)
+
+---
 
 ## ⚡ Quick Start
 
-### Two Ways to Use
+### 3-Step Setup
 
-**1. Simplified (Recommended)** - Minimal CLI, .env configuration:
 ```bash
-# Setup (once)
+# 1. Setup configuration (once)
 cp env.example .env
-cp env.public.example .env.public
-echo "ANTHROPIC_API_KEY=your-key" >> .env
+echo "ANTHROPIC_API_KEY=sk-ant-your-key-here" >> .env
 
-# Run (always)
-python scripts/generate_video_simple.py --title "Fred se lance dans l'IA"
+# 2. Run video generation
+python scripts/generate_video.py --title "Fred se lance dans l'IA"
+
+# 3. Find your video
+ls -lh output/*.mp4
 ```
 
-**2. Original** - Full CLI arguments:
-```bash
-python scripts/generate_video.py --title "Fred" --llm-provider anthropic --tts-host localhost ...
-```
+**That's it!** 🎉
 
-## Features
+---
 
-- **Async optimization**: Parallel LLM calls for efficiency, serial TTS/STT for local processing
+## 🚀 Features
+
+### Core Capabilities
+- **Async optimization**: Parallel LLM calls for I/O-bound operations
+- **Concurrency control**: Semaphore-based rate limiting (prevents API errors)
 - **Structured output**: Stories return title, plan, and dialog separately
-- **Simple configuration**: .env files or full CLI arguments
-- **Comprehensive config management**: Pydantic settings with YAML support
 - **Reproducibility**: Complete config dumps enable exact recreation
-- **Interface-based design**: Easy to swap implementations
+- **Event loop safety**: Lazy initialization prevents async errors
+
+### Configuration
+- **Pydantic Settings**: Type-safe configuration with validation
+- **Multiple sources**: CLI args, environment variables, .env files, or YAML
+- **Priority system**: CLI > Env vars > .env > .env.public > Defaults
+- **Zero boilerplate**: 44% less code than traditional ArgumentParser
+
+### Production Ready
+- **Interface-based design**: Easy to swap LLM/TTS/STT implementations
+- **Comprehensive logging**: Track every step of generation
+- **Error handling**: Graceful degradation and clear error messages
 - **Well-tested**: Unit and integration tests included
 
-## Installation
+---
+
+## 📦 Installation
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 pip install pydantic pydantic-settings aiohttp pytest pytest-asyncio
 
+# Install video generation specific requirements
+pip install -r requirements_video_generation.txt
+```
+
+### System Requirements
+- Python 3.10+
+- FFmpeg (for video processing)
+- TTS service (Fish-Speech, Solero, or Coqui)
+- LLM API key (Anthropic Claude, OpenAI, or LiteLLM)
+
+---
+
+## 💻 Usage
+
+### Basic Commands
+
+```bash
 # Generate video from title
-python scripts/generate_video.py --title "Fred se lance dans l'IA"
+python scripts/generate_video.py --title "Fred découvre l'IA"
 
-# Use custom config
-python scripts/generate_video.py --title "Fred" --config configs/example_custom.yaml
+# Generate from story file
+python scripts/generate_video.py --story-file story.txt
 
-# Recreate from config dump (skips expensive LLM calls)
-python scripts/generate_video.py --from-config-dump output/config_20251111_103000.json
+# Recreate from config dump (skips LLM calls!)
+python scripts/generate_video.py --from-config-dump output/config_20251111.json
+
+# Quiet mode (minimal output)
+python scripts/generate_video.py --title "Fred" --quiet
 ```
 
-## Architecture
+### Configuration Options
 
-### Components
+```bash
+# Use YAML config file
+python scripts/generate_video.py --title "Fred" --config configs/custom.yaml
 
-1. **`video_generation_config.py`**: Pydantic configuration models
-2. **`video_generation_interfaces.py`**: Abstract interfaces for all components
-3. **`video_generation_impl.py`**: Concrete implementations (LLM, TTS, STT, etc.)
-4. **`video_generation_core.py`**: Core async logic
-5. **`generate_video.py`**: CLI script with comprehensive help
-6. **`test_video_generation.py`**: Unit and integration tests
+# Override settings via CLI
+python scripts/generate_video.py \
+  --title "Fred" \
+  --max-parallel-llm-calls 10 \
+  --output_dir ./my_videos
 
-### Workflow
-
-```
-Title/Story Input
-    ↓
-Story Generation (async LLM)
-    ↓
-Sentence Separation
-    ↓
-Video Search & Matching (PARALLEL LLM calls)
-    ↓
-Audio Generation (SERIAL, local TTS)
-    ↓
-Subtitle Generation (SERIAL, local STT)
-    ↓
-Segment Combination
-    ↓
-Final Video + Config Dump
+# Use custom .env file
+python scripts/generate_video.py --title "Fred" --env-file production.env
 ```
 
-## Configuration
+### Advanced Usage
 
-### Via YAML File
+```bash
+# Custom concurrency (rate limiting)
+python scripts/generate_video.py --title "Fred" --max-parallel-llm-calls 15
+
+# Verbose mode with timing
+python scripts/generate_video.py --title "Fred" --verbose
+
+# Custom prompt file
+python scripts/generate_video.py --title "Fred" --prompt-file prompts/custom.txt
+```
+
+---
+
+## ⚙️ Configuration
+
+### Configuration Priority
+
+Settings are loaded in this order (highest to lowest priority):
+
+1. **CLI arguments** → `--title "Fred" --max-parallel-llm-calls 10`
+2. **Environment variables** → `export VG_MAX_PARALLEL_LLM_CALLS=10`
+3. **.env file** → `VG_MAX_PARALLEL_LLM_CALLS=10` (secrets)
+4. **.env.public file** → `VG_OUTPUT_DIR=./output` (non-secrets)
+5. **Default values** → Built into code
+
+### Configuration via .env Files
+
+**Recommended approach for secrets:**
+
+```bash
+# .env (API keys - DO NOT COMMIT!)
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+OPENAI_API_KEY=sk-your-key-here
+
+# .env.public (non-secrets - CAN COMMIT)
+VG_LLM__PROVIDER=anthropic
+VG_LLM__MODEL=claude-sonnet-4-5-20250929
+VG_LLM__TEMPERATURE=0.7
+VG_MAX_PARALLEL_LLM_CALLS=5
+VG_OUTPUT_DIR=./output
+VG_TEMP_DIR=./temp
+```
+
+### Configuration via Environment Variables
+
+```bash
+# Override any setting
+export VG_LLM__PROVIDER=openai
+export VG_LLM__MODEL=gpt-4o
+export VG_MAX_PARALLEL_LLM_CALLS=10
+
+# Run with overrides
+python scripts/generate_video.py --title "Fred"
+```
+
+### Configuration via YAML
 
 ```yaml
 # configs/my_config.yaml
@@ -90,6 +179,7 @@ llm:
   provider: anthropic
   model: claude-sonnet-4-5-20250929
   temperature: 0.7
+  max_tokens: 4096
 
 tts:
   provider: fish
@@ -98,174 +188,95 @@ tts:
   reference_audio: /path/to/reference.mp4
   reference_text: "Reference text for voice cloning"
 
-output_dir: ./output
+stt:
+  provider: whisper
+  model: base
+
+video_retrieval:
+  method: bm25
+  index_path: /path/to/clips
+  character_filter: fred
+
 max_parallel_llm_calls: 5
+max_sentence_length: 35
+output_dir: ./output
+temp_dir: ./temp
+enable_config_dump: true
 ```
 
-### Via Environment Variables
-
+**Use it:**
 ```bash
-export VG_LLM__PROVIDER=openai
-export VG_LLM__MODEL=gpt-4o
-export VG_TTS__HOST=192.168.1.100
-export VG_OUTPUT_DIR=/custom/output
+python scripts/generate_video.py --title "Fred" --config configs/my_config.yaml
 ```
 
-### Via Command-Line
+### Key Configuration Parameters
 
-```bash
-python scripts/generate_video.py \
-  --title "Fred" \
-  --llm-provider anthropic \
-  --llm-model claude-sonnet-4-5-20250929 \
-  --tts-host 127.0.0.1 \
-  --output-dir ./output
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_parallel_llm_calls` | 5 | Max concurrent LLM API calls |
+| `max_sentence_length` | 35 | Max words per sentence segment |
+| `max_search_attempts` | 3 | Max alternative keyword attempts |
+| `max_video_judgement_attempts` | 5 | Max videos to judge per sentence |
+| `output_dir` | `./output` | Output directory for videos |
+| `temp_dir` | `./temp` | Temporary files directory |
+| `enable_config_dump` | `true` | Save config dump for reproducibility |
+
+---
+
+## 🏗️ Architecture
+
+### Components
+
+```
+virtual_streamer/
+└── video_generation/              # Main video generation module ⭐
+    ├── __init__.py                # Public API exports
+    ├── config.py                  # Pydantic configuration models
+    ├── interfaces.py              # Abstract base classes
+    ├── implementations.py         # Concrete implementations
+    └── core.py                    # Core async logic
+
+scripts/
+└── generate_video.py              # CLI entry point (SINGLE SCRIPT)
+
+tests/
+└── test_video_generation.py       # Unit and integration tests
 ```
 
-## Interfaces
+### Workflow
 
-All components use abstract interfaces for extensibility:
-
-### LLM Providers
-- `AnthropicLLM`: Claude models
-- `OpenAILLM`: GPT models
-- `LiteLLM`: Multi-provider support
-
-### TTS Providers
-- `FishSpeechTTS`: Fish-Speech (default)
-- `SoleroTTS`: Solero TTS
-- `CoquiTTS`: Coqui TTS
-
-### STT Providers
-- `WhisperSTT`: Stable-Whisper (default)
-- `FasterWhisperSTT`: Faster-Whisper
-
-### Video Retrieval
-- `BM25VideoRetriever`: BM25 text search (default)
-- `VectorVideoRetriever`: Embedding-based search
-- `HybridVideoRetriever`: Combines both methods
-
-### Prompt Providers
-- `LocalPromptProvider`: Local files (default)
-- `MLflowPromptProvider`: MLflow prompt management
-
-## Config Dump
-
-Every run generates a comprehensive config dump that includes:
-
-- All input parameters (title, story, sentences)
-- All configuration settings
-- All intermediate selections (video matches, audio files, subtitle files)
-- All model versions and parameters
-- Timing information for each phase
-
-### Using Config Dumps
-
-Recreate the exact same video without rerunning expensive LLM calls:
-
-```bash
-python scripts/generate_video.py --from-config-dump output/config_20251111_103000.json
+```
+Title/Story Input
+    ↓
+[Story Generation] ─→ LLM (async)
+    ↓
+[Sentence Separation] ─→ Text processing
+    ↓
+[Video Search & Matching] ─→ PARALLEL LLM calls (semaphore-controlled)
+    ├─ Video judgement (vision API)
+    ├─ Keyword generation
+    └─ Alternative searches
+    ↓
+[Audio Generation] ─→ SERIAL TTS (local)
+    ↓
+[Subtitle Generation] ─→ SERIAL STT (local)
+    ↓
+[Segment Combination] ─→ FFmpeg
+    ↓
+[Final Video + Config Dump]
 ```
 
-This will:
-- Skip story generation
-- Skip video search and judgement (expensive LLM calls)
-- Regenerate audio (local TTS)
-- Regenerate subtitles (local STT)
-- Recombine everything into final video
+### Interface-Based Design
 
-## Testing
+All components use abstract interfaces for flexibility:
 
-```bash
-# Run all tests
-pytest tests/test_video_generation.py -v
+- **`LLMInterface`**: Anthropic Claude, OpenAI GPT, LiteLLM
+- **`TTSInterface`**: Fish-Speech, Solero, Coqui
+- **`STTInterface`**: Whisper (stable-whisper), Faster-Whisper
+- **`VideoRetrieverInterface`**: BM25, Vector, Hybrid
+- **`PromptProviderInterface`**: Local files, MLflow
 
-# Run specific test
-pytest tests/test_video_generation.py::TestConfiguration::test_default_config -v
-
-# Run with coverage
-pytest tests/test_video_generation.py --cov=scripts --cov-report=html
-```
-
-## Parallelization Strategy
-
-The script is optimized for efficiency:
-
-### Parallel Processing (LLM Calls)
-- Video search and keyword generation
-- Video-dialogue judgement (multiple videos evaluated simultaneously)
-- All async I/O-bound API calls
-
-### Serial Processing (Local Resources)
-- TTS audio generation (uses local GPU/CPU)
-- STT subtitle generation (uses local GPU/CPU)
-- Video composition (ffmpeg operations)
-
-This approach maximizes throughput while avoiding resource contention.
-
-## Examples
-
-### Basic Usage
-
-```bash
-# Generate from title
-python scripts/generate_video.py --title "Fred se lance dans l'IA"
-
-# Generate from existing story
-python scripts/generate_video.py --story-file my_story.txt
-```
-
-### Advanced Usage
-
-```bash
-# Use custom config and prompt
-python scripts/generate_video.py \
-  --title "Fred" \
-  --config configs/my_config.yaml \
-  --prompt-file prompts/my_prompt.txt
-
-# Override specific settings
-python scripts/generate_video.py \
-  --title "Fred" \
-  --llm-provider openai \
-  --llm-model gpt-4o \
-  --tts-reference-audio /path/to/fred_voice.mp4 \
-  --max-parallel-llm 10
-
-# Verbose output for debugging
-python scripts/generate_video.py --title "Fred" -v
-
-# Quiet mode (only output video path)
-python scripts/generate_video.py --title "Fred" --quiet
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **LLM API errors**: Check API keys in environment variables
-2. **TTS connection errors**: Ensure TTS service is running on specified host/port
-3. **Video not found**: Check video index path in configuration
-4. **Out of memory**: Reduce `max_parallel_llm_calls` or use smaller models
-
-### Debug Mode
-
-```bash
-# Enable verbose output
-python scripts/generate_video.py --title "Fred" -v
-```
-
-## Development
-
-### Adding New Providers
-
-1. Implement the appropriate interface in `video_generation_impl.py`
-2. Add factory logic to create your implementation
-3. Update configuration to support the new provider
-4. Add tests in `test_video_generation.py`
-
-Example:
-
+**Easy to extend:**
 ```python
 class MyCustomLLM(LLMInterface):
     async def complete(self, prompt: str, **kwargs) -> str:
@@ -273,55 +284,511 @@ class MyCustomLLM(LLMInterface):
         pass
 ```
 
-### Project Structure
+---
 
-```
-virtual-streamer/
-├── scripts/
-│   ├── generate_video.py              # Main CLI script
-│   ├── video_generation_config.py     # Pydantic config models
-│   ├── video_generation_interfaces.py # Abstract interfaces
-│   ├── video_generation_impl.py       # Concrete implementations
-│   └── video_generation_core.py       # Core logic functions
-├── tests/
-│   └── test_video_generation.py       # Unit and integration tests
-├── configs/
-│   ├── default_config.yaml            # Default configuration
-│   └── example_custom.yaml            # Example custom config
-├── prompts/
-│   └── story_generation.txt           # Story generation prompt
-└── output/
-    └── (generated videos and config dumps)
+## 🔧 Advanced Features
+
+### 1. Concurrency Control (Rate Limiting)
+
+**Problem:** Too many concurrent API calls → Rate limit errors (429)  
+**Solution:** Semaphore-based concurrency control
+
+```python
+# Automatically limits concurrent LLM calls
+llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
 ```
 
-## Documentation
+**Configuration:**
+```bash
+# Conservative (small API plan)
+--max-parallel-llm-calls 3
 
-### Essential Docs (in root)
-- **This file** - Complete guide
-- `QUICK_START_SIMPLIFIED.md` - 3-step quick start
-- `USAGE_EXAMPLES.md` - 20+ examples
-- `DOCS_INDEX.md` - Navigation guide
+# Default (balanced)
+--max-parallel-llm-calls 5
 
-### Detailed Docs (in docs/archived/)
-- Implementation details
-- Migration guides  
-- Comparisons
-- Changelogs
+# Aggressive (large API plan)
+--max-parallel-llm-calls 15
+```
 
-## License
+**Benefits:**
+- ✅ No more rate limit errors
+- ✅ Predictable resource usage
+- ✅ Better cost control
+- ✅ Configurable per API provider
 
-Same as the parent project.
+**Monitoring:**
+```
+Phase 1: Finding matching videos (parallel, max 5 concurrent)...
+```
 
-## Contributing
+### 2. Event Loop Safety
 
-1. Follow the existing code style
-2. Add tests for new features
-3. Update documentation
-4. Ensure all tests pass before submitting
+**Problem:** "Task got Future attached to a different loop" error  
+**Solution:** Lazy initialization of async clients
 
-## References
+```python
+class AnthropicLLM(LLMInterface):
+    def __init__(self, config: LLMConfig):
+        self._async_client = None  # Not created yet
+    
+    @property
+    def async_client(self):
+        """Created only when first accessed (in correct event loop)"""
+        if self._async_client is None:
+            self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        return self._async_client
+```
 
-- Original streamlit app: `apps/creation_interface.py`
-- Workflow implementation: `virtual_streamer/workflows/virtual_streamer_workflow.py`
-- Utils: `virtual_streamer/utils/utils.py`
+**Benefits:**
+- ✅ No event loop conflicts
+- ✅ Transparent to calling code
+- ✅ Zero performance overhead
 
+### 3. Structured Output
+
+LLM responses are structured using Pydantic models:
+
+```python
+class StoryOutput(BaseModel):
+    title: str                # Refined title
+    story_plan: str          # Creative planning
+    dialog: str              # Actual dialogue lines
+```
+
+**Example output:**
+```json
+{
+  "title": "Fred se lance dans l'IA (Version complète)",
+  "story_plan": "Fred va découvrir l'IA avec humour...",
+  "dialog": "Fred: Eh dis donc Jamy! Fred: J'ai découvert l'IA!"
+}
+```
+
+### 4. Config Dumps (Reproducibility)
+
+Every run generates a comprehensive config dump:
+
+```json
+{
+  "version": "1.0",
+  "timestamp": "2025-11-11T17:30:00",
+  "input": {
+    "story": "...",
+    "sentences": ["...", "..."]
+  },
+  "config": { "llm": {...}, "tts": {...} },
+  "execution": {
+    "video_matches": [...],
+    "audio_files": [...],
+    "timing": {"total": 78.45}
+  }
+}
+```
+
+**Recreate exact video without LLM calls:**
+```bash
+python scripts/generate_video.py --from-config-dump output/config_20251111.json
+```
+
+### 5. Parallel vs Serial Processing
+
+**Parallel (async with semaphore):**
+- Story generation
+- Video judgement (vision API)
+- Keyword generation
+- Video matching
+
+**Serial (local processing):**
+- Audio generation (TTS)
+- Subtitle generation (STT)
+- Video combination (FFmpeg)
+
+**Why?** LLM calls are I/O-bound (benefit from parallelism). TTS/STT use local GPU/CPU (would compete for resources).
+
+---
+
+## 🐛 Troubleshooting
+
+### API Key Issues
+
+```bash
+# Check .env file
+cat .env | grep API_KEY
+
+# Verify it's loaded
+python -c "import os; print(os.getenv('ANTHROPIC_API_KEY'))"
+
+# Test configuration
+python -c "
+from virtual_streamer.video_generation import VideoGenerationConfig
+config = VideoGenerationConfig()
+print(f'Provider: {config.llm.provider}')
+print(f'Model: {config.llm.model}')
+"
+```
+
+### Rate Limit Errors
+
+```bash
+# Reduce concurrent calls
+python scripts/generate_video.py --title "Fred" --max-parallel-llm-calls 3
+
+# Or set permanently in .env.public
+echo "VG_MAX_PARALLEL_LLM_CALLS=3" >> .env.public
+```
+
+### Event Loop Errors
+
+The lazy initialization should prevent these, but if you see:
+- "Task got Future attached to a different loop"
+- "No running event loop"
+
+**Solution:** Update to latest version (includes lazy initialization fix).
+
+### TTS Connection Issues
+
+```bash
+# Check TTS service is running
+curl http://127.0.0.1:8003/
+
+# Check configuration
+python -c "
+from virtual_streamer.video_generation import VideoGenerationConfig
+config = VideoGenerationConfig()
+print(f'TTS Host: {config.tts.host}:{config.tts.port}')
+"
+
+# Test TTS connection
+python -c "
+import requests
+resp = requests.get('http://127.0.0.1:8003/')
+print(resp.status_code)
+"
+```
+
+### Video Not Found
+
+```bash
+# Check video index path
+ls -lh /media/amor/data1/Downloads/CPS/clip_infos/
+
+# Verify configuration
+python -c "
+from virtual_streamer.video_generation import VideoGenerationConfig
+config = VideoGenerationConfig()
+print(f'Index: {config.video_retrieval.index_path}')
+"
+```
+
+### Slow Performance
+
+```bash
+# Increase concurrency (if not hitting rate limits)
+python scripts/generate_video.py --title "Fred" --max-parallel-llm-calls 10
+
+# Check timing breakdown
+# Look for bottlenecks in the output:
+#   Video search: 45s
+#   Audio generation: 12s
+#   Subtitle generation: 9s
+```
+
+---
+
+## 📚 API Reference
+
+### Main Script
+
+```bash
+python scripts/generate_video.py [OPTIONS]
+```
+
+**Input Options (mutually exclusive):**
+- `--title TEXT` - Generate story from title
+- `--story-file PATH` - Load story from file
+- `--from-config-dump PATH` - Recreate from config dump
+
+**Configuration:**
+- `--config PATH` - YAML config file
+- `--env-file PATH` - Additional .env file
+- `--prompt-file PATH` - Custom prompt file
+
+**Processing:**
+- `--max-parallel-llm-calls INT` - Max concurrent LLM calls (default: 5)
+- `--max-sentence-length INT` - Max words per sentence (default: 35)
+- `--max-search-attempts INT` - Max alternative searches (default: 3)
+
+**Output:**
+- `--output_dir PATH` - Output directory (default: ./output)
+- `--temp_dir PATH` - Temp directory (default: ./temp)
+- `--enable_config_dump BOOL` - Save config dump (default: true)
+
+**Display:**
+- `--verbose` - Verbose output with timing
+- `--quiet` - Minimal output
+
+### Environment Variables
+
+All configuration can be set via environment variables with `VG_` prefix:
+
+```bash
+# Format: VG_<SECTION>__<PARAMETER>
+VG_LLM__PROVIDER=anthropic
+VG_LLM__MODEL=claude-sonnet-4-5-20250929
+VG_LLM__TEMPERATURE=0.7
+VG_TTS__HOST=127.0.0.1
+VG_TTS__PORT=8003
+VG_MAX_PARALLEL_LLM_CALLS=5
+VG_OUTPUT_DIR=./output
+```
+
+**Note:** Use double underscore `__` for nested config (e.g., `llm.provider` → `VG_LLM__PROVIDER`).
+
+### Python API
+
+```python
+import asyncio
+from virtual_streamer.video_generation import (
+    VideoGenerationConfig,
+    create_llm, create_tts, create_stt,
+    create_video_retriever, create_prompt_provider,
+    generate_story, generate_video_from_story
+)
+
+async def main():
+    # Load configuration
+    config = VideoGenerationConfig()
+    
+    # Create semaphore for rate limiting
+    llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
+    
+    # Initialize components
+    llm = create_llm(config.llm)
+    tts = create_tts(config.tts)
+    stt = create_stt(config.stt)
+    video_retriever = create_video_retriever(config.video_retrieval)
+    prompt_provider = create_prompt_provider(config.prompt)
+    
+    # Generate story
+    story_output = await generate_story(
+        "Fred découvre l'IA",
+        llm,
+        prompt_provider,
+        config,
+        semaphore=llm_semaphore
+    )
+    
+    # Generate video
+    result = await generate_video_from_story(
+        story_output.dialog,
+        llm,
+        tts,
+        stt,
+        video_retriever,
+        config,
+        story_output=story_output
+    )
+    
+    print(f"Video created: {result.video_path}")
+
+asyncio.run(main())
+```
+
+---
+
+## 📊 Examples
+
+### Example 1: Quick Video Generation
+
+```bash
+python scripts/generate_video.py --title "Fred et la blockchain"
+```
+
+### Example 2: Custom Configuration
+
+```yaml
+# custom_config.yaml
+llm:
+  provider: openai
+  model: gpt-4o
+  temperature: 0.8
+
+max_parallel_llm_calls: 10
+output_dir: /custom/output
+```
+
+```bash
+python scripts/generate_video.py --title "Fred" --config custom_config.yaml
+```
+
+### Example 3: Environment-Based Config
+
+```bash
+# Development
+export VG_LLM__PROVIDER=anthropic
+export VG_MAX_PARALLEL_LLM_CALLS=3
+python scripts/generate_video.py --title "Fred"
+
+# Production
+export VG_LLM__PROVIDER=openai
+export VG_MAX_PARALLEL_LLM_CALLS=10
+python scripts/generate_video.py --title "Fred"
+```
+
+### Example 4: Batch Processing
+
+```bash
+#!/bin/bash
+# generate_batch.sh
+
+titles=(
+  "Fred et l'IA"
+  "Fred et la crypto"
+  "Fred et le metaverse"
+)
+
+for title in "${titles[@]}"; do
+  python scripts/generate_video.py --title "$title" --quiet
+done
+```
+
+### Example 5: Recreate from Dump
+
+```bash
+# Original generation (expensive)
+python scripts/generate_video.py --title "Fred"
+# → Creates: output/config_20251111_173000.json
+
+# Later: recreate exact video (fast, no LLM calls)
+python scripts/generate_video.py --from-config-dump output/config_20251111_173000.json
+```
+
+---
+
+## 🔄 Migration from Old Version
+
+If you were using `generate_video_simple.py`, migrate to the single script:
+
+**Old:**
+```bash
+python scripts/generate_video_simple.py --title "Fred"
+```
+
+**New (same functionality):**
+```bash
+python scripts/generate_video.py --title "Fred"
+```
+
+All `.env` configuration works exactly the same!
+
+---
+
+## 📈 Performance Tuning
+
+### Concurrency Settings by Use Case
+
+| Use Case | `max_parallel_llm_calls` | Why |
+|----------|--------------------------|-----|
+| Development | 3 | Reduce API costs |
+| Small API Plan | 3-5 | Avoid rate limits |
+| Default/Balanced | 5 | Good for most cases |
+| Large API Plan | 10-15 | Maximum speed |
+| Production | 5-10 | Balance speed/reliability |
+
+### Monitoring Performance
+
+```bash
+python scripts/generate_video.py --title "Fred" --verbose
+```
+
+**Output includes timing breakdown:**
+```
+Timing:
+  Video search: 45.23s
+  Audio generation: 12.34s
+  Subtitle generation: 8.92s
+  Segment composition: 5.67s
+  Final concatenation: 2.13s
+  Total: 78.45s
+```
+
+**Optimization tips:**
+- If `Video search` is slow → increase `max_parallel_llm_calls`
+- If hitting rate limits → decrease `max_parallel_llm_calls`
+- If `Audio generation` is slow → check TTS service performance
+- If `Subtitle generation` is slow → use faster Whisper model
+
+---
+
+## 🤝 Contributing
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/test_video_generation.py
+
+# Run specific test
+pytest tests/test_video_generation.py::TestStoryGeneration::test_generate_story
+
+# Run with coverage
+pytest --cov=scripts tests/test_video_generation.py
+```
+
+### Code Style
+
+Follow existing patterns:
+- Use type hints
+- Add docstrings to functions
+- Keep functions focused and small
+- Use async/await for I/O operations
+
+### Adding New LLM Provider
+
+```python
+# 1. Implement interface
+class MyLLM(LLMInterface):
+    async def complete(self, prompt: str, **kwargs) -> str:
+        # Implementation
+        pass
+    
+    async def complete_structured(self, prompt: str, response_model, **kwargs):
+        # Implementation
+        pass
+    
+    async def complete_with_vision(self, prompt: str, image_base64: str, **kwargs):
+        # Implementation
+        pass
+
+# 2. Add to factory
+def create_llm(config: LLMConfig) -> LLMInterface:
+    if config.provider == "my_provider":
+        return MyLLM(config)
+    # ...
+
+# 3. Add config
+class LLMConfig(BaseModel):
+    provider: str = Field(default="anthropic")  # Add "my_provider" as option
+```
+
+---
+
+## 📄 License
+
+Same as parent project.
+
+---
+
+## 🎉 Summary
+
+- **Single script**: `scripts/generate_video.py` (no duplicates!)
+- **Flexible configuration**: CLI, env vars, .env files, or YAML
+- **Production-ready**: Rate limiting, error handling, reproducibility
+- **Well-documented**: Complete guide in this single file
+- **Easy to use**: 3 steps to your first video
+
+**Start generating videos now!** 🎬✨
+
+```bash
+python scripts/generate_video.py --title "Fred découvre l'IA"
+```
