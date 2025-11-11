@@ -223,7 +223,7 @@ Donc review d'un autre cas. Donc je lis le contenu. Et dis donc Jamy, tu savais 
 
 
 SCENARIO DESCRIPTION
-Fred has just attended a parent-teacher conference at his nephew's school and was shocked by what he considers outdated teaching methods. He believes the French education system is completely broken and that HE has the solution. Fred is convinced that by combining his "street smarts" from the 1990s entertainment industry with Jamy's scientific credibility, they can revolutionize education. His plan involves increasingly absurd elements: replacing traditional classrooms with a hybrid model inspired by game shows, implementing a point-based system where students earn "flouze" (money/points) for correct answers, introducing mandatory breaks for TikTok scrolling to "reset the brain," and ultimately creating a nationwide network of learning centers branded as "Fred & Jamy's Knowledge Arcade." Fred will justify each ridiculous element with pseudo-scientific reasoning borrowed from the show's educational format, while completely missing how impractical and chaotic his ideas are. He'll reference the golden age of French television and position himself as a visionary entrepreneur who finally understands what politicians and educators have been missing for decades.
+Fred has just attended a parent-teacher conference at his nephew's school and was shocked by what he considers outdated teaching methods. He believes the French education system is completely broken and that HE has the solution. Fred is convinced that by combining his "street smarts" from the 1990s entertainment industry with Jamy's scientific credibility, they can revolutionize education. His plan involves increasingly absurd elements: replacing traditional classrooms with a hybrid model inspired by game shows, implementing a point-based system where students earn "flouze" (money/points) for correct answers, introducing mandatory breaks for TikTok scrolling to "reset the brain," and ultimately creating a nationwide network of learning centers branded as "Fre & Jamy's Knowledge Arcade." Fred will justify each ridiculous element with pseudo-scientific reasoning borrowed from the show's educational format, while completely missing how impractical and chaotic his ideas are. He'll reference the golden age of French television and position himself as a visionary entrepreneur who finally understands what politicians and educators have been missing for decades.
 
 Eh dis donc Jamy, tu savais que j'ai assisté à une réunion parents-profs hier et c'est du délire complet, les gamins apprennent encore les maths comme en 1985 avec des craies et des tableaux noirs !
 Je vais révolutionner l'Éducation nationale, on va transformer les salles de classe en studios de jeu télévisé, genre "Questions pour un Champion" mais avec des vrais enjeux, les mômes gagnent des points à chaque bonne réponse et à la fin du trimestre ils peuvent les convertir en flouze vrai !
@@ -287,6 +287,61 @@ Return ONLY the keyword/phrase, nothing else."""
 
 
 SEPARATOR = "."
+
+
+# Initialize retriever and index (these should be initialized once at module level or in a setup function)
+_retriever = None
+_index = None
+
+
+def initialize_search():
+    """Initialize the BM25 retriever and vector index for video search."""
+    global _retriever, _index
+    
+    if _retriever is None or _index is None:
+        # Load documents and prepare nodes
+        documents = load_json_documents()
+        nodes = prepare_nodes_v2(documents)
+        
+        # Initialize BM25 retriever
+        _retriever = BM25Retriever.from_defaults(
+            nodes=nodes,
+            similarity_top_k=10,
+            stemmer=Stemmer.Stemmer("french")
+        )
+        
+        # Initialize vector index
+        Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        _index = VectorStoreIndex(nodes)
+
+
+def search_videos(query: str, top_k: int = 10) -> list[str]:
+    """
+    Search for videos using the given query.
+    
+    Args:
+        query: Search query string
+        top_k: Number of results to return
+    
+    Returns:
+        List of video file paths
+    """
+    initialize_search()
+    
+    # Use BM25 retriever to find relevant videos
+    results = _retriever.retrieve(query)
+    
+    # Extract video paths from results
+    video_paths = []
+    for result in results[:top_k]:
+        # Assuming the node metadata contains a 'video_path' field
+        if hasattr(result.node, 'metadata') and 'video_path' in result.node.metadata:
+            video_paths.append(result.node.metadata['video_path'])
+        elif hasattr(result.node, 'text'):
+            # If video path is in the text, extract it
+            video_paths.append(result.node.text)
+    
+    return video_paths
 
 
 def extract_middle_frame(video_path: str) -> Optional[str]:
@@ -534,4 +589,18 @@ def find_best_matching_video_with_llm_search(
         if not available_videos:
             continue
         
-        best_video, judgement = find_best
+        best_video, judgement = find_best_matching_video(available_videos, dialogue)
+        
+        # If we found a satisfactory match, return it
+        if judgement and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+            return best_video, judgement, current_keyword
+        
+        # Track if this is the best result so far
+        if judgement and judgement.grade > overall_best_grade:
+            overall_best_video = best_video
+            overall_best_judgement = judgement
+            overall_best_keyword = current_keyword
+            overall_best_grade = judgement.grade
+    
+    # Return the best video we found across all attempts
+    return overall_best_video, overall_best_judgement, overall_best_keyword
