@@ -1,0 +1,38 @@
+# Example Custom Configuration
+# =============================
+# This is an example of a custom configuration that overrides defaults
+# Copy this file and modify it to suit your needs
+
+# Use OpenAI instead of Anthropic
+llm:
+  provider: openai
+  model: gpt-4o
+  temperature: 0.5
+
+# Use local Coqui TTS on different port
+tts:
+  provider: coqui
+  host: localhost
+  port: 5002
+
+# Use smaller Whisper model for faster processing
+stt:
+  provider: whisper
+  model: tiny
+
+# Use hybrid retrieval method
+video_retrieval:
+  method: hybrid
+  index_path: /custom/path/to/clips
+  vector_store_path: /custom/path/to/vector_store
+
+# Custom output directory
+output_dir: /custom/output/videos
+temp_dir: /tmp/video_gen
+
+# More aggressive parallelization
+max_parallel_llm_calls: 10
+
+# Longer sentences
+max_sentence_length: 50
+

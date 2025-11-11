@@ -1,0 +1,109 @@
+# Default Configuration for Virtual Streamer Video Generation
+# =============================================================
+# This file contains all configurable parameters for the video generation workflow.
+# You can override these settings via command-line arguments or environment variables.
+
+# LLM Configuration
+# -----------------
+# Configure the Language Model for story generation and video judgement
+llm:
+  provider: anthropic  # Options: anthropic, openai, litellm
+  model: claude-sonnet-4-5-20250929
+  temperature: 0.7
+  max_tokens: 4096
+  # api_key: null  # If not set, reads from environment variable
+  vision_model: claude-haiku-4-5-20251001  # Model for video frame judgement
+
+# Text-to-Speech Configuration
+# -----------------------------
+# Configure TTS provider for audio generation (runs locally, processed serially)
+tts:
+  provider: fish  # Options: fish (Fish-Speech), solero, coqui
+  host: 127.0.0.1
+  port: 8003
+  # reference_audio: null  # Path to reference audio for voice cloning
+  # reference_text: null   # Text matching reference audio
+  
+  # Fish-Speech specific parameters
+  max_new_tokens: 1024
+  chunk_length: 300
+  top_p: 0.8
+  repetition_penalty: 1.1
+  temperature: 0.8
+
+# Speech-to-Text Configuration
+# -----------------------------
+# Configure STT provider for subtitle generation (runs locally, processed serially)
+stt:
+  provider: whisper  # Options: whisper (stable-whisper), faster-whisper
+  model: base  # Options: tiny, base, small, medium, large
+
+# Video Retrieval Configuration
+# ------------------------------
+# Configure how videos are searched and matched
+video_retrieval:
+  method: bm25  # Options: bm25, vector, hybrid
+  index_path: /media/amor/data1/Downloads/CPS/clip_infos
+  # vector_store_path: null  # Path to vector store (for vector/hybrid methods)
+  embedding_model: lightonai/modernbert-embed-large
+  top_k: 10
+  character_filter: fred  # Filter videos by character name
+
+# Prompt Configuration
+# --------------------
+# Configure prompt management
+prompt:
+  provider: local  # Options: local, mlflow
+  local_file: prompts/story_generation.txt  # Path to prompt file or directory
+  # mlflow_tracking_uri: null
+  # mlflow_experiment: null
+
+# Video Processing Configuration
+# -------------------------------
+# Configure video output parameters
+video_processing:
+  resolution: 720x480
+  codec: h264_nvenc  # Use h264_nvenc for GPU encoding, libx264 for CPU
+  bitrate: 3000k
+  fontsize: 14
+
+# Search and Matching Parameters
+# -------------------------------
+# Maximum attempts for finding alternative search keywords
+max_search_attempts: 3
+
+# Maximum number of videos to judge for each sentence
+max_video_judgement_attempts: 5
+
+# Text Processing
+# ---------------
+# Maximum length for sentence splitting
+max_sentence_length: 35
+
+# Output Configuration
+# --------------------
+output_dir: ./output
+temp_dir: ./temp
+
+# Parallelization
+# ---------------
+# Maximum number of parallel LLM API calls (for video search/judgement)
+# LLM calls are I/O-bound and benefit from parallelization
+# TTS/STT are CPU/GPU-bound and run serially
+max_parallel_llm_calls: 5
+
+# Config Dump
+# -----------
+# Enable comprehensive config dumping for reproducibility
+enable_config_dump: true
+config_dump_filename: generation_config.json
+
+# Environment Variables
+# =====================
+# All settings can be overridden via environment variables with prefix VG_
+# Examples:
+#   VG_LLM__PROVIDER=openai
+#   VG_LLM__MODEL=gpt-4
+#   VG_TTS__HOST=192.168.1.100
+#   VG_OUTPUT_DIR=/custom/output
+
