@@ -1,4 +1,4 @@
-"""
+ virtual_streamer/video_generation/implementations.py"""
 Concrete implementations of video generation interfaces.
 
 This module provides working implementations for:
@@ -35,6 +35,7 @@ from virtual_streamer.utils.utils import txt_to_speech_call_fish, get_length
 from virtual_streamer.workflows.video_retriever import load_json_documents, prepare_nodes_v2
 from virtual_streamer.video_server.utils import get_character_data_sync
 from virtual_streamer.video_server.models import Character
+from virtual_streamer.api.dependencies import get_path_resolver
 
 
 # ============================================================================
@@ -740,11 +741,19 @@ def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSIn
             if character.voice_samples and len(character.voice_samples) > 0:
                 # Use the first voice sample for voice cloning
                 first_sample = character.voice_samples[0]
-                config.reference_audio = first_sample.sample_storage_path
+                
+                # Resolve the path using path resolver
+                path_resolver = get_path_resolver()
+                resolved_audio_path = path_resolver.resolve_audio(first_sample.sample_storage_path)
+                
+                config.reference_audio = resolved_audio_path
                 config.reference_text = first_sample.transcript
                 print(f"✓ Voice cloning configured for '{character.name}':")
                 print(f"  Reference audio: {config.reference_audio}")
                 print(f"  Reference text: {config.reference_text[:50]}...")
+                
+                if not path_resolver.exists(first_sample.sample_storage_path):
+                    print(f"⚠ Warning: Reference audio file not found at {resolved_audio_path}")
             else:
                 print(f"⚠ Warning: Character '{character.name}' has no voice samples.")
                 print(f"  TTS will use default voice (no voice cloning).")
