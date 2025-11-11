@@ -179,6 +179,9 @@ async def main():
             video_retriever = create_video_retriever(config.video_retrieval)
             prompt_provider = create_prompt_provider(config.prompt)
             
+            # Create semaphore for LLM concurrency control
+            llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
+            
             # Generate or load story
             story_output = None
             if config.title:
@@ -190,7 +193,8 @@ async def main():
                     llm,
                     prompt_provider,
                     config,
-                    progress
+                    progress,
+                    llm_semaphore
                 )
                 
                 if not config.quiet:

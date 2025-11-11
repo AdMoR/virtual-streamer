@@ -2,15 +2,37 @@
 
 Standalone async video generation script for creating videos from stories using AI models.
 
+## ⚡ Quick Start
+
+### Two Ways to Use
+
+**1. Simplified (Recommended)** - Minimal CLI, .env configuration:
+```bash
+# Setup (once)
+cp env.example .env
+cp env.public.example .env.public
+echo "ANTHROPIC_API_KEY=your-key" >> .env
+
+# Run (always)
+python scripts/generate_video_simple.py --title "Fred se lance dans l'IA"
+```
+
+**2. Original** - Full CLI arguments:
+```bash
+python scripts/generate_video.py --title "Fred" --llm-provider anthropic --tts-host localhost ...
+```
+
 ## Features
 
 - **Async optimization**: Parallel LLM calls for efficiency, serial TTS/STT for local processing
+- **Structured output**: Stories return title, plan, and dialog separately
+- **Simple configuration**: .env files or full CLI arguments
 - **Comprehensive config management**: Pydantic settings with YAML support
-- **Reproducibility**: Complete config dumps enable exact recreation without recomputation
-- **Interface-based design**: Easy to swap implementations and extend
+- **Reproducibility**: Complete config dumps enable exact recreation
+- **Interface-based design**: Easy to swap implementations
 - **Well-tested**: Unit and integration tests included
 
-## Quick Start
+## Installation
 
 ```bash
 # Install dependencies
@@ -271,6 +293,20 @@ virtual-streamer/
 └── output/
     └── (generated videos and config dumps)
 ```
+
+## Documentation
+
+### Essential Docs (in root)
+- **This file** - Complete guide
+- `QUICK_START_SIMPLIFIED.md` - 3-step quick start
+- `USAGE_EXAMPLES.md` - 20+ examples
+- `DOCS_INDEX.md` - Navigation guide
+
+### Detailed Docs (in docs/archived/)
+- Implementation details
+- Migration guides  
+- Comparisons
+- Changelogs
 
 ## License
 

@@ -34,6 +34,28 @@ from virtual_streamer.utils.utils import (
 
 
 # ============================================================================
+# Concurrency Control
+# ============================================================================
+
+async def with_semaphore(semaphore: asyncio.Semaphore, coro):
+    """
+    Execute a coroutine with semaphore-based concurrency control.
+    
+    This ensures that only a limited number of LLM API calls run concurrently,
+    preventing rate limit issues and API overload.
+    
+    Args:
+        semaphore: Asyncio semaphore for concurrency control
+        coro: Coroutine to execute
+        
+    Returns:
+        Result of the coroutine
+    """
+    async with semaphore:
+        return await coro
+
+
+# ============================================================================
 # Text Processing
 # ============================================================================
 
@@ -78,7 +100,8 @@ async def generate_story(
     llm: LLMInterface,
     prompt_provider: PromptProviderInterface,
     config: VideoGenerationConfig,
-    progress: Optional[ProgressCallback] = None
+    progress: Optional[ProgressCallback] = None,
+    semaphore: Optional[asyncio.Semaphore] = None
 ) -> StoryOutput:
     """
     Generate a story based on a title using LLM with structured output.
@@ -116,8 +139,11 @@ Focus on:
 - In story_plan, explain your creative choices and the comedic arc
 - In dialog, provide only the spoken lines (no stage directions or descriptions)"""
     
-    # Generate structured story
-    story_output = await llm.complete_structured(full_prompt, StoryOutput)
+    # Generate structured story (with concurrency control if semaphore provided)
+    if semaphore:
+        story_output = await with_semaphore(semaphore, llm.complete_structured(full_prompt, StoryOutput))
+    else:
+        story_output = await llm.complete_structured(full_prompt, StoryOutput)
     
     if progress:
         progress.update(f"Story generated: {story_output.title}")
@@ -178,7 +204,8 @@ async def judge_video_match(
     video_path: str,
     dialogue: str,
     llm: LLMInterface,
-    config: VideoGenerationConfig
+    config: VideoGenerationConfig,
+    semaphore: Optional[asyncio.Semaphore] = None
 ) -> Optional[VideoJudgementResult]:
     """
     Judge if a video matches a dialogue using vision LLM.
@@ -201,8 +228,11 @@ async def judge_video_match(
     prompt = JUDGE_PROMPT.format(dialogue=dialogue)
     
     try:
-        # Call vision API
-        response = await llm.complete_with_vision(prompt, base64_image)
+        # Call vision API (with concurrency control if semaphore provided)
+        if semaphore:
+            response = await with_semaphore(semaphore, llm.complete_with_vision(prompt, base64_image))
+        else:
+            response = await llm.complete_with_vision(prompt, base64_image)
         
         # Parse response
         rating = "NOT_CONTEXTUAL"
@@ -265,7 +295,8 @@ async def generate_search_keyword(
     dialogue: str,
     previous_keywords: List[str],
     llm: LLMInterface,
-    config: VideoGenerationConfig
+    config: VideoGenerationConfig,
+    semaphore: Optional[asyncio.Semaphore] = None
 ) -> str:
     """
     Generate a search keyword for finding relevant video clips.
@@ -286,7 +317,11 @@ async def generate_search_keyword(
         dialogue=dialogue
     )
     
-    keyword = await llm.complete(prompt)
+    # Call LLM (with concurrency control if semaphore provided)
+    if semaphore:
+        keyword = await with_semaphore(semaphore, llm.complete(prompt))
+    else:
+        keyword = await llm.complete(prompt)
     return keyword.strip()
 
 
@@ -295,7 +330,8 @@ async def find_best_video_for_sentence(
     llm: LLMInterface,
     video_retriever: VideoRetrieverInterface,
     config: VideoGenerationConfig,
-    progress: Optional[ProgressCallback] = None
+    progress: Optional[ProgressCallback] = None,
+    semaphore: Optional[asyncio.Semaphore] = None
 ) -> VideoMatchResult:
     """
     Find the best matching video for a sentence using parallel LLM calls.
@@ -327,9 +363,9 @@ async def find_best_video_for_sentence(
             alternatives_tried=[]
         )
     
-    # Judge top videos in parallel
+    # Judge top videos in parallel (with semaphore controlling concurrency)
     judgement_tasks = [
-        judge_video_match(video, sentence, llm, config)
+        judge_video_match(video, sentence, llm, config, semaphore)
         for video in videos[:config.max_video_judgement_attempts]
     ]
     judgements = await asyncio.gather(*judgement_tasks)
@@ -355,9 +391,9 @@ async def find_best_video_for_sentence(
         if progress:
             progress.update("Trying alternative search keywords...")
         
-        # Generate alternative keywords in parallel
+        # Generate alternative keywords in parallel (with semaphore controlling concurrency)
         keyword_tasks = [
-            generate_search_keyword(sentence, alternatives_tried, llm, config)
+            generate_search_keyword(sentence, alternatives_tried, llm, config, semaphore)
             for _ in range(config.max_search_attempts)
         ]
         keywords = await asyncio.gather(*keyword_tasks)
@@ -369,7 +405,7 @@ async def find_best_video_for_sentence(
             alt_videos = video_retriever.search(keyword, config.video_retrieval.top_k)
             if alt_videos:
                 alt_judgement_tasks = [
-                    judge_video_match(video, sentence, llm, config)
+                    judge_video_match(video, sentence, llm, config, semaphore)
                     for video in alt_videos[:config.max_video_judgement_attempts]
                 ]
                 alt_judgements = await asyncio.gather(*alt_judgement_tasks)
@@ -456,13 +492,16 @@ async def generate_video_from_story(
         progress.set_total_steps(len(sentences) * 4 + 2)  # Video search + audio + subtitle + combine + final
         progress.update(f"Processing {len(sentences)} sentences")
     
-    # Phase 1: Find matching videos for all sentences (PARALLEL LLM calls)
+    # Create semaphore for LLM concurrency control
+    llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
+    
+    # Phase 1: Find matching videos for all sentences (PARALLEL LLM calls with semaphore)
     if progress:
-        progress.update("Phase 1: Finding matching videos (parallel)...")
+        progress.update(f"Phase 1: Finding matching videos (parallel, max {config.max_parallel_llm_calls} concurrent)...")
     
     phase1_start = time.time()
     video_match_tasks = [
-        find_best_video_for_sentence(sentence, llm, video_retriever, config, progress)
+        find_best_video_for_sentence(sentence, llm, video_retriever, config, progress, llm_semaphore)
         for sentence in sentences
     ]
     video_matches = await asyncio.gather(*video_match_tasks)

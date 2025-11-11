@@ -44,9 +44,16 @@ class AnthropicLLM(LLMInterface):
     
     def __init__(self, config: LLMConfig):
         self.config = config
-        api_key = config.api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.async_client = anthropic.AsyncAnthropic(api_key=api_key)
+        self.api_key = config.api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self._async_client = None
+    
+    @property
+    def async_client(self):
+        """Lazy initialization of async client to avoid event loop conflicts."""
+        if self._async_client is None:
+            self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        return self._async_client
     
     async def complete(self, prompt: str, **kwargs) -> str:
         """Generate text completion asynchronously."""
@@ -134,8 +141,15 @@ class OpenAILLM(LLMInterface):
     
     def __init__(self, config: LLMConfig):
         self.config = config
-        api_key = config.api_key or os.environ.get("OPENAI_API_KEY")
-        self.client = openai.AsyncOpenAI(api_key=api_key)
+        self.api_key = config.api_key or os.environ.get("OPENAI_API_KEY")
+        self._client = None
+    
+    @property
+    def client(self):
+        """Lazy initialization of async client to avoid event loop conflicts."""
+        if self._client is None:
+            self._client = openai.AsyncOpenAI(api_key=self.api_key)
+        return self._client
     
     async def complete(self, prompt: str, **kwargs) -> str:
         """Generate text completion asynchronously."""
