@@ -34,7 +34,7 @@ class VideoDialogueJudgement(BaseModel):
 
 
 def txt_to_speech_call(text):
-    reference_fred = '/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp3'
+    reference_fred = '/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp4'
     reference_text_fred = "Là tu vois Jamy, je suis dans le Data Center de Youtube où sont Entreposées des tonnes de vidéos de pranks D'unboxing et aussi les vidéos du Studio Bubble Tea, tu sais le mec qui s'est"
     audio_path = txt_to_speech_call_fish(speech_lines=text, reference_audio=reference_fred, reference_text=reference_text_fred, host="127.0.0.1", port=8003)
     return audio_path
@@ -317,7 +317,7 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
     try:
         # Call Anthropic API with structured output
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-5-20250929",
             max_tokens=1024,
             messages=[
                 {
@@ -413,7 +413,7 @@ def find_best_matching_video(videos: list[str], dialogue: str, max_attempts: int
 
 
 @st.cache_resource
-def load_retriever_bm25(directory_path = "/media/amor/data/Downloads/CPS/clip_infos", who="fred"):
+def load_retriever_bm25(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos", who="fred"):
     nodes = prepare_nodes(load_json_documents(directory_path))
     fred_nodes = [n for n in nodes if who == n.metadata["who"]]
     bm25_retriever = BM25Retriever.from_defaults(
@@ -483,7 +483,7 @@ def build_id(object_type, sentence, extra_index=None) -> str:
 def generate_text():
     PROMPT = st.session_state["prompt"]
     messages = [{"role": "user", "content": PROMPT}]
-    response = completion(model="claude-opus-4-20250514", messages=messages)
+    response = completion(model="claude-sonnet-4-5-20250929", messages=messages)
     rez = response.choices[0].message.content
     st.session_state["llm_result"] = rez
 
@@ -498,7 +498,9 @@ def search_videos(kw):
 
 def tab1_ui():
     st.title("Text Generation")
-    st.text_area(label="LLM result here", key="llm_result", height=500, value=DEFAULT_SCRIPT)
+    script = st.session_state.get("llm_result") or DEFAULT_SCRIPT
+    st.session_state["llm_result"] = script
+    st.text_area(label="LLM result here", key="llm_result", height=500, on_change=compute_generated_sentences)
     st.text_area(label="Prompt text here", key="prompt", height=800, value=DEFAULT_PROMPT)
     st.button("Generate Text", on_click=generate_text)
 
