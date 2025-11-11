@@ -169,12 +169,16 @@ class VideoGenerationConfig(BaseSettings):
     """Main configuration for video generation workflow.
     
     Configuration is loaded from (in order of precedence):
-    1. Environment variables (VG_ prefix)
-    2. .env file (secrets)
-    3. .env.public file (non-secrets)
-    4. Default values
+    1. Command-line arguments
+    2. Environment variables (VG_ prefix)
+    3. .env file (secrets)
+    4. .env.public file (non-secrets)
+    5. Default values
     
-    Example:
+    Example CLI:
+        python generate_video.py --title "Fred" --llm-provider anthropic
+    
+    Example env vars:
         VG_LLM__PROVIDER=openai
         VG_OUTPUT_DIR=/custom/output
     """
@@ -183,9 +187,51 @@ class VideoGenerationConfig(BaseSettings):
         env_prefix="VG_",
         env_nested_delimiter="__",
         case_sensitive=False,
-        env_file=[".env", ".env.public"],
+        env_file=('.env', '.env.public'),
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
+        cli_parse_args=True,  # Enable automatic CLI parsing
+        cli_prog_name="generate_video.py"
+    )
+    
+    # ========================================================================
+    # Input options (mutually exclusive in practice)
+    # ========================================================================
+    title: Optional[str] = Field(
+        default=None,
+        description="Title/topic for story generation (e.g., 'Fred se lance dans l'IA')"
+    )
+    story_file: Optional[str] = Field(
+        default=None,
+        description="Path to existing story file to convert to video"
+    )
+    from_config_dump: Optional[str] = Field(
+        default=None,
+        description="Recreate video from config dump (skips LLM calls)"
+    )
+    
+    # ========================================================================
+    # Configuration files
+    # ========================================================================
+    config: Optional[str] = Field(
+        default=None,
+        description="Path to YAML config file (overrides defaults)"
+    )
+    prompt_file: Optional[str] = Field(
+        default=None,
+        description="Path to custom prompt file or directory"
+    )
+    
+    # ========================================================================
+    # Display options
+    # ========================================================================
+    verbose: bool = Field(
+        default=False,
+        description="Enable verbose output"
+    )
+    quiet: bool = Field(
+        default=False,
+        description="Suppress progress messages"
     )
     
     # Component configs
@@ -241,6 +287,14 @@ class VideoGenerationConfig(BaseSettings):
         default="generation_config.json",
         description="Filename for config dump"
     )
+    
+    def validate_inputs(self):
+        """Validate that exactly one input method is specified."""
+        inputs = [self.title, self.story_file, self.from_config_dump]
+        if sum(x is not None for x in inputs) != 1:
+            raise ValueError(
+                "Exactly one of --title, --story-file, or --from-config-dump must be provided"
+            )
     
     def get_output_path(self, filename: str) -> str:
         """Get full path for output file."""
