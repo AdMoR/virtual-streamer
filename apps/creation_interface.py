@@ -6,38 +6,18 @@ import Stemmer
 from virtual_streamer.utils.utils import (combine_video_and_short_audio, combine_part_in_concat_file,
                                           add_subtitle_from_srt,)
 from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents, prepare_nodes_v2
-from gradio_client import Client, handle_file
+from virtual_streamer.utils.utils import txt_to_speech_call_fish
 import stable_whisper
-from llama_index.llms.openai import OpenAI
 from llama_index.llms.anthropic import Anthropic
-from llama_index.core import Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 
 
-client = Client("http://localhost:7861/")
-
-
 def txt_to_speech_call(text):
     reference_fred = '/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp3'
     reference_text_fred = "Là tu vois Jamy, je suis dans le Data Center de Youtube où sont Entreposées des tonnes de vidéos de pranks D'unboxing et aussi les vidéos du Studio Bubble Tea, tu sais le mec qui s'est"
-    result = client.predict(
-        text=text,
-        normalize=False,
-        reference_id=None,
-        reference_audio=handle_file(reference_fred),
-        reference_text=reference_text_fred,
-        max_new_tokens=0,
-        chunk_length=200,
-        top_p=0.7,
-        repetition_penalty=1.2,
-        temperature=0.7,
-        seed=0,
-        use_memory_cache="on",
-        api_name="/partial"
-    )
-    audio_path = result[0]
+    audio_path = txt_to_speech_call_fish(speech_lines=text, reference_audio=reference_fred, reference_text=reference_text_fred, host="127.0.0.1", port=8003)
     return audio_path
 
 
@@ -117,7 +97,7 @@ def load_retriever_bm25(directory_path = "/media/amor/data/Downloads/CPS/clip_in
     return bm25_retriever
 
 @st.cache_resource
-def load_retriever(directory_path = "/media/amor/data/Downloads/CPS/clip_infos", who="fred"):
+def load_retriever(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos", who="fred"):
     embed_model = HuggingFaceEmbedding(model_name="lightonai/modernbert-embed-large")
     Settings.embed_model = embed_model
 
@@ -125,23 +105,24 @@ def load_retriever(directory_path = "/media/amor/data/Downloads/CPS/clip_infos",
     nodes = prepare_nodes_v2(load_json_documents(directory_path))
     fred_nodes = [n for n in nodes if who == n.metadata["who"]]
     index = VectorStoreIndex(fred_nodes)
-    index.storage_context.persist("/media/amor/data/Downloads/CPS/vector_store")
+    index.storage_context.persist("/media/amor/data1/Downloads/CPS/vector_store")
     retriever = index.as_retriever(verbose=True, similarity_top_k=5)
     return retriever
 
 
 @st.cache_resource
 def load_transcripter():
-    return stable_whisper.load_hf_whisper('large-v3', batch_size=4)
-
+    model = stable_whisper.load_faster_whisper('base')
+    #model = stable_whisper.load_hf_whisper('large-v3', batch_size=4)
+    return model
 
 @st.cache_resource
 def load_llm():
-    return Anthropic(model="claude-3-5-haiku-20241022")
+    return Anthropic(model="claude-sonnet-4-5-20250929")
 
 
-bm25_retriever = load_retriever()
 model = load_transcripter()
+bm25_retriever = load_retriever()
 llm = load_llm()
 DEFAULT_LENGTH = 35
 
