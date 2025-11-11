@@ -495,6 +495,186 @@ python scripts/generate_video.py --title "Fred" --max-parallel-llm-calls 10
 
 ---
 
+## 📊 HTML Visualization Reports
+
+### Overview
+
+Every video generation can produce an **interactive HTML report** showing the complete process with detailed information about video selection, LLM judgements, and performance metrics.
+
+### Features
+
+**For Each Sentence:**
+- 📝 Sentence text
+- 🎬 Video candidates evaluated
+- 🤖 LLM judgement results:
+  - Rating (CONTEXTUAL, NEUTRAL, NOT_CONTEXTUAL)
+  - Grade (0-10 scale)
+  - Detailed reasoning from LLM
+- 🔍 Alternative keywords tried
+- ✅ Final selected video
+
+**Summary Information:**
+- Story title and creative plan
+- Total sentences processed
+- Video duration
+- Number of LLM API calls
+- Performance timing breakdown
+
+**Visual Design:**
+- Beautiful, responsive interface
+- Color-coded ratings (green/orange/red)
+- Mobile-friendly layout
+- No external dependencies (pure HTML/CSS)
+
+### Usage
+
+#### Automatic Generation
+
+Reports are automatically created during video generation:
+
+```bash
+python scripts/generate_video.py --title "Fred découvre l'IA"
+# → Creates video + config dump + HTML report automatically
+```
+
+#### From Existing Config Dump
+
+```bash
+# Generate report from specific config dump
+python scripts/create_report.py output/config_20251111_173000.json
+
+# Use latest config dump
+python scripts/create_report.py --latest
+
+# Open in browser after generation
+python scripts/create_report.py output/config_20251111.json --open
+
+# Custom output path
+python scripts/create_report.py config.json --output reports/analysis.html
+```
+
+#### Python API
+
+```python
+from virtual_streamer.video_generation import (
+    create_html_report,
+    create_html_report_from_dump
+)
+
+# From GenerationResult
+result = await generate_video_from_story(...)
+html_path = create_html_report(result, output_path="report.html")
+
+# From config dump file
+html_path = create_html_report_from_dump(
+    "output/config_20251111.json",
+    output_path="custom_report.html"
+)
+```
+
+### Report Sections
+
+#### 1. Header & Summary Cards
+- Total sentences, duration, LLM calls, timing
+- Color-coded cards with key metrics
+
+#### 2. Story Section (if available)
+- Refined story title
+- Story plan/reasoning from LLM
+- Full dialog text
+
+#### 3. Sentence Analysis
+For each sentence, shows:
+- **Sentence Text**: The dialogue line
+- **Selected Video**: Final video chosen (highlighted in green)
+- **Rating Badge**: CONTEXTUAL (green), NEUTRAL (orange), NOT_CONTEXTUAL (red)
+- **Grade**: 0-10 score from LLM
+- **Reasoning**: LLM's explanation for the judgement
+- **Alternative Searches**: Keywords tried if first search failed
+
+#### 4. Performance Metrics
+- Video search time
+- Audio generation time
+- Subtitle generation time
+- Total processing time
+
+### Example Workflow
+
+```bash
+# 1. Generate video (creates config dump)
+python scripts/generate_video.py --title "Fred et la blockchain"
+# Output: video_20251111_173000.mp4
+#         config_20251111_173000.json
+#         video_generation_report_20251111_173000.html
+
+# 2. View report
+open video_generation_report_20251111_173000.html
+
+# 3. Or regenerate report later
+python scripts/create_report.py output/config_20251111_173000.json --open
+```
+
+### Use Cases
+
+**Debugging:**
+- Understand why specific videos were selected
+- Identify poor matches
+- Optimize prompts and keywords
+
+**Quality Assurance:**
+- Review LLM judgements
+- Verify video-text alignment
+- Check alternative search effectiveness
+
+**Performance Analysis:**
+- Identify bottlenecks
+- Optimize concurrency settings
+- Monitor API usage
+
+**Documentation:**
+- Share generation process with team
+- Archive decision rationale
+- Create project reports
+
+**Training:**
+- Understand how the system works
+- Learn LLM reasoning patterns
+- Improve prompt engineering
+
+### CLI Reference
+
+```bash
+python scripts/create_report.py [CONFIG_DUMP] [OPTIONS]
+
+Arguments:
+  CONFIG_DUMP          Path to config dump JSON file
+
+Options:
+  -o, --output PATH    Output HTML file path
+  --latest             Use latest config dump from output dir
+  --open               Open report in browser after generation
+  --output-dir DIR     Directory to search for config dumps (default: ./output)
+  -h, --help           Show help message
+```
+
+### Examples
+
+```bash
+# Generate from specific dump
+python scripts/create_report.py output/config_20251111_173000.json
+
+# Auto-find latest, open in browser
+python scripts/create_report.py --latest --open
+
+# Custom output location
+python scripts/create_report.py config.json -o reports/fred_ia.html
+
+# Search in custom directory
+python scripts/create_report.py --latest --output-dir /custom/outputs
+```
+
+---
+
 ## 📚 API Reference
 
 ### Main Script

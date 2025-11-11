@@ -33,6 +33,8 @@ from virtual_streamer.video_generation.config import (
 )
 from virtual_streamer.utils.utils import txt_to_speech_call_fish, get_length
 from virtual_streamer.workflows.video_retriever import load_json_documents, prepare_nodes_v2
+from virtual_streamer.video_server.utils import get_character_data_sync
+from virtual_streamer.video_server.models import Character
 
 
 # ============================================================================
@@ -714,8 +716,42 @@ def create_llm(config: LLMConfig) -> LLMInterface:
         raise ValueError(f"Unknown LLM provider: {config.provider}")
 
 
-def create_tts(config: TTSConfig) -> TTSInterface:
-    """Create TTS instance based on configuration."""
+def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSInterface:
+    """
+    Create TTS instance based on configuration.
+    
+    If character_name is provided and config doesn't have reference_audio,
+    loads character data from entity service and populates reference_audio
+    and reference_text from the first voice sample.
+    
+    Args:
+        config: TTS configuration
+        character_name: Optional character name to load voice samples from
+        
+    Returns:
+        TTSInterface implementation with voice cloning configured
+    """
+    # Load character voice samples if character_name is provided
+    if character_name and not config.reference_audio:
+        try:
+            print(f"🎤 Loading voice samples for character: {character_name}")
+            character: Character = get_character_data_sync(character_name)
+            
+            if character.voice_samples and len(character.voice_samples) > 0:
+                # Use the first voice sample for voice cloning
+                first_sample = character.voice_samples[0]
+                config.reference_audio = first_sample.sample_storage_path
+                config.reference_text = first_sample.transcript
+                print(f"✓ Voice cloning configured for '{character.name}':")
+                print(f"  Reference audio: {config.reference_audio}")
+                print(f"  Reference text: {config.reference_text[:50]}...")
+            else:
+                print(f"⚠ Warning: Character '{character.name}' has no voice samples.")
+                print(f"  TTS will use default voice (no voice cloning).")
+        except Exception as e:
+            print(f"⚠ Warning: Could not load character '{character_name}': {e}")
+            print(f"  TTS will proceed with default voice or config-specified reference audio.")
+    
     if config.provider == "fish":
         return FishSpeechTTS(config)
     elif config.provider == "solero":

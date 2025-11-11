@@ -183,6 +183,12 @@ class VideoGenerationConfig(BaseSettings):
         VG_OUTPUT_DIR=/custom/output
     """
     
+    # Character configuration (for voice cloning)
+    character_name: Optional[str] = Field(
+        default=None,
+        description="Character name to load voice samples from entity service for voice cloning"
+    )
+    
     model_config = SettingsConfigDict(
         env_prefix="VG_",
         env_nested_delimiter="__",

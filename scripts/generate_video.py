@@ -106,7 +106,8 @@ from virtual_streamer.video_generation import (
     SimpleProgressCallback,
     create_llm, create_tts, create_stt,
     create_video_retriever, create_prompt_provider,
-    generate_story, generate_video_from_story, recreate_from_config_dump
+    generate_story, generate_video_from_story, recreate_from_config_dump,
+    create_html_report
 )
 
 
@@ -141,6 +142,8 @@ async def main():
         print(f"\nConfiguration:")
         print(f"  LLM: {config.llm.provider}/{config.llm.model}")
         print(f"  TTS: {config.tts.provider} @ {config.tts.host}:{config.tts.port}")
+        if config.character_name:
+            print(f"  Character: {config.character_name} (voice cloning enabled)")
         print(f"  STT: {config.stt.provider}/{config.stt.model}")
         print(f"  Video Retrieval: {config.video_retrieval.method}")
         print(f"  Output: {config.output_dir}")
@@ -155,7 +158,7 @@ async def main():
                 print(f"Recreating video from config dump: {config.from_config_dump}\n")
             
             # Only need TTS and STT for recreation
-            tts = create_tts(config.tts)
+            tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
             
             result = await recreate_from_config_dump(
@@ -172,7 +175,7 @@ async def main():
                 progress.update("Initializing components...")
             
             llm = create_llm(config.llm)
-            tts = create_tts(config.tts)
+            tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
             video_retriever = create_video_retriever(config.video_retrieval)
             prompt_provider = create_prompt_provider(config.prompt)
@@ -234,6 +237,17 @@ async def main():
                 story_output=story_output
             )
         
+        # Generate HTML report if config dump is available
+        html_report_path = None
+        if result.config_dump_path and config.enable_config_dump:
+            try:
+                html_report_path = create_html_report(result)
+                if not config.quiet:
+                    print(f"\n✓ HTML report generated: {html_report_path}")
+            except Exception as e:
+                if config.verbose:
+                    print(f"\n⚠ Could not generate HTML report: {e}")
+        
         # Print results
         if not config.quiet:
             print("\n" + "=" * 70)
@@ -255,6 +269,10 @@ async def main():
                 print(f"\n✓ Config dump saved to: {result.config_dump_path}")
                 print(f"\n  To recreate this exact video:")
                 print(f"    python scripts/generate_video.py --from-config-dump {result.config_dump_path}")
+            
+            if html_report_path:
+                print(f"\n  To view detailed report:")
+                print(f"    open {html_report_path}")
             
             print("\n" + "=" * 70)
         else:

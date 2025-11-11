@@ -68,6 +68,11 @@ from .core import (
     generate_search_keyword,
 )
 
+from .visualizer import (
+    create_html_report,
+    create_html_report_from_dump,
+)
+
 __all__ = [
     # Configuration
     "VideoGenerationConfig",
@@ -103,9 +108,12 @@ __all__ = [
     "find_best_video_for_sentence",
     "judge_video_match",
     "generate_search_keyword",
+    # Visualizer functions
+    "create_html_report",
+    "create_html_report_from_dump",
 ]
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __author__ = "Virtual Streamer Team"
 __description__ = "Async video generation with AI models"
 
