@@ -12,7 +12,8 @@ This module provides working implementations for:
 import os
 import json
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Type
+from pydantic import BaseModel
 import anthropic
 import openai
 from litellm import completion as litellm_completion, acompletion as litellm_acompletion
@@ -56,6 +57,46 @@ class AnthropicLLM(LLMInterface):
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
+    
+    async def complete_structured(
+        self, 
+        prompt: str, 
+        response_model: Type[BaseModel],
+        **kwargs
+    ) -> BaseModel:
+        """Generate structured completion using Anthropic's beta feature."""
+        # Use prompt engineering to get structured output
+        # Anthropic doesn't have native structured output yet, so we'll use JSON mode
+        schema = response_model.model_json_schema()
+        
+        structured_prompt = f"""{prompt}
+
+Please respond with a JSON object that matches this schema:
+{json.dumps(schema, indent=2)}
+
+Respond ONLY with valid JSON, no other text."""
+        
+        response = await self.async_client.messages.create(
+            model=self.config.model,
+            max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
+            temperature=kwargs.get("temperature", self.config.temperature),
+            messages=[{"role": "user", "content": structured_prompt}]
+        )
+        
+        # Parse JSON response
+        response_text = response.content[0].text
+        # Try to extract JSON if it's wrapped in markdown
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        elif "```" in response_text:
+            start = response_text.find("```") + 3
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        
+        response_data = json.loads(response_text)
+        return response_model(**response_data)
     
     async def complete_with_vision(
         self, 
@@ -106,6 +147,23 @@ class OpenAILLM(LLMInterface):
         )
         return response.choices[0].message.content
     
+    async def complete_structured(
+        self, 
+        prompt: str, 
+        response_model: Type[BaseModel],
+        **kwargs
+    ) -> BaseModel:
+        """Generate structured completion using OpenAI's structured outputs."""
+        # OpenAI supports structured outputs natively with response_format
+        response = await self.client.beta.chat.completions.parse(
+            model=self.config.model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format=response_model,
+            max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
+            temperature=kwargs.get("temperature", self.config.temperature),
+        )
+        return response.choices[0].message.parsed
+    
     async def complete_with_vision(
         self, 
         prompt: str, 
@@ -149,6 +207,43 @@ class LiteLLM(LLMInterface):
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content
+    
+    async def complete_structured(
+        self, 
+        prompt: str, 
+        response_model: Type[BaseModel],
+        **kwargs
+    ) -> BaseModel:
+        """Generate structured completion using prompt engineering."""
+        schema = response_model.model_json_schema()
+        
+        structured_prompt = f"""{prompt}
+
+Please respond with a JSON object that matches this schema:
+{json.dumps(schema, indent=2)}
+
+Respond ONLY with valid JSON, no other text."""
+        
+        response = await litellm_acompletion(
+            model=self.config.model,
+            max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
+            temperature=kwargs.get("temperature", self.config.temperature),
+            messages=[{"role": "user", "content": structured_prompt}]
+        )
+        
+        response_text = response.choices[0].message.content
+        # Try to extract JSON if it's wrapped in markdown
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        elif "```" in response_text:
+            start = response_text.find("```") + 3
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        
+        response_data = json.loads(response_text)
+        return response_model(**response_data)
     
     async def complete_with_vision(
         self, 

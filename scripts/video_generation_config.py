@@ -5,10 +5,12 @@ This module provides comprehensive configuration management for the video genera
 workflow, including LLM, TTS, STT, video retrieval, and prompt settings.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 import os
+import sys
 
 
 class LLMConfig(BaseModel):
@@ -164,12 +166,26 @@ class VideoProcessingConfig(BaseModel):
 
 
 class VideoGenerationConfig(BaseSettings):
-    """Main configuration for video generation workflow."""
+    """Main configuration for video generation workflow.
+    
+    Configuration is loaded from (in order of precedence):
+    1. Environment variables (VG_ prefix)
+    2. .env file (secrets)
+    3. .env.public file (non-secrets)
+    4. Default values
+    
+    Example:
+        VG_LLM__PROVIDER=openai
+        VG_OUTPUT_DIR=/custom/output
+    """
     
     model_config = SettingsConfigDict(
         env_prefix="VG_",
         env_nested_delimiter="__",
-        case_sensitive=False
+        case_sensitive=False,
+        env_file=[".env", ".env.public"],
+        env_file_encoding="utf-8",
+        extra="ignore"
     )
     
     # Component configs
@@ -238,11 +254,55 @@ class VideoGenerationConfig(BaseSettings):
     
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "VideoGenerationConfig":
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file.
+        
+        Note: YAML values override .env values but are overridden by environment variables.
+        """
         import yaml
         with open(yaml_path, 'r') as f:
             data = yaml.safe_load(f)
         return cls(**data)
+    
+    @classmethod
+    def from_cli_args(cls, args: Optional[List[str]] = None) -> "VideoGenerationConfig":
+        """Create config from minimal CLI arguments.
+        
+        Supports only essential arguments:
+        - --config: Path to YAML config file
+        - --env-file: Path to additional .env file
+        
+        All other configuration via environment variables or config files.
+        """
+        if args is None:
+            args = sys.argv[1:]
+        
+        # Simple parsing for config file path
+        config_path = None
+        env_file = None
+        
+        i = 0
+        while i < len(args):
+            if args[i] in ("--config", "-c") and i + 1 < len(args):
+                config_path = args[i + 1]
+                i += 2
+            elif args[i] in ("--env-file", "-e") and i + 1 < len(args):
+                env_file = args[i + 1]
+                i += 2
+            else:
+                i += 1
+        
+        # Load from YAML if provided
+        if config_path:
+            return cls.from_yaml(config_path)
+        
+        # Otherwise load from environment and .env files
+        if env_file:
+            # Temporarily update env files list
+            config = cls.model_config.copy()
+            config["env_file"] = [env_file, ".env", ".env.public"]
+            return cls()
+        
+        return cls()
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary."""
@@ -255,12 +315,31 @@ class VideoGenerationConfig(BaseSettings):
             yaml.dump(self.to_dict(), f, default_flow_style=False)
 
 
+class StoryOutput(BaseModel):
+    """Structured output from story generation."""
+    
+    title: str = Field(
+        description="Refined/expanded title for the story"
+    )
+    story_plan: str = Field(
+        description="Overall plan and reasoning used to create the dialog"
+    )
+    dialog: str = Field(
+        description="The actual dialog lines produced by Fred and other characters"
+    )
+    
+    def get_full_text(self) -> str:
+        """Get the complete story text for backwards compatibility."""
+        return self.dialog
+
+
 class GenerationResult(BaseModel):
     """Model for video generation results."""
     
     video_path: str
     config_dump_path: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    story_output: Optional[StoryOutput] = None  # Include story details if generated
     
     
 class ConfigDump(BaseModel):

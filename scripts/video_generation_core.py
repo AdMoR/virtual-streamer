@@ -23,7 +23,7 @@ from scripts.video_generation_interfaces import (
     VideoJudgementResult, VideoMatchResult, ProgressCallback
 )
 from scripts.video_generation_config import (
-    VideoGenerationConfig, ConfigDump, GenerationResult
+    VideoGenerationConfig, ConfigDump, GenerationResult, StoryOutput
 )
 from virtual_streamer.utils.utils import (
     combine_video_and_short_audio,
@@ -79,9 +79,9 @@ async def generate_story(
     prompt_provider: PromptProviderInterface,
     config: VideoGenerationConfig,
     progress: Optional[ProgressCallback] = None
-) -> str:
+) -> StoryOutput:
     """
-    Generate a story based on a title using LLM.
+    Generate a story based on a title using LLM with structured output.
     
     Args:
         title: The title/topic for the story
@@ -91,7 +91,7 @@ async def generate_story(
         progress: Optional progress callback
         
     Returns:
-        Generated story text
+        StoryOutput with title, story_plan, and dialog
     """
     if progress:
         progress.update("Generating story from title...")
@@ -99,16 +99,30 @@ async def generate_story(
     # Get prompt template
     prompt_template = prompt_provider.get_raw_prompt("story_generation")
     
-    # Format with title
-    full_prompt = prompt_template.replace("{title}", title) if "{title}" in prompt_template else f"{prompt_template}\n\nScenario: {title}"
+    # Format with title - add instructions for structured output
+    base_prompt = prompt_template.replace("{title}", title) if "{title}" in prompt_template else f"{prompt_template}\n\nScenario: {title}"
     
-    # Generate story
-    story = await llm.complete(full_prompt)
+    # Add structured output instructions
+    full_prompt = f"""{base_prompt}
+
+IMPORTANT: Your response must be structured with three parts:
+
+1. **title**: Create a refined, more complete title for the story (based on the user's input: "{title}")
+2. **story_plan**: Describe your overall plan and reasoning for creating this dialog (like a thinking process - what makes this scenario funny, what progression you're following, key elements you're including)
+3. **dialog**: The actual dialog lines produced by Fred (and potentially other characters), following all the rules above
+
+Focus on:
+- Making the refined title catchy and descriptive
+- In story_plan, explain your creative choices and the comedic arc
+- In dialog, provide only the spoken lines (no stage directions or descriptions)"""
+    
+    # Generate structured story
+    story_output = await llm.complete_structured(full_prompt, StoryOutput)
     
     if progress:
-        progress.update(f"Story generated ({len(story)} characters)")
+        progress.update(f"Story generated: {story_output.title}")
     
-    return story
+    return story_output
 
 
 # ============================================================================
@@ -402,7 +416,8 @@ async def generate_video_from_story(
     stt: STTInterface,
     video_retriever: VideoRetrieverInterface,
     config: VideoGenerationConfig,
-    progress: Optional[ProgressCallback] = None
+    progress: Optional[ProgressCallback] = None,
+    story_output: Optional[StoryOutput] = None
 ) -> GenerationResult:
     """
     Generate a complete video from a story with audio and subtitles.
@@ -534,7 +549,8 @@ async def generate_video_from_story(
         video_segments=video_segments,
         config=config,
         final_video_path=final_video_path,
-        timing=timing
+        timing=timing,
+        story_output=story_output
     )
     
     # Save config dump if enabled
@@ -549,6 +565,7 @@ async def generate_video_from_story(
     return GenerationResult(
         video_path=final_video_path,
         config_dump_path=config_dump_path,
+        story_output=story_output,  # Include structured story output
         metadata={
             "sentence_count": len(sentences),
             "total_duration": get_length(final_video_path),
@@ -567,7 +584,8 @@ def create_config_dump(
     video_segments: List[str],
     config: VideoGenerationConfig,
     final_video_path: str,
-    timing: Dict[str, float]
+    timing: Dict[str, float],
+    story_output: Optional[StoryOutput] = None
 ) -> ConfigDump:
     """
     Create a comprehensive config dump for reproducibility.
@@ -575,13 +593,23 @@ def create_config_dump(
     This dump includes all information needed to recreate the video
     without redoing LLM/API calls.
     """
+    input_data = {
+        "story": story,
+        "sentences": sentences
+    }
+    
+    # Add structured story output if available
+    if story_output:
+        input_data["story_output"] = {
+            "title": story_output.title,
+            "story_plan": story_output.story_plan,
+            "dialog": story_output.dialog
+        }
+    
     return ConfigDump(
         version="1.0",
         timestamp=datetime.now().isoformat(),
-        input={
-            "story": story,
-            "sentences": sentences
-        },
+        input=input_data,
         config=config.to_dict(),
         execution={
             "video_matches": [match.to_dict() for match in video_matches],

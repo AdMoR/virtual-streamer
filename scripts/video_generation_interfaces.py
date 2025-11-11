@@ -9,7 +9,8 @@ This module defines interfaces for all major components to enable:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Type
+from pydantic import BaseModel
 import stable_whisper
 
 
@@ -27,6 +28,26 @@ class LLMInterface(ABC):
             
         Returns:
             Generated text
+        """
+        pass
+    
+    @abstractmethod
+    async def complete_structured(
+        self, 
+        prompt: str, 
+        response_model: Type[BaseModel],
+        **kwargs
+    ) -> BaseModel:
+        """
+        Generate structured completion conforming to a Pydantic model.
+        
+        Args:
+            prompt: The input prompt
+            response_model: Pydantic model class for the response structure
+            **kwargs: Additional provider-specific parameters
+            
+        Returns:
+            Instance of response_model with generated data
         """
         pass
     

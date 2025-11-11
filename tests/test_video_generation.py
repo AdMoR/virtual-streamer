@@ -49,6 +49,18 @@ class MockLLM(LLMInterface):
         self.call_count += 1
         return response
     
+    async def complete_structured(self, prompt: str, response_model, **kwargs):
+        """Mock structured completion."""
+        from scripts.video_generation_config import StoryOutput
+        if response_model == StoryOutput:
+            return StoryOutput(
+                title="Fred se lance dans l'IA (Version complète)",
+                story_plan="Fred va découvrir l'IA et créer FredGPT avec un ton humoristique et absurde.",
+                dialog="Fred: Eh dis donc Jamy! Fred: J'ai découvert l'IA!"
+            )
+        # Default fallback
+        return response_model()
+    
     async def complete_with_vision(self, prompt: str, image_base64: str, **kwargs) -> str:
         return "Rating: CONTEXTUAL\nGrade: 8\nReasoning: Mock judgement"
 
@@ -248,21 +260,24 @@ class TestStoryGeneration:
     
     @pytest.mark.asyncio
     async def test_generate_story(self):
-        """Test story generation with mock LLM."""
-        mock_llm = MockLLM(responses=["Once upon a time in France..."])
+        """Test story generation with mock LLM returns structured output."""
+        mock_llm = MockLLM()
         mock_prompt = MockPromptProvider()
         config = VideoGenerationConfig()
         
-        story = await generate_story(
+        story_output = await generate_story(
             title="Fred test",
             llm=mock_llm,
             prompt_provider=mock_prompt,
             config=config
         )
         
-        assert isinstance(story, str)
-        assert len(story) > 0
-        assert mock_llm.call_count == 1
+        # Check it returns StoryOutput
+        from scripts.video_generation_config import StoryOutput
+        assert isinstance(story_output, StoryOutput)
+        assert len(story_output.title) > 0
+        assert len(story_output.story_plan) > 0
+        assert len(story_output.dialog) > 0
 
 
 # ============================================================================
@@ -425,15 +440,16 @@ class TestIntegration:
         )
         
         # Test story generation
-        story = await generate_story(
+        story_output = await generate_story(
             title="Test",
             llm=mock_llm,
             prompt_provider=MockPromptProvider(),
             config=config
         )
         
-        assert isinstance(story, str)
-        assert len(story) > 0
+        from scripts.video_generation_config import StoryOutput
+        assert isinstance(story_output, StoryOutput)
+        assert len(story_output.dialog) > 0
     
     def test_mock_workflow_synchronous(self):
         """Test synchronous parts of the workflow."""

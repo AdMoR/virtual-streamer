@@ -1,24 +1,70 @@
-*.pkl
-*.jpg
-*.mp4
-*.pth
-*.pyc
-__pycache__
-*.h5
-*.avi
-*.wav
-filelists/*.txt
-evaluation/test_filelists/lr*.txt
-*.pyc
-*.mkv
-*.gif
-*.webm
-*.mp3
-.idea
-.venv
-chat_log.txt
-chat_log_saved.txt
-next_qestion.txt
-run_worker_service.sh
-.aider*
+# Environment and secrets
 .env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output directories
+output/
+temp/
+/temp_*
+
+# Logs
+*.log
+
+# Video files (large)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wav
+*.mp3
+
+# Model checkpoints (large)
+checkpoints/*.pth
+!checkpoints/README.md
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Config dumps
+*_config_*.json

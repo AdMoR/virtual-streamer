@@ -400,11 +400,12 @@ async def main():
             prompt_provider = create_prompt_provider(config.prompt)
             
             # Generate or load story
+            story_output = None
             if args.title:
                 if not args.quiet:
                     print(f"Generating story from title: {args.title}\n")
                 
-                story = await generate_story(
+                story_output = await generate_story(
                     args.title,
                     llm,
                     prompt_provider,
@@ -416,9 +417,19 @@ async def main():
                     print(f"\n{'='*70}")
                     print("Generated Story:")
                     print('='*70)
-                    print(story)
+                    print(f"\n📝 Title: {story_output.title}\n")
+                    print(f"🎯 Story Plan:")
+                    print('-' * 70)
+                    print(story_output.story_plan)
+                    print('-' * 70)
+                    print(f"\n💬 Dialog:")
+                    print('-' * 70)
+                    print(story_output.dialog)
                     print('='*70)
                     print()
+                
+                # Use the dialog for video generation
+                story = story_output.dialog
             else:
                 if not args.quiet:
                     print(f"Loading story from file: {args.story_file}\n")
@@ -437,7 +448,8 @@ async def main():
                 stt,
                 video_retriever,
                 config,
-                progress
+                progress,
+                story_output=story_output
             )
         
         # Print results
