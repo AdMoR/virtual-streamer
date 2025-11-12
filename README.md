@@ -2,6 +2,39 @@
 
 This is the codebase to run [AlloJesusChrist](https://www.twitch.tv/allojesuschrist)
 
+## 🚀 Quick Start with the New Unified API
+
+We've refactored the system into a modern, layered API architecture! 
+
+**Get started in 5 minutes**: See [QUICKSTART_API.md](QUICKSTART_API.md)
+
+### New Features:
+- 🎯 **Layered Architecture**: Low-level entities, medium-level services, high-level applications
+- 🌐 **REST API**: Everything accessible via HTTP endpoints
+- 📊 **Streamlit UI**: User-friendly interface for video generation
+- 🔄 **Async Jobs**: Background processing with progress tracking
+- 🛠️ **Path Resolution**: Automatic path handling between services
+- 📚 **Auto-generated Docs**: Interactive API documentation
+
+### Quick Commands:
+```bash
+# Start the API server
+./scripts/start_api.sh
+
+# Start the Streamlit UI
+./scripts/start_ui.sh
+
+# View API docs
+open http://localhost:8000/docs
+```
+
+For detailed information, see:
+- [QUICKSTART_API.md](QUICKSTART_API.md) - Get started quickly
+- [README_API.md](README_API.md) - Full API documentation
+- [README_VIDEO_GENERATION.md](README_VIDEO_GENERATION.md) - Video generation details
+
+---
+
 
 ## Query the api
 

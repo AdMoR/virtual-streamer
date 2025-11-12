@@ -60,5 +60,6 @@ ENV PYTHONUNBUFFERED=1
 # run inference script
 RUN pip install -e .
 
-# Default command to run the webservice with Gunicorn and the production config
-CMD ["fastapi", "run", "/src/webservice.py"]
+# Default command to run the unified API
+# Note: Using single worker to ensure only one copy of ML models is loaded
+CMD ["python", "-m", "uvicorn", "virtual_streamer.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

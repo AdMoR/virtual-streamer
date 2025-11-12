@@ -21,6 +21,7 @@ from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
 from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
 from virtual_streamer.api.high_level.video_generation import router as video_generation_router
+from virtual_streamer.api.high_level.legacy_qa import router as legacy_qa_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -39,6 +40,9 @@ app = FastAPI(
     
     **High-level (Applications)**:
     - Video Generation: Complete story-to-video workflow
+    
+    **Legacy Endpoints**:
+    - /process: Backward-compatible Q&A video generation (deprecated)
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -67,6 +71,9 @@ app.include_router(wav2lip_router, prefix="/api/v1")
 # High-level: Applications
 app.include_router(video_generation_router, prefix="/api/v1")
 
+# Legacy: Backward compatibility
+app.include_router(legacy_qa_router)  # No prefix for backward compatibility
+
 
 @app.get("/", tags=["Root"])
 async def root():
@@ -90,11 +97,15 @@ async def health_check():
     
     Returns the health status of the entire system.
     """
+    import torch
+    
     return {
         "status": "healthy",
         "service": "virtual-streamer-api",
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
         "data_dir": os.environ.get("DATA_DIR", "/data"),
-        "temp_dir": os.environ.get("TEMP_DIR", "./temp")
+        "temp_dir": os.environ.get("TEMP_DIR", "./temp"),
+        "entity_service": os.environ.get("ENTITY_SERVICE_HOST", "0.0.0.0") + ":8002"
     }
 
 
@@ -137,4 +148,6 @@ if __name__ == "__main__":
         reload=True,  # Enable auto-reload for development
         log_level="info"
     )
+
+
 

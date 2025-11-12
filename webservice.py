@@ -1,3 +1,27 @@
+"""
+DEPRECATED: This file is deprecated and maintained only for reference.
+
+All functionality has been migrated to the unified API in virtual_streamer/api:
+- /generate-tts -> /api/v1/tts/generate
+- /wav2lip -> /api/v1/wav2lip/generate  
+- /process -> /process (legacy compatibility endpoint)
+- /health -> /health
+
+To use the new API, run:
+    python -m uvicorn virtual_streamer.api.main:app --host 0.0.0.0 --port 8000
+
+Or use docker-compose:
+    docker-compose up virtual_streamer_api
+
+The new API provides:
+- Better separation of concerns with layered architecture
+- Single ML model instance (no multiprocessing issues)
+- More comprehensive endpoints for video generation
+- Proper dependency injection and path resolution
+
+This file will be removed in a future version.
+"""
+
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Optional, Any

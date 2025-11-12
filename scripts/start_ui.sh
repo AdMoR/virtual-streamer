@@ -14,3 +14,5 @@ echo
 # Start Streamlit
 streamlit run apps/video_generation_ui.py
 
+
+
