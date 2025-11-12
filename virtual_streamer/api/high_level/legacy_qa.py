@@ -17,7 +17,7 @@ import shutil
 import datetime
 
 from virtual_streamer.video_server.models import DialogueEntry, VideoClipBase, VideoOptions
-from virtual_streamer.video_server.utils import get_character_data
+from virtual_streamer.api.dependencies import get_character_data
 from virtual_streamer.utils.utils import sanitize_str, combine_video_and_audio, add_subtitle, s3_upload, SubtitleMode
 from virtual_streamer.api.medium_level.tts import generate_tts
 from virtual_streamer.api.medium_level.wav2lip import generate_wav2lip, Wav2LipRequest
@@ -72,15 +72,14 @@ async def qa_process_video(question_data: QuestionData, gpt_response: str) -> Di
     subtitle_mode = question_data.subtitle_mode
     name = question_data.name
     
-    # Get character data
+    # Get character data from internal storage
     try:
         character = await get_character_data(character_name)
-    except HTTPException:
-        entity_service_host = os.environ.get("ENTITY_SERVICE_HOST", "0.0.0.0").rstrip('/')
-        character_url = f"http://{entity_service_host}:8002/characters"
+    except HTTPException as e:
+        # Re-raise the HTTPException with additional context
         raise HTTPException(
-            status_code=404,
-            detail=f"Failed to fetch character '{character_name}': {character_url}"
+            status_code=e.status_code,
+            detail=f"Failed to fetch character '{character_name}': {e.detail}"
         )
     
     # --- Step 1: Generate TTS audio ---

@@ -27,16 +27,19 @@ from virtual_streamer.api.high_level.legacy_qa import router as legacy_qa_router
 app = FastAPI(
     title="Virtual Streamer API",
     description="""
-    Unified API for Virtual Streamer system with layered architecture:
+    Fully Unified API for Virtual Streamer system with layered architecture.
+    
+    All entity management, services, and ML processing are integrated into this single API,
+    ensuring efficient resource usage with only one instance of ML models loaded.
     
     **Low-level (Entities)**:
-    - Characters: Voice samples and video clips
-    - Clips: Video clip metadata management
+    - Characters: Voice samples and video clips (local storage)
+    - Clips: Video clip metadata management (local storage)
     
     **Medium-level (Services)**:
     - TTS: Text-to-speech generation
     - STT: Speech-to-text transcription
-    - Wav2Lip: Lip-sync video generation
+    - Wav2Lip: Lip-sync video generation (single model instance)
     
     **High-level (Applications)**:
     - Video Generation: Complete story-to-video workflow
@@ -44,7 +47,7 @@ app = FastAPI(
     **Legacy Endpoints**:
     - /process: Backward-compatible Q&A video generation (deprecated)
     """,
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -104,8 +107,7 @@ async def health_check():
         "service": "virtual-streamer-api",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "data_dir": os.environ.get("DATA_DIR", "/data"),
-        "temp_dir": os.environ.get("TEMP_DIR", "./temp"),
-        "entity_service": os.environ.get("ENTITY_SERVICE_HOST", "0.0.0.0") + ":8002"
+        "temp_dir": os.environ.get("TEMP_DIR", "./temp")
     }
 
 
@@ -114,11 +116,11 @@ async def health_check():
 async def startup_event():
     """Initialize on startup."""
     print("=" * 70)
-    print("Virtual Streamer API Starting")
+    print("Virtual Streamer API Starting (Fully Unified)")
     print("=" * 70)
     print(f"Data directory: {os.environ.get('DATA_DIR', '/data')}")
     print(f"Temp directory: {os.environ.get('TEMP_DIR', './temp')}")
-    print(f"Entity service: {os.environ.get('ENTITY_SERVICE_HOST', '0.0.0.0')}:8002")
+    print(f"TTS service: {os.environ.get('FISH_TTS_HOST', 'localhost')}:{os.environ.get('FISH_TTS_PORT', '8003')}")
     print("=" * 70)
     
     # Ensure temp directory exists

@@ -19,8 +19,7 @@ import torch
 from tqdm import tqdm
 
 from virtual_streamer.video_server.models import VideoClipBase, VideoOptions
-from virtual_streamer.video_server.utils import get_character_data
-from virtual_streamer.api.dependencies import get_path_resolver
+from virtual_streamer.api.dependencies import get_path_resolver, get_character_data
 from virtual_streamer.wav2lip import audio
 from virtual_streamer.wav2lip.main_logic import Config, do_load, preprocess, datagen, FaceDetectionGroup
 from virtual_streamer.utils.utils import sanitize_str

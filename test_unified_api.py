@@ -92,17 +92,14 @@ def test_api_docs() -> bool:
 
 
 def test_characters_endpoint() -> bool:
-    """Test the characters listing endpoint."""
+    """Test the characters listing endpoint (now using internal storage)."""
     try:
         response = httpx.get(f"{BASE_URL}/api/v1/characters", timeout=10.0)
-        # 200 or 502 (if entity service not running) are both acceptable for this test
-        if response.status_code in [200, 502]:
-            if response.status_code == 200:
-                data = response.json()
-                count = len(data) if isinstance(data, list) else 0
-                print_result("Characters Endpoint", True, f"Found {count} characters")
-            else:
-                print_result("Characters Endpoint", True, "Endpoint exists (entity service not running)")
+        # Should return 200 with list of characters (or empty list)
+        if response.status_code == 200:
+            data = response.json()
+            count = len(data) if isinstance(data, list) else 0
+            print_result("Characters Endpoint", True, f"Found {count} characters (internal storage)")
             return True
         else:
             print_result("Characters Endpoint", False, f"Status code: {response.status_code}")

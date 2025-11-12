@@ -1,4 +1,4 @@
-compose.yamlversion: '3'
+version: '3'
 services:
   # Unified Virtual Streamer API (combines all services including Wav2Lip)
   virtual_streamer_api:
@@ -18,15 +18,12 @@ services:
       - /dev/nvidia0:/dev/nvidia0
     depends_on:
       - tts
-      - entity_api
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
       # TTS Service
       - FISH_TTS_HOST=tts
       - FISH_TTS_PORT=8003
-      # Entity Service
-      - ENTITY_SERVICE_HOST=entity_api
       # Directories
       - DATA_DIR=/data
       - TEMP_DIR=/tmp/virtual_streamer
@@ -42,7 +39,6 @@ services:
       - API_PORT=8000
     networks:
       - tts
-      - entity_api
     volumes:
       - $HOME/.aws/credentials:/root/.aws/credentials
       - $HOME/.aws/config:/root/.aws/config
@@ -80,28 +76,6 @@ services:
     networks:
       - tts
 
-  entity_api:
-    build:
-      context: .
-      dockerfile: docker/docker_entity_api/Dockerfile
-    ports:
-      - "8002:8002"
-    environment:
-      # Pass environment variables from your host or a .env file
-      - AWS_REGION_NAME=${AWS_REGION_NAME}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      # Credentials should ideally be handled via mounted ~/.aws or IAM roles
-      # Or uncomment these if using explicit keys from .env
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      # Optional: For local S3 like MinIO
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
-    volumes:
-      - entities:/data
-    networks:
-      - entity_api
-
-
 volumes:
   videos:
     driver: local # Define the driver and options under the volume name
@@ -125,4 +99,3 @@ volumes:
 
 networks:
   tts:
-  entity_api:

@@ -11,8 +11,7 @@ import os
 
 from virtual_streamer.video_server.models import DialogueEntry, Character
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
-from virtual_streamer.video_server.utils import get_character_data
-from virtual_streamer.api.dependencies import get_path_resolver
+from virtual_streamer.api.dependencies import get_path_resolver, get_character_data
 
 # Router setup
 router = APIRouter(prefix="/tts", tags=["Text-to-Speech"])
