@@ -1,12 +1,15 @@
 version: '3'
 services:
   # Unified Virtual Streamer API (combines all services including Wav2Lip)
+  # Now using UV for fast dependency management
   virtual_streamer_api:
     ports:
       - "8000:8000"
     build:
       context: .
-      dockerfile: docker/docker_worker/Dockerfile
+      dockerfile: docker/docker_unified_api/Dockerfile
+      args:
+        PYTHON_VERSION: "3.9"
     deploy:
       resources:
         reservations:
@@ -48,11 +51,7 @@ services:
     env_file:
       - .env
     restart: always
-    command: >
-      sh -c "python -m uvicorn virtual_streamer.api.main:app 
-      --host 0.0.0.0 
-      --port 8000 
-      --workers 1"
+    # Command is now in Dockerfile (no override needed)
 
   tts:
     #build:

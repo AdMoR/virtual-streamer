@@ -1,7 +1,143 @@
-temp
-tmp
-.venv
-.ipynb_checkpoints
-prompts/*.json
-notebooks/*
-out_video_folder
+# ============================================================================
+# .dockerignore - Exclude unnecessary files from Docker builds
+# ============================================================================
+# This significantly speeds up builds by reducing context size
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (not needed in container)
+*.md
+!README.md
+docs/
+*.txt
+!requirements*.txt
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+compose*.yaml
+.dockerignore
+
+# Notebooks
+notebooks/
+*.ipynb
+*.ipynb_checkpoints/
+
+# Media & Assets (unless needed)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+!assets/
+cover.jpg
+
+# Data & Models (should be mounted, not copied)
+data/
+out_video_folder/
+generations/
+*.pth
+*.ckpt
+*.safetensors
+checkpoints/*
+!checkpoints/README.md
+models/*
+!models/__init__.py
+!models/*.py
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.log
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Environment files (contain secrets)
+.env
+.env.*
+!env.example
+!env.public.example
+
+# AWS credentials (should be mounted)
+.aws/
+
+# Application-specific temp files
+prompts/
+traces/
+entities/
+
+# Large dependency locks (already in pyproject.toml)
+poetry.lock
+Pipfile.lock
+# Keep uv.lock as it's used by uv
+# uv.lock
+
+# OS-specific
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Application output that shouldn't be in image
+*.csv
+*.json
+!pyproject.toml
+!package.json
+!**/config*.json
