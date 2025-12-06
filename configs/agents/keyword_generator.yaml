@@ -1,0 +1,28 @@
+# Keyword Generator Agent Configuration
+# Generates search keywords for video retrieval
+
+name: keyword_generator
+
+model:
+  # Use Claude Haiku for fast keyword generation
+  provider: anthropic
+  model: claude-haiku-4-5-20251001
+  temperature: 0.7  # Some creativity for diverse keywords
+  max_tokens: 64
+
+metadata:
+  version: "1.0.0"
+  description: "Generates alternative search keywords for video retrieval"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - keyword-generation
+    - search
+    - french
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
+

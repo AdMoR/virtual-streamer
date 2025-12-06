@@ -1,0 +1,88 @@
+"""
+Prompt template for StoryGeneratorAgent.
+
+This prompt is adapted from prompts/story_generation.txt
+"""
+
+# Base prompt for C'est pas Sorcier parody generation
+STORY_GENERATION_PROMPT = """You are a designer of a humorous parody of C'est pas Sorcier the French Science discovery show.
+This humorous version is set in the present days, 20 years after the last airing of C'est pas Sorcier and Fred and Jamy the 2 main presenters of the show are still working together.
+Fred is always the main actor of the story.
+
+Write a humorous parody in the style of the French educational TV show "C'est pas Sorcier," featuring the characters Fred and Jamy. The story should follow this structure:
+
+Core Elements:
+
+• Fred's Character: An overconfident, grandiose entrepreneur from the 1990s who constantly pitches half-baked business ideas with unwarranted certainty. He frequently references past glories from the show's heyday and uses casual French slang ("flouze," "pécho," "kiffer," "bizness").
+
+• Jamy's Role: A passive, skeptical listener who serves as the straight man, receiving Fred's wild ideas without much pushback or resistance. As this is mainly a Fred's monologue, a Jamy dialogue line could only be at the start to launch Fred on a topic or at the end to acknowledge or be surprised. Jamy does not speak in the dialogue more than ONCE!
+
+The dialogues are only dialogue lines and cannot contain descriptive details that are not verbally spoken.
+
+Story Arc:
+
+1. Fred discovers something new and pitches an idea to Jamy
+
+2. The idea escalates into increasingly ridiculous territory with specific, oddly concrete details
+
+3. Fred justifies the absurdity with pseudo-scientific reasoning or faux-logic borrowed from the show's educational format
+
+4. Include nostalgic callbacks to 1990s like shows (ex: la roue de la fortune, Question pour un Champion), specific locations (ex: Bourg-en-Gonesse, Rennes), or dated technology (ex: Nokia 3310) ==> please do not re-use these specific examples but extrapolate from them.
+
+4 bis. Reference can sometimes mention current events (current president in France or US, well known internet celebrities, etc) but mostly for a roasting joke. Use them more seldomly (like one per scenario)
+
+5. The humor maintains affectionate absurdity rather than meanness
+
+6. The character don't explain their joke.
+
+7. The story should be fast paced, one idea per sentence. The story finishes in 6 sentences.
+
+Tone elements:
+
+• Fred is overly excited by his brand new idea and overlooks the absurdity of his idea. The text is told as Fred is speaking to Jamy, but the video is seen from Jamy's point of view, Fred speaks to the camera while showing things.
+
+• Fred may explain how combining their strengths would yield an incredible advantage in the newly found endeavor
+
+• Fred has a very casual language and can swear or be mean to illustrate better his ideas
+
+• Fred feels superior to the majority of the other people, even the most talented, he will often put himself and Jamy over the rest of the population
+
+• Use authentic French cultural references and slang
+
+• Make it accessible to both nostalgic fans and newcomers
+
+• Avoid out of context reference
+
+Other rules:
+
+This script will be used to generate a humoristic video. Each entry like "Fred: ......" will be used for a single sequence.
+A sequence should convey a single idea, where Fred is doing a single Action.
+
+Now create a story based on the user proposition:
+
+Scenario: {title}
+
+IMPORTANT: Your response must be structured with three parts:
+
+1. **title**: Create a refined, more complete title for the story (based on the user's input: "{title}")
+2. **story_plan**: Describe your overall plan and reasoning for creating this dialog (like a thinking process - what makes this scenario funny, what progression you're following, key elements you're including)
+3. **dialog**: The actual dialog lines produced by Fred (and potentially other characters), following all the rules above
+
+Focus on:
+- Making the refined title catchy and descriptive
+- In story_plan, explain your creative choices and the comedic arc
+- In dialog, provide only the spoken lines (no stage directions or descriptions)"""
+
+
+def format_story_prompt(title: str) -> str:
+    """
+    Format the story generation prompt with the given title.
+    
+    Args:
+        title: The scenario/title for story generation
+    
+    Returns:
+        Formatted prompt string
+    """
+    return STORY_GENERATION_PROMPT.format(title=title)
+

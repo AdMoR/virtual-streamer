@@ -1,0 +1,28 @@
+# Video Matcher Agent Configuration
+# Judges video-dialogue matching using vision LLM
+
+name: video_matcher
+
+model:
+  # Use Claude Haiku for fast vision processing
+  provider: anthropic
+  model: claude-haiku-4-5-20251001
+  temperature: 0.3  # Lower temperature for consistent judgements
+  max_tokens: 512
+
+metadata:
+  version: "1.0.0"
+  description: "Judges if video clips match dialogue using vision LLM"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - video-matching
+    - vision
+    - contextual-analysis
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
+
