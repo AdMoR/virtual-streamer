@@ -19,13 +19,17 @@ Callback Lifecycle Order:
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Type, TypeVar, Union, overload
 
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmResponse
 from google.genai import types
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# Type variable for Pydantic models
+T = TypeVar("T", bound=BaseModel)
 
 
 # =============================================================================
@@ -33,22 +37,56 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-def extract_llm_response_json(llm_response: LlmResponse) -> Optional[Dict[str, Any]]:
-    """Extract JSON data from an LLM response.
+@overload
+def extract_llm_response_json(
+    llm_response: LlmResponse,
+    response_model: None = None,
+) -> Optional[Dict[str, Any]]: ...
+
+
+@overload
+def extract_llm_response_json(
+    llm_response: LlmResponse,
+    response_model: Type[T],
+) -> Optional[T]: ...
+
+
+def extract_llm_response_json(
+    llm_response: LlmResponse,
+    response_model: Optional[Type[T]] = None,
+) -> Optional[Union[Dict[str, Any], T]]:
+    """Extract JSON data from an LLM response, optionally parsing into a Pydantic model.
 
     This helper function attempts to parse the LLM response content as JSON.
     It handles various response formats and extracts the first valid JSON object.
+    
+    If a Pydantic model is provided, the JSON is validated and returned as an
+    instance of that model.
 
     Args:
         llm_response: The LlmResponse object from the model callback.
+        response_model: Optional Pydantic model class to parse the response into.
+                       If provided, returns an instance of this model.
+                       If None, returns a raw dictionary.
 
     Returns:
-        Parsed JSON as a dictionary, or None if parsing fails.
+        If response_model is None: Parsed JSON as a dictionary, or None if parsing fails.
+        If response_model is provided: Instance of the model, or None if parsing/validation fails.
 
     Example:
+        # Without model (returns dict)
         >>> parsed = extract_llm_response_json(llm_response)
         >>> if parsed:
         ...     answer = parsed.get("answer")
+        
+        # With Pydantic model (returns typed instance)
+        >>> from pydantic import BaseModel
+        >>> class StoryOutput(BaseModel):
+        ...     title: str
+        ...     dialog: str
+        >>> story = extract_llm_response_json(llm_response, StoryOutput)
+        >>> if story:
+        ...     print(story.title)  # Type-safe access
     """
     try:
         # Get the content from the response
@@ -70,21 +108,38 @@ def extract_llm_response_json(llm_response: LlmResponse) -> Optional[Dict[str, A
         full_text = "".join(text_parts)
 
         # Try to parse as JSON directly
+        parsed_json: Optional[Dict[str, Any]] = None
         try:
-            return json.loads(full_text)
+            parsed_json = json.loads(full_text)
         except json.JSONDecodeError:
             pass
 
         # Try to find JSON in the text (between { and })
-        start_idx = full_text.find("{")
-        end_idx = full_text.rfind("}")
+        if parsed_json is None:
+            start_idx = full_text.find("{")
+            end_idx = full_text.rfind("}")
 
-        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            json_str = full_text[start_idx : end_idx + 1]
-            return json.loads(json_str)
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = full_text[start_idx : end_idx + 1]
+                try:
+                    parsed_json = json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
 
-        logger.warning("Could not find valid JSON in LLM response")
-        return None
+        if parsed_json is None:
+            logger.warning("Could not find valid JSON in LLM response")
+            return None
+
+        # If no model specified, return the raw dict
+        if response_model is None:
+            return parsed_json
+
+        # Parse into Pydantic model
+        try:
+            return response_model.model_validate(parsed_json)
+        except ValidationError as e:
+            logger.warning(f"Failed to validate response with {response_model.__name__}: {e}")
+            return None
 
     except Exception as e:
         logger.error(f"Failed to extract JSON from LLM response: {e}")

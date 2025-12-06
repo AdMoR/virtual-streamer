@@ -82,30 +82,24 @@ class SplitStoryCallback(AfterModelCallback):
         """
         from virtual_streamer.lib.agents.callbacks import extract_llm_response_json
         
-        # Parse the structured output
-        parsed = extract_llm_response_json(llm_response)
+        # Parse the structured output into StoryOutput model
+        story = extract_llm_response_json(llm_response, StoryOutput)
         
-        if not parsed:
+        if not story:
             logger.error("Failed to parse story output from LLM response")
             callback_context.state[STORY_OUTPUT] = {}
             callback_context.state[SENTENCES] = []
             return
         
-        # Store the full story output
-        story_output = {
-            "title": parsed.get("title", ""),
-            "story_plan": parsed.get("story_plan", ""),
-            "dialog": parsed.get("dialog", ""),
-        }
-        callback_context.state[STORY_OUTPUT] = story_output
+        # Store the full story output (as dict for state serialization)
+        callback_context.state[STORY_OUTPUT] = story.model_dump()
         
         # Split dialog into sentences
-        dialog = parsed.get("dialog", "")
-        sentences = separation_fn(dialog)
+        sentences = separation_fn(story.dialog)
         callback_context.state[SENTENCES] = sentences
         
         logger.info(
-            f"Generated story '{story_output['title']}' with {len(sentences)} sentences"
+            f"Generated story '{story.title}' with {len(sentences)} sentences"
         )
 
 

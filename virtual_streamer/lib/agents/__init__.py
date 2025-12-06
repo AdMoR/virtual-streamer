@@ -8,6 +8,7 @@ from virtual_streamer.lib.agents.callbacks import (
     BeforeModelCallback,
     AgentCallback,
     extract_llm_response_json,
+    extract_llm_response_text,
 )
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "BeforeModelCallback",
     "AgentCallback",
     "extract_llm_response_json",
+    "extract_llm_response_text",
 ]
 

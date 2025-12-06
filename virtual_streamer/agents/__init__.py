@@ -11,6 +11,8 @@ This module provides Google ADK agents for the video generation workflow:
 
 from virtual_streamer.agents.orchestrator.agent import (
     get_video_generation_orchestrator,
+    create_root_agent,
+    get_root_agent,
 )
 from virtual_streamer.agents.story_generator.agent import (
     StoryGeneratorAgent,
@@ -40,6 +42,8 @@ from virtual_streamer.agents.common.state_keys import (
 __all__ = [
     # Orchestrator
     "get_video_generation_orchestrator",
+    "create_root_agent",
+    "get_root_agent",
     # Agents
     "StoryGeneratorAgent",
     "get_story_generator",

@@ -155,15 +155,15 @@ class StoreJudgementCallback(AfterModelCallback):
         video_key = task_key(self.run_id, f"{self.worker_name}:video")
         video_path = callback_context.state.get(video_key, "")
         
-        # Parse the structured output
-        parsed = extract_llm_response_json(llm_response)
+        # Parse the structured output into VideoJudgementOutput model
+        parsed = extract_llm_response_json(llm_response, VideoJudgementOutput)
         
         if parsed:
             judgement = {
                 "video_path": video_path,
-                "rating": parsed.get("rating", "NOT_CONTEXTUAL"),
-                "grade": parsed.get("grade", 0),
-                "reasoning": parsed.get("reasoning", ""),
+                "rating": parsed.rating.value,  # Convert enum to string
+                "grade": parsed.grade,
+                "reasoning": parsed.reasoning,
             }
         else:
             # Fallback if parsing fails

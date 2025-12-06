@@ -10,6 +10,8 @@ The FinalizeVideoCallback concatenates all segments into the final video.
 """
 
 import logging
+import os
+from functools import lru_cache
 from typing import Optional
 
 from google.adk.agents import SequentialAgent
@@ -24,6 +26,14 @@ from virtual_streamer.video_generation.interfaces import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Default configuration values (from compose.yaml and VideoGenerationConfig)
+DEFAULT_TTS_HOST = os.environ.get("FISH_TTS_HOST", "127.0.0.1")
+DEFAULT_TTS_PORT = int(os.environ.get("FISH_TTS_PORT", "8003"))
+DEFAULT_OUTPUT_DIR = os.environ.get("OUT_VIDEO_FOLDER", "./output")
+DEFAULT_TEMP_DIR = os.environ.get("TEMP_DIR", "./temp")
+DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", "/media/amor/data1/Downloads/CPS/clip_infos")
 
 
 def get_video_generation_orchestrator(
@@ -125,35 +135,86 @@ def get_video_generation_orchestrator(
     return orchestrator
 
 
-# Expose as root_agent for ADK compatibility (if running standalone)
-def create_root_agent(
-    video_retriever: VideoRetrieverInterface,
-    tts: TTSInterface,
-    stt: STTInterface,
-    output_dir: str = "./output",
-    temp_dir: str = "./temp",
-) -> SequentialAgent:
+@lru_cache
+def create_root_agent() -> SequentialAgent:
     """
     Create the root agent for ADK server deployment.
     
-    This is a convenience wrapper around get_video_generation_orchestrator
-    with default settings suitable for production use.
+    This is the parameterless entry point required by ADK. It instantiates
+    all required components using default configuration from environment
+    variables and VideoGenerationConfig defaults.
     
-    Args:
-        video_retriever: Interface for searching video clips
-        tts: Interface for text-to-speech
-        stt: Interface for speech-to-text
-        output_dir: Directory for final output
-        temp_dir: Directory for temporary files
+    Configuration (via environment variables):
+        - FISH_TTS_HOST: TTS service host (default: 127.0.0.1)
+        - FISH_TTS_PORT: TTS service port (default: 8003)
+        - OUT_VIDEO_FOLDER: Output directory (default: ./output)
+        - TEMP_DIR: Temp directory (default: ./temp)
+        - DATA_DIR: Video index path (default: /media/amor/data1/Downloads/CPS/clip_infos)
     
     Returns:
         Configured SequentialAgent as root_agent
+    
+    Example:
+        # In ADK deployment
+        from virtual_streamer.agents.orchestrator import create_root_agent
+        root_agent = create_root_agent()
+        
+        # The agent expects TITLE in state before running
     """
+    from virtual_streamer.video_generation import (
+        VideoGenerationConfig,
+        create_tts,
+        create_stt,
+        create_video_retriever,
+    )
+    
+    # Load configuration from environment and defaults
+    config = VideoGenerationConfig()
+    
+    # Override from environment if available
+    config.tts.host = DEFAULT_TTS_HOST
+    config.tts.port = DEFAULT_TTS_PORT
+    config.video_retrieval.index_path = DEFAULT_DATA_DIR
+    
+    logger.info(f"Initializing ADK root agent with config:")
+    logger.info(f"  TTS: {config.tts.provider} @ {config.tts.host}:{config.tts.port}")
+    logger.info(f"  STT: {config.stt.provider}/{config.stt.model}")
+    logger.info(f"  Video Retrieval: {config.video_retrieval.method}")
+    logger.info(f"  Output: {DEFAULT_OUTPUT_DIR}")
+    
+    # Create interfaces using factory functions
+    video_retriever = create_video_retriever(config.video_retrieval)
+    tts = create_tts(config.tts, character_name=config.character_name)
+    stt = create_stt(config.stt)
+    
     return get_video_generation_orchestrator(
         video_retriever=video_retriever,
         tts=tts,
         stt=stt,
-        output_dir=output_dir,
-        temp_dir=temp_dir,
+        output_dir=DEFAULT_OUTPUT_DIR,
+        temp_dir=DEFAULT_TEMP_DIR,
+        max_video_candidates=config.max_video_judgement_attempts,
+        max_search_attempts=config.max_search_attempts,
+        fontsize=config.video_processing.fontsize,
     )
+
+
+# Expose root_agent at module level for ADK compatibility
+root_agent = None  # Lazy initialization to avoid import-time side effects
+
+
+def get_root_agent() -> SequentialAgent:
+    """
+    Get or create the root agent singleton.
+    
+    This provides lazy initialization of the root agent, avoiding
+    heavy initialization at import time.
+    
+    Returns:
+        The root agent instance
+    """
+    global root_agent
+    if root_agent is None:
+        root_agent = create_root_agent()
+    return root_agent
 
