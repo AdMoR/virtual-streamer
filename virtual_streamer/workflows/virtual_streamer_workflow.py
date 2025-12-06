@@ -1,7 +1,16 @@
 import datetime
 import time
-from prompts import PROMPT, PROMPT_FR, PROMPT_FR_3, PROMPT_FR_2, SARCASTIC_PROMPT_FR, \
-    STAND_UP_PROMPT, SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT
+from prompts import (
+    PROMPT,
+    PROMPT_FR,
+    PROMPT_FR_3,
+    PROMPT_FR_2,
+    SARCASTIC_PROMPT_FR,
+    STAND_UP_PROMPT,
+    SARCASTIC_STANDUP,
+    VERY_SARCASTIC_STANDUP_PROMPT,
+    VERY_SARCASTIC_PROMPT,
+)
 import random
 import shutil
 from llama_index.core.workflow import (
@@ -10,7 +19,7 @@ from llama_index.core.workflow import (
     Event,
     Context,
     StartEvent,
-    StopEvent
+    StopEvent,
 )
 from llama_index.llms.openai import OpenAI
 from virtual_streamer.wav2lip.main_logic import FaceDetectionGroup
@@ -27,7 +36,6 @@ class VideoEvent(Event):
 
 
 class VirtualStreamerWorkflow(Workflow):
-
     llm = OpenAI(model="gpt-4.1-mini", temperature=0.1)
     wav2lip_fn: Callable[[str, str, str, FaceDetectionGroup], str] = None
     txt_to_speech_call: Callable[[str, str, str], str] = None
@@ -44,18 +52,25 @@ class VirtualStreamerWorkflow(Workflow):
         ctx.set("question", question)
         # Step 1 - Get the response from GPT4o
         if question.prompt is None:
-            question.prompt = random.choice([SARCASTIC_STANDUP, VERY_SARCASTIC_STANDUP_PROMPT, VERY_SARCASTIC_PROMPT])
+            question.prompt = random.choice(
+                [
+                    SARCASTIC_STANDUP,
+                    VERY_SARCASTIC_STANDUP_PROMPT,
+                    VERY_SARCASTIC_PROMPT,
+                ]
+            )
         query = question.render()
         completion = self.llm.complete(query)
         text = completion.text
-        json.dump({"query": query, "response": text, "question": question.question},
-                  open(f"prompts/response_{hash(query) % 1000000}.json", "w"))
+        json.dump(
+            {"query": query, "response": text, "question": question.question},
+            open(f"prompts/response_{hash(query) % 1000000}.json", "w"),
+        )
         return ResponseEvent(response=text)
 
     @step
     def answer_to_lip_sync(self, ctx: Context, ev: ResponseEvent) -> VideoEvent:
-        """
-        """
+        """ """
         # Step 1 : Resume
         # Param retrieval
         question = ctx["question"]
@@ -70,8 +85,11 @@ class VirtualStreamerWorkflow(Workflow):
 
         # Step 2 - Get the audio for the response
         # prev p317
-        audio_outpath = self.txt_to_speech_call(text, "male-pt-3%0A",
-                                                f"{TEMP_DIR}/response_{hash(question.render()) % 100000}.wav")
+        audio_outpath = self.txt_to_speech_call(
+            text,
+            "male-pt-3%0A",
+            f"{TEMP_DIR}/response_{hash(question.render()) % 100000}.wav",
+        )
         # character = CHARACTERS[question.character_name]
         # solero_language_switch(character.language, character.voice)
         # audio_outpath = txt_to_speech_call_solero(text, character.language,
@@ -79,12 +97,16 @@ class VirtualStreamerWorkflow(Workflow):
 
         # Step 3 - Wav2lip video generation
         s = time.time()
-        outfile_path = self.wave2lip_fn(TEMP_DIR, audio_outpath, question.question, face_det_group)
+        outfile_path = self.wave2lip_fn(
+            TEMP_DIR, audio_outpath, question.question, face_det_group
+        )
         print("wav2lip prediction time:", time.time() - s)
 
         # Step 4 - Recombination and add subtitles
-        tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(question.question[:30])
-        outfile_combined_path = f'{TEMP_DIR}/result_combined_{tag}.mp4'
+        tag = str(datetime.datetime.now()).replace(" ", "-") + sanitize_str(
+            question.question[:30]
+        )
+        outfile_combined_path = f"{TEMP_DIR}/result_combined_{tag}.mp4"
         combine_video_and_audio(outfile_path, audio_outpath, outfile_combined_path)
 
         # Opt 4 : add subtitles
@@ -92,8 +114,11 @@ class VirtualStreamerWorkflow(Workflow):
             subtitle = f"Question de {question.name} : {question.question}"
         elif question.subtitle_mode == SubtitleMode.VOICE_SUBTITLE:
             subtitle = text
-        if question.subtitle_mode in [SubtitleMode.QUESTION, SubtitleMode.VOICE_SUBTITLE]:
-            outfile_titled_path = f'{TEMP_DIR}/result_titled_{tag}.mp4'
+        if question.subtitle_mode in [
+            SubtitleMode.QUESTION,
+            SubtitleMode.VOICE_SUBTITLE,
+        ]:
+            outfile_titled_path = f"{TEMP_DIR}/result_titled_{tag}.mp4"
             add_subtitle(subtitle, outfile_combined_path, outfile_titled_path)
         else:
             outfile_titled_path = outfile_combined_path

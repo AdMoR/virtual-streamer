@@ -31,7 +31,7 @@ payload = {
     "client_secret": client_secret,
     "code": authorization_code,
     "grant_type": "authorization_code",
-    "redirect_uri": redirect_uri
+    "redirect_uri": redirect_uri,
 }
 response = requests.post(token_url, data=payload)
 response_data = response.json()

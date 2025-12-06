@@ -23,9 +23,9 @@ class Config:
     rotate: bool = False
     box: List[int] = (-1, -1, -1, -1)
     crop: List[int] = (0, -1, 0, -1)
-    resize_factor: float = 1.
+    resize_factor: float = 1.0
     fps: int = 25
-    outfile: str = 'results/result_voice.mp4'
+    outfile: str = "results/result_voice.mp4"
 
 
 @dataclasses.dataclass
@@ -34,23 +34,26 @@ class FaceDetectionGroup:
     face_det_results: List[Any]
 
 
-
-def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_results: List[Any]):
+def datagen(
+    args: Config, frames: List[Any], mels: List[np.array], face_det_results: List[Any]
+):
     img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
     def unload(img_batch, mel_batch):
         img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
 
         img_masked = img_batch.copy()
-        img_masked[:, args.img_size // 2:] = 0
+        img_masked[:, args.img_size // 2 :] = 0
 
-        img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.
-        mel_batch = np.reshape(mel_batch, [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1])
+        img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.0
+        mel_batch = np.reshape(
+            mel_batch, [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1]
+        )
 
         return img_batch, mel_batch, frame_batch, coords_batch
 
     for i, m in enumerate(mels):
-        idx = 0 if args.static else i%len(frames)
+        idx = 0 if args.static else i % len(frames)
         frame_to_save = frames[idx].copy()
         face, coords = face_det_results[idx].copy()
 
@@ -69,8 +72,13 @@ def datagen(args: Config, frames: List[Any], mels: List[np.array], face_det_resu
         yield unload(img_batch, mel_batch)
 
 
-def preprocess(args: Config, video_path: str, name: str, detector: Callable[Any, Any],
-               face_detection_groups: Dict[str, FaceDetectionGroup]) -> None:
+def preprocess(
+    args: Config,
+    video_path: str,
+    name: str,
+    detector: Callable[Any, Any],
+    face_detection_groups: Dict[str, FaceDetectionGroup],
+) -> None:
     video_stream = cv2.VideoCapture(video_path)
     fps = video_stream.get(cv2.CAP_PROP_FPS)
     full_frames = list()
@@ -82,25 +90,33 @@ def preprocess(args: Config, video_path: str, name: str, detector: Callable[Any,
             break
 
         aspect_ratio = frame.shape[1] / frame.shape[0]
-        frame = cv2.resize(frame, (int(args.resolution * aspect_ratio), args.resolution))
+        frame = cv2.resize(
+            frame, (int(args.resolution * aspect_ratio), args.resolution)
+        )
         # if args.resize_factor > 1:
         #     frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
 
         y1, y2, x1, x2 = [0, -1, 0, -1]
-        if x2 == -1: x2 = frame.shape[1]
-        if y2 == -1: y2 = frame.shape[0]
+        if x2 == -1:
+            x2 = frame.shape[1]
+        if y2 == -1:
+            y2 = frame.shape[0]
 
         frame = frame[y1:y2, x1:x2]
         full_frames.append(frame)
 
     face_det_results_origin = face_detect(detector, full_frames, args.face_batch_size)
-    face_detection_groups[name] = FaceDetectionGroup(full_frames, face_det_results_origin)
+    face_detection_groups[name] = FaceDetectionGroup(
+        full_frames, face_det_results_origin
+    )
 
 
 def do_load(checkpoint_path, device):
     model = load_model(checkpoint_path, device)
     # SFDDetector.load_model(device)
-    detector = RetinaFace(gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet")
+    detector = RetinaFace(
+        gpu_id=0, model_path="checkpoints/mobilenet.pth", network="mobilenet"
+    )
     detector_model = detector.model
     print("Models loaded")
     return model, detector, detector_model

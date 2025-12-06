@@ -8,7 +8,3 @@ This package provides a layered API architecture:
 """
 
 __version__ = "1.0.0"
-
-
-
-

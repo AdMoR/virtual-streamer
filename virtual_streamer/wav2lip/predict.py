@@ -93,20 +93,35 @@ class Predictor(BasePredictor):
             pass
 
         face_ext = os.path.splitext(face)[-1]
-        if face_ext not in [".mp4", ".mov", ".png" , ".jpg" , ".jpeg" , ".gif", ".mkv", ".webp"]:
-            raise ValueError(f'Unsupported face format {face_ext!r}')
+        if face_ext not in [
+            ".mp4",
+            ".mov",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".mkv",
+            ".webp",
+        ]:
+            raise ValueError(f"Unsupported face format {face_ext!r}")
 
         audio_ext = os.path.splitext(audio)[-1]
         if audio_ext not in [".wav", ".mp3"]:
-            raise ValueError(f'Unsupported audio format {audio_ext!r}')
+            raise ValueError(f"Unsupported audio format {audio_ext!r}")
 
         args = [
-            "--checkpoint_path", "checkpoints/wav2lip_gan.pth",
-            "--face", str(face),
-            "--audio", str(audio),
-            "--pads", *pads.split(" "),
-            "--fps", str(fps),
-            "--out_height", str(out_height),
+            "--checkpoint_path",
+            "checkpoints/wav2lip_gan.pth",
+            "--face",
+            str(face),
+            "--audio",
+            str(audio),
+            "--pads",
+            *pads.split(" "),
+            "--fps",
+            str(fps),
+            "--out_height",
+            str(out_height),
         ]
         if not smooth:
             args += ["--nosmooth"]
@@ -119,19 +134,27 @@ class Predictor(BasePredictor):
         try:
             inference.main()
         except ValueError as e:
-            print('-> Encountered error, skipping lipsync:', e)
+            print("-> Encountered error, skipping lipsync:", e)
 
             args = [
-                "ffmpeg", "-y",
+                "ffmpeg",
+                "-y",
                 # "-vsync", "0", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
-                "-stream_loop", "-1",
-                "-i", str(face),
-                "-i", str(audio),
+                "-stream_loop",
+                "-1",
+                "-i",
+                str(face),
+                "-i",
+                str(audio),
                 "-shortest",
-                "-fflags", "+shortest",
-                "-max_interleave_delta", "100M",
-                "-map", "0:v:0",
-                "-map", "1:a:0",
+                "-fflags",
+                "+shortest",
+                "-max_interleave_delta",
+                "100M",
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
                 # "-c", "copy",
                 # "-c:v", "h264_nvenc",
                 "results/result_voice.mp4",

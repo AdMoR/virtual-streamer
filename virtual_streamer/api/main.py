@@ -20,7 +20,9 @@ from virtual_streamer.api.low_level.clips import router as clips_router
 from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
 from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
-from virtual_streamer.api.high_level.video_generation import router as video_generation_router
+from virtual_streamer.api.high_level.video_generation import (
+    router as video_generation_router,
+)
 from virtual_streamer.api.high_level.legacy_qa import router as legacy_qa_router
 
 # Create FastAPI app
@@ -49,7 +51,7 @@ app = FastAPI(
     """,
     version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # Add CORS middleware
@@ -88,8 +90,8 @@ async def root():
         "layers": {
             "low_level": ["characters", "clips"],
             "medium_level": ["tts", "stt", "wav2lip"],
-            "high_level": ["video_generation"]
-        }
+            "high_level": ["video_generation"],
+        },
     }
 
 
@@ -97,17 +99,17 @@ async def root():
 async def health_check():
     """
     Global health check endpoint.
-    
+
     Returns the health status of the entire system.
     """
     import torch
-    
+
     return {
         "status": "healthy",
         "service": "virtual-streamer-api",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "data_dir": os.environ.get("DATA_DIR", "/data"),
-        "temp_dir": os.environ.get("TEMP_DIR", "./temp")
+        "temp_dir": os.environ.get("TEMP_DIR", "./temp"),
     }
 
 
@@ -120,9 +122,11 @@ async def startup_event():
     print("=" * 70)
     print(f"Data directory: {os.environ.get('DATA_DIR', '/data')}")
     print(f"Temp directory: {os.environ.get('TEMP_DIR', './temp')}")
-    print(f"TTS service: {os.environ.get('FISH_TTS_HOST', 'localhost')}:{os.environ.get('FISH_TTS_PORT', '8003')}")
+    print(
+        f"TTS service: {os.environ.get('FISH_TTS_HOST', 'localhost')}:{os.environ.get('FISH_TTS_PORT', '8003')}"
+    )
     print("=" * 70)
-    
+
     # Ensure temp directory exists
     temp_dir = os.environ.get("TEMP_DIR", "./temp")
     os.makedirs(temp_dir, exist_ok=True)
@@ -136,20 +140,17 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     # Configuration from environment
     host = os.environ.get("API_HOST", "0.0.0.0")
     port = int(os.environ.get("API_PORT", "8000"))
-    
+
     print(f"Starting server on {host}:{port}")
-    
+
     uvicorn.run(
         "virtual_streamer.api.main:app",
         host=host,
         port=port,
         reload=True,  # Enable auto-reload for development
-        log_level="info"
+        log_level="info",
     )
-
-
-

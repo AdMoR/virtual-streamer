@@ -9,18 +9,20 @@ from .bbox import *
 from .detect import *
 
 models_urls = {
-    's3fd': 'https://www.adrianbulat.com/downloads/python-fan/s3fd-619a316812.pth',
+    "s3fd": "https://www.adrianbulat.com/downloads/python-fan/s3fd-619a316812.pth",
 }
 
 
 class SFDDetector(FaceDetector):
     @classmethod
     def load_model(cls, device):
-        path_to_detector = os.path.join(os.path.dirname(os.path.abspath(__file__)), 's3fd.pth')
+        path_to_detector = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "s3fd.pth"
+        )
 
         # Initialise the face detector
         if not os.path.isfile(path_to_detector):
-            model_weights = load_url(models_urls['s3fd'])
+            model_weights = load_url(models_urls["s3fd"])
         else:
             model_weights = torch.load(path_to_detector)
 

@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     build:
       context: .
-      dockerfile: docker/docker_unified_api/Dockerfile
+      dockerfile: docker/docker_worker/Dockerfile
       args:
         PYTHON_VERSION: "3.9"
     deploy:

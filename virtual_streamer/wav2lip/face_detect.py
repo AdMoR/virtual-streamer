@@ -52,4 +52,3 @@ def _get_bounding_rect(
     )
 
     return *rect_start_point, *rect_end_point
-
