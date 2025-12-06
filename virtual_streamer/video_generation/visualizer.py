@@ -12,10 +12,10 @@ This module creates interactive HTML reports showing:
 
 Usage:
     from virtual_streamer.video_generation import create_html_report
-    
+
     # From GenerationResult
     html_path = create_html_report(result, output_path="report.html")
-    
+
     # From ConfigDump
     html_path = create_html_report_from_dump("config_dump.json", output_path="report.html")
 """
@@ -421,16 +421,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 
 def create_html_report(
-    result: GenerationResult,
-    output_path: Optional[str] = None
+    result: GenerationResult, output_path: Optional[str] = None
 ) -> str:
     """
     Create an HTML visualization report from a GenerationResult.
-    
+
     Args:
         result: GenerationResult object from video generation
         output_path: Optional path to save HTML file (default: auto-generated)
-        
+
     Returns:
         Path to the generated HTML file
     """
@@ -444,16 +443,15 @@ def create_html_report(
 
 
 def create_html_report_from_dump(
-    config_dump_path: str,
-    output_path: Optional[str] = None
+    config_dump_path: str, output_path: Optional[str] = None
 ) -> str:
     """
     Create an HTML visualization report from a config dump file.
-    
+
     Args:
         config_dump_path: Path to config dump JSON file
         output_path: Optional path to save HTML file (default: auto-generated)
-        
+
     Returns:
         Path to the generated HTML file
     """
@@ -462,61 +460,61 @@ def create_html_report_from_dump(
 
 
 def _create_html_from_dump(
-    dump: ConfigDump,
-    result: Optional[GenerationResult],
-    output_path: Optional[str]
+    dump: ConfigDump, result: Optional[GenerationResult], output_path: Optional[str]
 ) -> str:
     """Create HTML from config dump with full details."""
-    
+
     # Extract data from dump
     sentences = dump.input.get("sentences", [])
     video_matches = dump.execution.get("video_matches", [])
     timing = dump.timing
-    
+
     # Story section (if available)
     story_section = ""
     story_output = dump.input.get("story_output")
     if story_output:
         story_section = f"""
         <div class="story-section">
-            <div class="story-title">📝 {story_output.get('title', 'Story')}</div>
+            <div class="story-title">📝 {story_output.get("title", "Story")}</div>
             <div class="story-plan">
                 <strong>Story Plan:</strong><br>
-                {story_output.get('story_plan', 'N/A').replace(chr(10), '<br>')}
+                {story_output.get("story_plan", "N/A").replace(chr(10), "<br>")}
             </div>
         </div>
         """
-    
+
     # Generate HTML for each sentence
     sentences_html = []
     llm_call_count = 0
-    
+
     for idx, (sentence, match_data) in enumerate(zip(sentences, video_matches)):
         sentence_num = idx + 1
-        
+
         # Extract match data
         selected_video = match_data.get("selected_video", "")
         rating = match_data.get("rating", "UNKNOWN")
         grade = match_data.get("grade", 0)
         reasoning = match_data.get("reasoning", "No reasoning available")
         alternatives = match_data.get("alternatives_tried", [])
-        
+
         # Count LLM calls (rough estimate)
         llm_call_count += 1  # For video judgement
         if alternatives:
             llm_call_count += len(alternatives)  # For alternative searches
-        
+
         # Generate alternatives HTML
         alternatives_html = ""
         if alternatives:
-            keywords_html = "".join([f'<span class="keyword">{kw}</span>' for kw in alternatives])
+            keywords_html = "".join(
+                [f'<span class="keyword">{kw}</span>' for kw in alternatives]
+            )
             alternatives_html = f"""
             <div class="alternatives">
                 <div class="alternatives-header">🔄 Alternative Searches Tried:</div>
                 <div>{keywords_html}</div>
             </div>
             """
-        
+
         # Final selection
         final_selection_html = f"""
         <div class="final-selection">
@@ -529,7 +527,7 @@ def _create_html_from_dump(
             <div class="reasoning">{reasoning}</div>
         </div>
         """
-        
+
         # Combine sentence block
         sentence_html = f"""
         <div class="sentence-block">
@@ -541,9 +539,9 @@ def _create_html_from_dump(
             {alternatives_html}
         </div>
         """
-        
+
         sentences_html.append(sentence_html)
-    
+
     # Timing section
     timing_html = ""
     if timing:
@@ -556,7 +554,7 @@ def _create_html_from_dump(
                 <div class="timing-value">{value:.2f}s</div>
             </div>
             """)
-        
+
         timing_html = f"""
         <div class="timing-section">
             <div class="section-title">⏱️ Performance Metrics</div>
@@ -565,13 +563,15 @@ def _create_html_from_dump(
             </div>
         </div>
         """
-    
+
     # Get output info
-    total_duration = dump.output.get("duration", 0) if hasattr(dump, 'output') else 0
-    
+    total_duration = dump.output.get("duration", 0) if hasattr(dump, "output") else 0
+
     # Generate final HTML
     html_content = HTML_TEMPLATE.format(
-        title=story_output.get('title', 'Video Generation') if story_output else 'Video Generation',
+        title=story_output.get("title", "Video Generation")
+        if story_output
+        else "Video Generation",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         story_section=story_section,
         total_sentences=len(sentences),
@@ -580,30 +580,29 @@ def _create_html_from_dump(
         total_time=f"{timing.get('total', 0):.1f}" if timing else "N/A",
         sentences_html="\n".join(sentences_html),
         timing_section=timing_html,
-        config_dump_path=os.path.basename(dump.config_dump_path) if hasattr(dump, 'config_dump_path') else "N/A"
+        config_dump_path=os.path.basename(dump.config_dump_path)
+        if hasattr(dump, "config_dump_path")
+        else "N/A",
     )
-    
+
     # Determine output path
     if output_path is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = f"video_generation_report_{timestamp}.html"
-    
+
     # Write HTML file
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_content)
-    
+
     return os.path.abspath(output_path)
 
 
-def _create_basic_html(
-    result: GenerationResult,
-    output_path: Optional[str]
-) -> str:
+def _create_basic_html(result: GenerationResult, output_path: Optional[str]) -> str:
     """Create basic HTML from result only (without full config dump)."""
-    
+
     # Basic info from result
     metadata = result.metadata
-    
+
     story_section = ""
     if result.story_output:
         story_section = f"""
@@ -611,11 +610,11 @@ def _create_basic_html(
             <div class="story-title">📝 {result.story_output.title}</div>
             <div class="story-plan">
                 <strong>Story Plan:</strong><br>
-                {result.story_output.story_plan.replace(chr(10), '<br>')}
+                {result.story_output.story_plan.replace(chr(10), "<br>")}
             </div>
         </div>
         """
-    
+
     timing_section = ""
     if "timing" in metadata:
         timing = metadata["timing"]
@@ -628,7 +627,7 @@ def _create_basic_html(
                 <div class="timing-value">{value:.2f}s</div>
             </div>
             """)
-        
+
         timing_section = f"""
         <div class="timing-section">
             <div class="section-title">⏱️ Performance Metrics</div>
@@ -637,7 +636,7 @@ def _create_basic_html(
             </div>
         </div>
         """
-    
+
     # Simple sentence list
     sentences_html = f"""
     <div class="sentence-block">
@@ -651,7 +650,7 @@ def _create_basic_html(
         </p>
     </div>
     """
-    
+
     html_content = HTML_TEMPLATE.format(
         title=result.story_output.title if result.story_output else "Video Generation",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -662,20 +661,16 @@ def _create_basic_html(
         total_time=f"{metadata.get('timing', {}).get('total', 0):.1f}",
         sentences_html=sentences_html,
         timing_section=timing_section,
-        config_dump_path=result.config_dump_path or "N/A"
+        config_dump_path=result.config_dump_path or "N/A",
     )
-    
+
     # Determine output path
     if output_path is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = f"video_generation_report_{timestamp}.html"
-    
+
     # Write HTML file
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_content)
-    
+
     return os.path.abspath(output_path)
-
-
-
-

@@ -1,4 +1,4 @@
- virtual_streamer/video_generation/implementations.py"""
+"""
 Concrete implementations of video generation interfaces.
 
 This module provides working implementations for:
@@ -24,15 +24,24 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import Stemmer
 
 from virtual_streamer.video_generation.interfaces import (
-    LLMInterface, TTSInterface, STTInterface,
-    VideoRetrieverInterface, PromptProviderInterface
+    LLMInterface,
+    TTSInterface,
+    STTInterface,
+    VideoRetrieverInterface,
+    PromptProviderInterface,
 )
 from virtual_streamer.video_generation.config import (
-    LLMConfig, TTSConfig, STTConfig,
-    VideoRetrievalConfig, PromptConfig
+    LLMConfig,
+    TTSConfig,
+    STTConfig,
+    VideoRetrievalConfig,
+    PromptConfig,
 )
 from virtual_streamer.utils.utils import txt_to_speech_call_fish, get_length
-from virtual_streamer.workflows.video_retriever import load_json_documents, prepare_nodes_v2
+from virtual_streamer.workflows.video_retriever import (
+    load_json_documents,
+    prepare_nodes_v2,
+)
 from virtual_streamer.video_server.utils import get_character_data_sync
 from virtual_streamer.video_server.models import Character
 from virtual_streamer.api.dependencies import get_path_resolver
@@ -42,57 +51,55 @@ from virtual_streamer.api.dependencies import get_path_resolver
 # LLM Implementations
 # ============================================================================
 
+
 class AnthropicLLM(LLMInterface):
     """Anthropic Claude implementation."""
-    
+
     def __init__(self, config: LLMConfig):
         self.config = config
         self.api_key = config.api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.client = anthropic.Anthropic(api_key=self.api_key)
         self._async_client = None
-    
+
     @property
     def async_client(self):
         """Lazy initialization of async client to avoid event loop conflicts."""
         if self._async_client is None:
             self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
         return self._async_client
-    
+
     async def complete(self, prompt: str, **kwargs) -> str:
         """Generate text completion asynchronously."""
         response = await self.async_client.messages.create(
             model=self.config.model,
             max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
             temperature=kwargs.get("temperature", self.config.temperature),
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text
-    
+
     async def complete_structured(
-        self, 
-        prompt: str, 
-        response_model: Type[BaseModel],
-        **kwargs
+        self, prompt: str, response_model: Type[BaseModel], **kwargs
     ) -> BaseModel:
         """Generate structured completion using Anthropic's beta feature."""
         # Use prompt engineering to get structured output
         # Anthropic doesn't have native structured output yet, so we'll use JSON mode
         schema = response_model.model_json_schema()
-        
+
         structured_prompt = f"""{prompt}
 
 Please respond with a JSON object that matches this schema:
 {json.dumps(schema, indent=2)}
 
 Respond ONLY with valid JSON, no other text."""
-        
+
         response = await self.async_client.messages.create(
             model=self.config.model,
             max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
             temperature=kwargs.get("temperature", self.config.temperature),
-            messages=[{"role": "user", "content": structured_prompt}]
+            messages=[{"role": "user", "content": structured_prompt}],
         )
-        
+
         # Parse JSON response
         response_text = response.content[0].text
         # Try to extract JSON if it's wrapped in markdown
@@ -104,71 +111,64 @@ Respond ONLY with valid JSON, no other text."""
             start = response_text.find("```") + 3
             end = response_text.find("```", start)
             response_text = response_text[start:end].strip()
-        
+
         response_data = json.loads(response_text)
         return response_model(**response_data)
-    
+
     async def complete_with_vision(
-        self, 
-        prompt: str, 
-        image_base64: str,
-        **kwargs
+        self, prompt: str, image_base64: str, **kwargs
     ) -> str:
         """Generate completion with vision input."""
         response = await self.async_client.messages.create(
             model=kwargs.get("model", self.config.vision_model),
             max_tokens=kwargs.get("max_tokens", 1024),
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": image_base64,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_base64,
+                            },
                         },
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ],
-            }]
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
         )
         return response.content[0].text
 
 
 class OpenAILLM(LLMInterface):
     """OpenAI GPT implementation."""
-    
+
     def __init__(self, config: LLMConfig):
         self.config = config
         self.api_key = config.api_key or os.environ.get("OPENAI_API_KEY")
         self._client = None
-    
+
     @property
     def client(self):
         """Lazy initialization of async client to avoid event loop conflicts."""
         if self._client is None:
             self._client = openai.AsyncOpenAI(api_key=self.api_key)
         return self._client
-    
+
     async def complete(self, prompt: str, **kwargs) -> str:
         """Generate text completion asynchronously."""
         response = await self.client.chat.completions.create(
             model=self.config.model,
             max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
             temperature=kwargs.get("temperature", self.config.temperature),
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content
-    
+
     async def complete_structured(
-        self, 
-        prompt: str, 
-        response_model: Type[BaseModel],
-        **kwargs
+        self, prompt: str, response_model: Type[BaseModel], **kwargs
     ) -> BaseModel:
         """Generate structured completion using OpenAI's structured outputs."""
         # OpenAI supports structured outputs natively with response_format
@@ -180,74 +180,70 @@ class OpenAILLM(LLMInterface):
             temperature=kwargs.get("temperature", self.config.temperature),
         )
         return response.choices[0].message.parsed
-    
+
     async def complete_with_vision(
-        self, 
-        prompt: str, 
-        image_base64: str,
-        **kwargs
+        self, prompt: str, image_base64: str, **kwargs
     ) -> str:
         """Generate completion with vision input."""
         response = await self.client.chat.completions.create(
             model=kwargs.get("model", "gpt-4-vision-preview"),
             max_tokens=kwargs.get("max_tokens", 1024),
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
-                        }
-                    }
-                ]
-            }]
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            },
+                        },
+                    ],
+                }
+            ],
         )
         return response.choices[0].message.content
 
 
 class LiteLLM(LLMInterface):
     """LiteLLM multi-provider implementation."""
-    
+
     def __init__(self, config: LLMConfig):
         self.config = config
         if config.api_key:
             os.environ["OPENAI_API_KEY"] = config.api_key
-    
+
     async def complete(self, prompt: str, **kwargs) -> str:
         """Generate text completion asynchronously."""
         response = await litellm_acompletion(
             model=self.config.model,
             max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
             temperature=kwargs.get("temperature", self.config.temperature),
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content
-    
+
     async def complete_structured(
-        self, 
-        prompt: str, 
-        response_model: Type[BaseModel],
-        **kwargs
+        self, prompt: str, response_model: Type[BaseModel], **kwargs
     ) -> BaseModel:
         """Generate structured completion using prompt engineering."""
         schema = response_model.model_json_schema()
-        
+
         structured_prompt = f"""{prompt}
 
 Please respond with a JSON object that matches this schema:
 {json.dumps(schema, indent=2)}
 
 Respond ONLY with valid JSON, no other text."""
-        
+
         response = await litellm_acompletion(
             model=self.config.model,
             max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
             temperature=kwargs.get("temperature", self.config.temperature),
-            messages=[{"role": "user", "content": structured_prompt}]
+            messages=[{"role": "user", "content": structured_prompt}],
         )
-        
+
         response_text = response.choices[0].message.content
         # Try to extract JSON if it's wrapped in markdown
         if "```json" in response_text:
@@ -258,33 +254,32 @@ Respond ONLY with valid JSON, no other text."""
             start = response_text.find("```") + 3
             end = response_text.find("```", start)
             response_text = response_text[start:end].strip()
-        
+
         response_data = json.loads(response_text)
         return response_model(**response_data)
-    
+
     async def complete_with_vision(
-        self, 
-        prompt: str, 
-        image_base64: str,
-        **kwargs
+        self, prompt: str, image_base64: str, **kwargs
     ) -> str:
         """Generate completion with vision input."""
         # LiteLLM supports vision through specific models
         response = await litellm_acompletion(
             model=kwargs.get("model", self.config.vision_model),
             max_tokens=kwargs.get("max_tokens", 1024),
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
-                        }
-                    }
-                ]
-            }]
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            },
+                        },
+                    ],
+                }
+            ],
         )
         return response.choices[0].message.content
 
@@ -293,17 +288,15 @@ Respond ONLY with valid JSON, no other text."""
 # TTS Implementations
 # ============================================================================
 
+
 class FishSpeechTTS(TTSInterface):
     """Fish-Speech TTS implementation."""
-    
+
     def __init__(self, config: TTSConfig):
         self.config = config
-    
+
     def generate_speech(
-        self, 
-        text: str,
-        output_path: Optional[str] = None,
-        **kwargs
+        self, text: str, output_path: Optional[str] = None, **kwargs
     ) -> str:
         """Generate speech using Fish-Speech API."""
         return txt_to_speech_call_fish(
@@ -314,12 +307,14 @@ class FishSpeechTTS(TTSInterface):
             max_new_tokens=kwargs.get("max_new_tokens", self.config.max_new_tokens),
             chunk_length=kwargs.get("chunk_length", self.config.chunk_length),
             top_p=kwargs.get("top_p", self.config.top_p),
-            repetition_penalty=kwargs.get("repetition_penalty", self.config.repetition_penalty),
+            repetition_penalty=kwargs.get(
+                "repetition_penalty", self.config.repetition_penalty
+            ),
             temperature=kwargs.get("temperature", self.config.temperature),
             host=self.config.host,
-            port=self.config.port
+            port=self.config.port,
         )
-    
+
     def get_audio_duration(self, audio_path: str) -> float:
         """Get duration of audio file."""
         return get_length(audio_path)
@@ -327,38 +322,35 @@ class FishSpeechTTS(TTSInterface):
 
 class SoleroTTS(TTSInterface):
     """Solero TTS implementation."""
-    
+
     def __init__(self, config: TTSConfig):
         self.config = config
-    
+
     def generate_speech(
-        self, 
-        text: str,
-        output_path: Optional[str] = None,
-        **kwargs
+        self, text: str, output_path: Optional[str] = None, **kwargs
     ) -> str:
         """Generate speech using Solero TTS API."""
         import requests
         import tempfile
-        
+
         if output_path is None:
             output_path = tempfile.mktemp(suffix=".wav")
-        
+
         url = f"http://{self.config.host}:{self.config.port}/tts/generate"
         data = {
             "text": text,
             "speaker": kwargs.get("speaker", "default"),
-            "session": kwargs.get("session", "default")
+            "session": kwargs.get("session", "default"),
         }
-        
+
         response = requests.post(url, json=data)
         response.raise_for_status()
-        
+
         with open(output_path, "wb") as f:
             f.write(response.content)
-        
+
         return output_path
-    
+
     def get_audio_duration(self, audio_path: str) -> float:
         """Get duration of audio file."""
         return get_length(audio_path)
@@ -366,38 +358,35 @@ class SoleroTTS(TTSInterface):
 
 class CoquiTTS(TTSInterface):
     """Coqui TTS implementation."""
-    
+
     def __init__(self, config: TTSConfig):
         self.config = config
-    
+
     def generate_speech(
-        self, 
-        text: str,
-        output_path: Optional[str] = None,
-        **kwargs
+        self, text: str, output_path: Optional[str] = None, **kwargs
     ) -> str:
         """Generate speech using Coqui TTS."""
         import subprocess
         import tempfile
         from urllib import parse
-        
+
         if output_path is None:
             output_path = tempfile.mktemp(suffix=".wav")
-        
+
         safe_text = parse.quote_plus(text)
         speaker = kwargs.get("speaker", "male-pt-3%0A")
         url = f"http://{self.config.host}:{self.config.port}/api/tts?text={safe_text}&speaker_id={speaker}&style_wav=&language_id=fr-fr"
-        
+
         result = subprocess.run(
             ["curl", "-L", "-X", "GET", url, "--output", output_path],
-            capture_output=True
+            capture_output=True,
         )
-        
+
         if result.returncode != 0:
             raise Exception(f"TTS call failed: {result.stderr.decode()}")
-        
+
         return output_path
-    
+
     def get_audio_duration(self, audio_path: str) -> float:
         """Get duration of audio file."""
         return get_length(audio_path)
@@ -407,23 +396,19 @@ class CoquiTTS(TTSInterface):
 # STT Implementations
 # ============================================================================
 
+
 class WhisperSTT(STTInterface):
     """Stable-Whisper STT implementation."""
-    
+
     def __init__(self, config: STTConfig):
         self.config = config
         self.model = stable_whisper.load_faster_whisper(config.model)
-    
+
     def transcribe(self, audio_path: str, **kwargs) -> Any:
         """Transcribe audio to text."""
         return self.model.transcribe(audio_path)
-    
-    def transcribe_to_srt(
-        self,
-        audio_path: str,
-        srt_output_path: str,
-        **kwargs
-    ) -> str:
+
+    def transcribe_to_srt(self, audio_path: str, srt_output_path: str, **kwargs) -> str:
         """Transcribe audio and save as SRT file."""
         result = self.transcribe(audio_path, **kwargs)
         result.to_srt_vtt(srt_output_path)
@@ -432,32 +417,30 @@ class WhisperSTT(STTInterface):
 
 class FasterWhisperSTT(STTInterface):
     """Faster-Whisper STT implementation."""
-    
+
     def __init__(self, config: STTConfig):
         self.config = config
         from faster_whisper import WhisperModel
+
         self.model = WhisperModel(config.model, device="cuda", compute_type="float16")
-    
+
     def transcribe(self, audio_path: str, **kwargs) -> Any:
         """Transcribe audio to text."""
         segments, info = self.model.transcribe(audio_path, beam_size=5)
         return list(segments)
-    
-    def transcribe_to_srt(
-        self,
-        audio_path: str,
-        srt_output_path: str,
-        **kwargs
-    ) -> str:
+
+    def transcribe_to_srt(self, audio_path: str, srt_output_path: str, **kwargs) -> str:
         """Transcribe audio and save as SRT file."""
         segments = self.transcribe(audio_path, **kwargs)
-        
-        with open(srt_output_path, 'w') as f:
+
+        with open(srt_output_path, "w") as f:
             for i, segment in enumerate(segments, start=1):
                 f.write(f"{i}\n")
-                f.write(f"{format_timestamp(segment.start)} --> {format_timestamp(segment.end)}\n")
+                f.write(
+                    f"{format_timestamp(segment.start)} --> {format_timestamp(segment.end)}\n"
+                )
                 f.write(f"{segment.text.strip()}\n\n")
-        
+
         return srt_output_path
 
 
@@ -474,115 +457,123 @@ def format_timestamp(seconds: float) -> str:
 # Video Retriever Implementations
 # ============================================================================
 
+
 class BM25VideoRetriever(VideoRetrieverInterface):
     """BM25-based video retriever."""
-    
+
     def __init__(self, config: VideoRetrievalConfig):
         self.config = config
         documents = load_json_documents(config.index_path)
         nodes = prepare_nodes_v2(documents)
-        
+
         # Filter by character if specified
         if config.character_filter:
-            nodes = [n for n in nodes if config.character_filter == n.metadata.get("who")]
-        
+            nodes = [
+                n for n in nodes if config.character_filter == n.metadata.get("who")
+            ]
+
         self.retriever = BM25Retriever.from_defaults(
             nodes=nodes,
             similarity_top_k=config.top_k,
             stemmer=Stemmer.Stemmer("french"),
-            language="french"
+            language="french",
         )
         self.nodes = nodes
-    
+
     def search(self, query: str, top_k: int = 10) -> List[str]:
         """Search for videos using BM25."""
         results = self.retriever.retrieve(query)
         video_paths = []
         for result in results[:top_k]:
-            if hasattr(result.node, 'metadata') and 'path' in result.node.metadata:
-                path = result.node.metadata['path']
+            if hasattr(result.node, "metadata") and "path" in result.node.metadata:
+                path = result.node.metadata["path"]
                 # Fix path if needed (from data to data1)
                 path = path.replace("/media/amor/data/", "/media/amor/data1/")
                 video_paths.append(path)
         return video_paths
-    
+
     def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
         """Get metadata for a video."""
         # Find node with matching path
         for node in self.nodes:
-            if node.metadata.get('path') == video_path:
+            if node.metadata.get("path") == video_path:
                 return node.metadata
         return {}
 
 
 class VectorVideoRetriever(VideoRetrieverInterface):
     """Vector embedding-based video retriever."""
-    
+
     def __init__(self, config: VideoRetrievalConfig):
         self.config = config
-        
+
         # Set up embedding model
         embed_model = HuggingFaceEmbedding(model_name=config.embedding_model)
         Settings.embed_model = embed_model
-        
+
         # Load and prepare nodes
         documents = load_json_documents(config.index_path)
         nodes = prepare_nodes_v2(documents)
-        
+
         # Filter by character if specified
         if config.character_filter:
-            nodes = [n for n in nodes if config.character_filter == n.metadata.get("who")]
-        
+            nodes = [
+                n for n in nodes if config.character_filter == n.metadata.get("who")
+            ]
+
         self.nodes = nodes
-        
+
         # Create or load vector index
         if config.vector_store_path and os.path.exists(config.vector_store_path):
             from llama_index.core import StorageContext, load_index_from_storage
-            storage_context = StorageContext.from_defaults(persist_dir=config.vector_store_path)
+
+            storage_context = StorageContext.from_defaults(
+                persist_dir=config.vector_store_path
+            )
             self.index = load_index_from_storage(storage_context)
         else:
             self.index = VectorStoreIndex(nodes)
             if config.vector_store_path:
                 self.index.storage_context.persist(config.vector_store_path)
-        
+
         self.retriever = self.index.as_retriever(similarity_top_k=config.top_k)
-    
+
     def search(self, query: str, top_k: int = 10) -> List[str]:
         """Search for videos using vector embeddings."""
         results = self.retriever.retrieve(query)
         video_paths = []
         for result in results[:top_k]:
-            if hasattr(result.node, 'metadata') and 'path' in result.node.metadata:
-                path = result.node.metadata['path']
+            if hasattr(result.node, "metadata") and "path" in result.node.metadata:
+                path = result.node.metadata["path"]
                 path = path.replace("/media/amor/data/", "/media/amor/data1/")
                 video_paths.append(path)
         return video_paths
-    
+
     def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
         """Get metadata for a video."""
         for node in self.nodes:
-            if node.metadata.get('path') == video_path:
+            if node.metadata.get("path") == video_path:
                 return node.metadata
         return {}
 
 
 class HybridVideoRetriever(VideoRetrieverInterface):
     """Hybrid retriever combining BM25 and vector search."""
-    
+
     def __init__(self, config: VideoRetrievalConfig):
         self.bm25_retriever = BM25VideoRetriever(config)
         self.vector_retriever = VectorVideoRetriever(config)
         self.config = config
-    
+
     def search(self, query: str, top_k: int = 10) -> List[str]:
         """Search using both BM25 and vector methods, then merge results."""
         bm25_results = self.bm25_retriever.search(query, top_k=top_k)
         vector_results = self.vector_retriever.search(query, top_k=top_k)
-        
+
         # Merge and deduplicate, prioritizing BM25
         merged = []
         seen = set()
-        
+
         # Interleave results
         for i in range(max(len(bm25_results), len(vector_results))):
             if i < len(bm25_results) and bm25_results[i] not in seen:
@@ -591,12 +582,12 @@ class HybridVideoRetriever(VideoRetrieverInterface):
             if i < len(vector_results) and vector_results[i] not in seen:
                 merged.append(vector_results[i])
                 seen.add(vector_results[i])
-            
+
             if len(merged) >= top_k:
                 break
-        
+
         return merged[:top_k]
-    
+
     def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
         """Get metadata for a video."""
         return self.bm25_retriever.get_video_metadata(video_path)
@@ -606,34 +597,37 @@ class HybridVideoRetriever(VideoRetrieverInterface):
 # Prompt Provider Implementations
 # ============================================================================
 
+
 class LocalPromptProvider(PromptProviderInterface):
     """Local file-based prompt provider."""
-    
+
     def __init__(self, config: PromptConfig):
         self.config = config
         self.prompts = {}
         self._load_prompts()
-    
+
     def _load_prompts(self):
         """Load prompts from local file or directory."""
         if self.config.local_file:
             if os.path.isfile(self.config.local_file):
                 # Load single file
-                with open(self.config.local_file, 'r') as f:
-                    if self.config.local_file.endswith('.json'):
+                with open(self.config.local_file, "r") as f:
+                    if self.config.local_file.endswith(".json"):
                         self.prompts = json.load(f)
                     else:
                         # Single prompt file
-                        name = os.path.splitext(os.path.basename(self.config.local_file))[0]
+                        name = os.path.splitext(
+                            os.path.basename(self.config.local_file)
+                        )[0]
                         self.prompts[name] = f.read()
             elif os.path.isdir(self.config.local_file):
                 # Load all prompts from directory
                 for filename in os.listdir(self.config.local_file):
-                    if filename.endswith(('.txt', '.md', '.json')):
+                    if filename.endswith((".txt", ".md", ".json")):
                         filepath = os.path.join(self.config.local_file, filename)
                         name = os.path.splitext(filename)[0]
-                        with open(filepath, 'r') as f:
-                            if filename.endswith('.json'):
+                        with open(filepath, "r") as f:
+                            if filename.endswith(".json"):
                                 data = json.load(f)
                                 self.prompts.update(data)
                             else:
@@ -641,19 +635,20 @@ class LocalPromptProvider(PromptProviderInterface):
         else:
             # Use default prompts from creation_interface.py
             from apps.creation_interface import DEFAULT_PROMPT
+
             self.prompts["story_generation"] = DEFAULT_PROMPT
-    
+
     def get_prompt(self, prompt_name: str, **kwargs) -> str:
         """Get a prompt template by name and format it."""
         template = self.prompts.get(prompt_name, "")
         if kwargs:
             return template.format(**kwargs)
         return template
-    
+
     def list_prompts(self) -> List[str]:
         """List all available prompt names."""
         return list(self.prompts.keys())
-    
+
     def get_raw_prompt(self, prompt_name: str) -> str:
         """Get the raw (unformatted) prompt template."""
         return self.prompts.get(prompt_name, "")
@@ -661,11 +656,12 @@ class LocalPromptProvider(PromptProviderInterface):
 
 class MLflowPromptProvider(PromptProviderInterface):
     """MLflow-based prompt provider."""
-    
+
     def __init__(self, config: PromptConfig):
         self.config = config
         try:
             import mlflow
+
             self.mlflow = mlflow
             if config.mlflow_tracking_uri:
                 mlflow.set_tracking_uri(config.mlflow_tracking_uri)
@@ -673,24 +669,24 @@ class MLflowPromptProvider(PromptProviderInterface):
                 mlflow.set_experiment(config.mlflow_experiment)
         except ImportError:
             raise ImportError("MLflow not installed. Install with: pip install mlflow")
-    
+
     def get_prompt(self, prompt_name: str, **kwargs) -> str:
         """Get a prompt from MLflow and format it."""
         template = self._load_from_mlflow(prompt_name)
         if kwargs:
             return template.format(**kwargs)
         return template
-    
+
     def list_prompts(self) -> List[str]:
         """List all available prompts in MLflow."""
         # This would need to be implemented based on MLflow's prompt registry
         # For now, return empty list
         return []
-    
+
     def get_raw_prompt(self, prompt_name: str) -> str:
         """Get the raw prompt template from MLflow."""
         return self._load_from_mlflow(prompt_name)
-    
+
     def _load_from_mlflow(self, prompt_name: str) -> str:
         """Load prompt from MLflow."""
         # Implement MLflow prompt loading
@@ -704,6 +700,7 @@ class MLflowPromptProvider(PromptProviderInterface):
 # ============================================================================
 # Factory Functions
 # ============================================================================
+
 
 def create_llm(config: LLMConfig) -> LLMInterface:
     """Create LLM instance based on configuration."""
@@ -720,15 +717,15 @@ def create_llm(config: LLMConfig) -> LLMInterface:
 def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSInterface:
     """
     Create TTS instance based on configuration.
-    
+
     If character_name is provided and config doesn't have reference_audio,
     loads character data from entity service and populates reference_audio
     and reference_text from the first voice sample.
-    
+
     Args:
         config: TTS configuration
         character_name: Optional character name to load voice samples from
-        
+
     Returns:
         TTSInterface implementation with voice cloning configured
     """
@@ -737,30 +734,36 @@ def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSIn
         try:
             print(f"🎤 Loading voice samples for character: {character_name}")
             character: Character = get_character_data_sync(character_name)
-            
+
             if character.voice_samples and len(character.voice_samples) > 0:
                 # Use the first voice sample for voice cloning
                 first_sample = character.voice_samples[0]
-                
+
                 # Resolve the path using path resolver
                 path_resolver = get_path_resolver()
-                resolved_audio_path = path_resolver.resolve_audio(first_sample.sample_storage_path)
-                
+                resolved_audio_path = path_resolver.resolve_audio(
+                    first_sample.sample_storage_path
+                )
+
                 config.reference_audio = resolved_audio_path
                 config.reference_text = first_sample.transcript
                 print(f"✓ Voice cloning configured for '{character.name}':")
                 print(f"  Reference audio: {config.reference_audio}")
                 print(f"  Reference text: {config.reference_text[:50]}...")
-                
+
                 if not path_resolver.exists(first_sample.sample_storage_path):
-                    print(f"⚠ Warning: Reference audio file not found at {resolved_audio_path}")
+                    print(
+                        f"⚠ Warning: Reference audio file not found at {resolved_audio_path}"
+                    )
             else:
                 print(f"⚠ Warning: Character '{character.name}' has no voice samples.")
                 print(f"  TTS will use default voice (no voice cloning).")
         except Exception as e:
             print(f"⚠ Warning: Could not load character '{character_name}': {e}")
-            print(f"  TTS will proceed with default voice or config-specified reference audio.")
-    
+            print(
+                f"  TTS will proceed with default voice or config-specified reference audio."
+            )
+
     if config.provider == "fish":
         return FishSpeechTTS(config)
     elif config.provider == "solero":
@@ -801,4 +804,3 @@ def create_prompt_provider(config: PromptConfig) -> PromptProviderInterface:
         return MLflowPromptProvider(config)
     else:
         raise ValueError(f"Unknown prompt provider: {config.provider}")
-

@@ -78,10 +78,6 @@ cover.jpg
 data/
 out_video_folder/
 generations/
-*.pth
-*.ckpt
-*.safetensors
-checkpoints/*
 !checkpoints/README.md
 models/*
 !models/__init__.py

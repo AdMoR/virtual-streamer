@@ -3,9 +3,16 @@ import random
 import streamlit as st
 from llama_index.retrievers.bm25 import BM25Retriever
 import Stemmer
-from virtual_streamer.utils.utils import (combine_video_and_short_audio, combine_part_in_concat_file,
-                                          add_subtitle_from_srt,)
-from virtual_streamer.workflows.video_retriever import prepare_nodes, load_json_documents, prepare_nodes_v2
+from virtual_streamer.utils.utils import (
+    combine_video_and_short_audio,
+    combine_part_in_concat_file,
+    add_subtitle_from_srt,
+)
+from virtual_streamer.workflows.video_retriever import (
+    prepare_nodes,
+    load_json_documents,
+    prepare_nodes_v2,
+)
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
 import stable_whisper
 from litellm import completion
@@ -34,9 +41,15 @@ class VideoDialogueJudgement(BaseModel):
 
 
 def txt_to_speech_call(text):
-    reference_fred = '/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp4'
+    reference_fred = "/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp4"
     reference_text_fred = "Là tu vois Jamy, je suis dans le Data Center de Youtube où sont Entreposées des tonnes de vidéos de pranks D'unboxing et aussi les vidéos du Studio Bubble Tea, tu sais le mec qui s'est"
-    audio_path = txt_to_speech_call_fish(speech_lines=text, reference_audio=reference_fred, reference_text=reference_text_fred, host="127.0.0.1", port=8003)
+    audio_path = txt_to_speech_call_fish(
+        speech_lines=text,
+        reference_audio=reference_fred,
+        reference_text=reference_text_fred,
+        host="127.0.0.1",
+        port=8003,
+    )
     return audio_path
 
 
@@ -300,19 +313,17 @@ _index = None
 def initialize_search():
     """Initialize the BM25 retriever and vector index for video search."""
     global _retriever, _index
-    
+
     if _retriever is None or _index is None:
         # Load documents and prepare nodes
         documents = load_json_documents()
         nodes = prepare_nodes_v2(documents)
-        
+
         # Initialize BM25 retriever
         _retriever = BM25Retriever.from_defaults(
-            nodes=nodes,
-            similarity_top_k=10,
-            stemmer=Stemmer.Stemmer("french")
+            nodes=nodes, similarity_top_k=10, stemmer=Stemmer.Stemmer("french")
         )
-        
+
         # Initialize vector index
         Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
         _index = VectorStoreIndex(nodes)
@@ -321,29 +332,29 @@ def initialize_search():
 def search_videos(query: str, top_k: int = 10) -> list[str]:
     """
     Search for videos using the given query.
-    
+
     Args:
         query: Search query string
         top_k: Number of results to return
-    
+
     Returns:
         List of video file paths
     """
     initialize_search()
-    
+
     # Use BM25 retriever to find relevant videos
     results = _retriever.retrieve(query)
-    
+
     # Extract video paths from results
     video_paths = []
     for result in results[:top_k]:
         # Assuming the node metadata contains a 'video_path' field
-        if hasattr(result.node, 'metadata') and 'video_path' in result.node.metadata:
-            video_paths.append(result.node.metadata['video_path'])
-        elif hasattr(result.node, 'text'):
+        if hasattr(result.node, "metadata") and "video_path" in result.node.metadata:
+            video_paths.append(result.node.metadata["video_path"])
+        elif hasattr(result.node, "text"):
             # If video path is in the text, extract it
             video_paths.append(result.node.text)
-    
+
     return video_paths
 
 
@@ -353,30 +364,32 @@ def extract_middle_frame(video_path: str) -> Optional[str]:
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return None
-        
+
         # Get total frame count
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         middle_frame_idx = total_frames // 2
-        
+
         # Set position to middle frame
         cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame_idx)
         ret, frame = cap.read()
         cap.release()
-        
+
         if not ret:
             return None
-        
+
         # Encode frame to JPEG
-        _, buffer = cv2.imencode('.jpg', frame)
-        base64_image = base64.b64encode(buffer).decode('utf-8')
-        
+        _, buffer = cv2.imencode(".jpg", frame)
+        base64_image = base64.b64encode(buffer).decode("utf-8")
+
         return base64_image
     except Exception as e:
         print(f"Error extracting frame from {video_path}: {e}")
         return None
 
 
-def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[VideoDialogueJudgement]:
+def judge_video_dialogue_match(
+    video_path: str, dialogue: str
+) -> Optional[VideoDialogueJudgement]:
     """
     Use Anthropic's vision API to judge if a video frame matches the dialogue.
     Returns a structured judgement with rating, grade, and reasoning.
@@ -385,13 +398,13 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
     base64_image = extract_middle_frame(video_path)
     if not base64_image:
         return None
-    
+
     # Initialize Anthropic client
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    
+
     # Construct the prompt
     full_prompt = f"{JUDGE_PROMPT}\n\nDialogue line: {dialogue}"
-    
+
     try:
         # Call Anthropic API with structured output
         response = client.messages.create(
@@ -409,24 +422,21 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": full_prompt
-                        }
+                        {"type": "text", "text": full_prompt},
                     ],
                 }
             ],
         )
-        
+
         # Parse the response
         response_text = response.content[0].text
-        
+
         # Extract rating and grade from response
-        lines = response_text.strip().split('\n')
+        lines = response_text.strip().split("\n")
         rating_line = None
         grade_line = None
         reasoning_lines = []
-        
+
         for line in lines:
             if line.startswith("Rating"):
                 rating_line = line.split(":")[-1].strip()
@@ -434,10 +444,10 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
                 grade_line = line.split(":")[-1].strip()
             else:
                 reasoning_lines.append(line)
-        
+
         if not rating_line:
             return None
-        
+
         # Map rating to enum
         rating_map = {
             "CONTEXTUAL": ContextualRating.CONTEXTUAL,
@@ -445,53 +455,55 @@ def judge_video_dialogue_match(video_path: str, dialogue: str) -> Optional[Video
             "NOT CONTEXTUAL": ContextualRating.NOT_CONTEXTUAL,
             "NOT_CONTEXTUAL": ContextualRating.NOT_CONTEXTUAL,
         }
-        
+
         rating = rating_map.get(rating_line, ContextualRating.NOT_CONTEXTUAL)
         grade = int(grade_line) if grade_line and grade_line.isdigit() else 0
         reasoning = "\n".join(reasoning_lines).strip()
-        
-        return VideoDialogueJudgement(
-            rating=rating,
-            grade=grade,
-            reasoning=reasoning
-        )
-        
+
+        return VideoDialogueJudgement(rating=rating, grade=grade, reasoning=reasoning)
+
     except Exception as e:
         print(f"Error calling Anthropic API: {e}")
         return None
 
 
-
-def generate_search_keyword(dialogue: str, previous_keywords: list[str]) -> Optional[str]:
+def generate_search_keyword(
+    dialogue: str, previous_keywords: list[str]
+) -> Optional[str]:
     """
     Use LLM to generate a search keyword for finding relevant video clips.
-    
+
     Args:
         dialogue: The dialogue line to find a video for
         previous_keywords: List of previously tried keywords that didn't work
-    
+
     Returns:
         A new search keyword or None if generation fails
     """
     try:
-        previous_keywords_str = "\n".join([f"- {kw}" for kw in previous_keywords]) if previous_keywords else "None"
-        
-        prompt = KEYWORD_GENERATION_PROMPT.format(
-            previous_keywords=previous_keywords_str,
-            dialogue=dialogue
+        previous_keywords_str = (
+            "\n".join([f"- {kw}" for kw in previous_keywords])
+            if previous_keywords
+            else "None"
         )
-        
+
+        prompt = KEYWORD_GENERATION_PROMPT.format(
+            previous_keywords=previous_keywords_str, dialogue=dialogue
+        )
+
         messages = [{"role": "user", "content": prompt}]
         response = completion(model="claude-haiku-4-5-20251001", messages=messages)
         keyword = response.choices[0].message.content.strip()
-        
+
         return keyword
     except Exception as e:
         print(f"Error generating keyword: {e}")
         return None
 
 
-def find_best_matching_video(videos: list[str], dialogue: str, max_attempts: int = 5) -> tuple[Optional[str], Optional[VideoDialogueJudgement]]:
+def find_best_matching_video(
+    videos: list[str], dialogue: str, max_attempts: int = 5
+) -> tuple[Optional[str], Optional[VideoDialogueJudgement]]:
     """
     Find the best matching video for a dialogue line.
     Returns the first video that is CONTEXTUAL or NEUTRAL, or the best rated video after max_attempts.
@@ -499,29 +511,31 @@ def find_best_matching_video(videos: list[str], dialogue: str, max_attempts: int
     best_video = None
     best_judgement = None
     best_grade = -1
-    
+
     for i, video in enumerate(videos[:max_attempts]):
         judgement = judge_video_dialogue_match(video, dialogue)
-        
+
         if judgement is None:
             continue
-        
+
         # If we find a CONTEXTUAL or NEUTRAL match, return immediately
         if judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
             return video, judgement
-        
+
         # Track the best video so far
         if judgement.grade > best_grade:
             best_grade = judgement.grade
             best_video = video
             best_judgement = judgement
-    
+
     # Return the best video we found, even if it's NOT_CONTEXTUAL
     return best_video, best_judgement
 
 
 @st.cache_resource
-def load_retriever_bm25(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos", who="fred"):
+def load_retriever_bm25(
+    directory_path="/media/amor/data1/Downloads/CPS/clip_infos", who="fred"
+):
     nodes = prepare_nodes(load_json_documents(directory_path))
     fred_nodes = [n for n in nodes if who == n.metadata["who"]]
     bm25_retriever = BM25Retriever.from_defaults(
@@ -535,8 +549,11 @@ def load_retriever_bm25(directory_path = "/media/amor/data1/Downloads/CPS/clip_i
     )
     return bm25_retriever
 
+
 @st.cache_resource
-def load_retriever(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos", who="fred"):
+def load_retriever(
+    directory_path="/media/amor/data1/Downloads/CPS/clip_infos", who="fred"
+):
     embed_model = HuggingFaceEmbedding(model_name="lightonai/modernbert-embed-large")
     Settings.embed_model = embed_model
 
@@ -551,8 +568,8 @@ def load_retriever(directory_path = "/media/amor/data1/Downloads/CPS/clip_infos"
 
 @st.cache_resource
 def load_transcripter():
-    model = stable_whisper.load_faster_whisper('base')
-    #model = stable_whisper.load_hf_whisper('large-v3', batch_size=4)
+    model = stable_whisper.load_faster_whisper("base")
+    # model = stable_whisper.load_hf_whisper('large-v3', batch_size=4)
     return model
 
 
@@ -564,6 +581,7 @@ DEFAULT_LENGTH = 35
 def separation_fn(raw_text, max_length=DEFAULT_LENGTH):
     def split(txt, separator):
         return [x for x in txt.split(separator) if len(x.replace(" ", "")) > 0]
+
     parts = list()
     for p in split(raw_text, "\n"):
         if len(p) > max_length:
@@ -608,8 +626,15 @@ def tab1_ui():
     st.title("Text Generation")
     script = st.session_state.get("llm_result") or DEFAULT_SCRIPT
     st.session_state["llm_result"] = script
-    st.text_area(label="LLM result here", key="llm_result", height=500, on_change=compute_generated_sentences)
-    st.text_area(label="Prompt text here", key="prompt", height=800, value=DEFAULT_PROMPT)
+    st.text_area(
+        label="LLM result here",
+        key="llm_result",
+        height=500,
+        on_change=compute_generated_sentences,
+    )
+    st.text_area(
+        label="Prompt text here", key="prompt", height=800, value=DEFAULT_PROMPT
+    )
     st.button("Generate Text", on_click=generate_text)
 
 
@@ -621,6 +646,7 @@ def make_search_fn(sentence_id, video_list_id):
         videos = [x.replace("data", "data1") for x in videos]
         print("--- ", videos)
         st.session_state[video_list_id] = videos
+
     return search
 
 
@@ -632,20 +658,25 @@ def default_selection():
         video_list_id = build_id("videolist_", sentence, i)
         keyword_id = build_id("keyword", sentence, i)
         judgement_id = build_id("judgement", sentence, i)
-        
+
         videos = search_videos(sentence)
         print("===> ", videos)
         videos = [x.replace("data", "data1") for x in videos]
         st.session_state[keyword_id] = sentence
         st.session_state[video_list_id] = videos
-        
+
         # Find best matching video using AI judgement
         best_video, judgement = find_best_matching_video(videos, sentence)
         default_best_video = best_video
         default_judgement = judgement
-        
+
         # If we found a satisfactory match, return it
-        if judgement and best_video and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+        if (
+            judgement
+            and best_video
+            and judgement.rating
+            in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]
+        ):
             st.session_state[video_id] = best_video
             st.session_state[judgement_id] = judgement
             return best_video, judgement
@@ -655,41 +686,63 @@ def default_selection():
             keyword = generate_search_keyword(sentence, previous_kw)
             best_video, judgement = find_best_matching_video(videos, keyword)
             previous_kw.append(keyword)
-            if judgement and best_video and judgement.rating in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]:
+            if (
+                judgement
+                and best_video
+                and judgement.rating
+                in [ContextualRating.CONTEXTUAL, ContextualRating.NEUTRAL]
+            ):
                 st.session_state[judgement_id] = judgement
                 st.session_state[video_id] = best_video
                 return best_video, judgement
-        
+
         # Fallback on basic method
         st.session_state[judgement_id] = default_judgement
         st.session_state[video_id] = default_best_video
 
 
 def compute_generated_sentences():
-    generated_sentences = separation_fn(st.session_state["llm_result"],
-                                        st.session_state.get("max_length", DEFAULT_LENGTH))
+    generated_sentences = separation_fn(
+        st.session_state["llm_result"],
+        st.session_state.get("max_length", DEFAULT_LENGTH),
+    )
     st.session_state["sentences"] = generated_sentences
 
 
 def tab2_ui():
     st.title("Video Search")
-    st.slider("max sentence length", 40, 80, DEFAULT_LENGTH, key="max_length", on_change=compute_generated_sentences)
-    st.button("Default selection", key=build_id("button", "random"),
-              on_click=default_selection)
+    st.slider(
+        "max sentence length",
+        40,
+        80,
+        DEFAULT_LENGTH,
+        key="max_length",
+        on_change=compute_generated_sentences,
+    )
+    st.button(
+        "Default selection",
+        key=build_id("button", "random"),
+        on_click=default_selection,
+    )
 
     if "sentences" not in st.session_state:
         compute_generated_sentences()
-    generated_sentences =st.session_state["sentences"]
+    generated_sentences = st.session_state["sentences"]
 
     for i, sentence in enumerate(generated_sentences):
         with st.expander(sentence):
             keyword_id = build_id("keyword", sentence, i)
             video_list_id = build_id("videolist_", sentence, i)
             judgement_id = build_id("judgement", sentence, i)
-            
-            st.text_input("Enter a keyword to search a corresponding video", key=keyword_id)
-            st.button("Search", key=build_id("button", sentence, i),
-                      on_click=make_search_fn(keyword_id, video_list_id))
+
+            st.text_input(
+                "Enter a keyword to search a corresponding video", key=keyword_id
+            )
+            st.button(
+                "Search",
+                key=build_id("button", sentence, i),
+                on_click=make_search_fn(keyword_id, video_list_id),
+            )
 
             # Display judgement if available
             if judgement_id in st.session_state:
@@ -698,21 +751,26 @@ def tab2_ui():
                     rating_color = {
                         ContextualRating.CONTEXTUAL: "green",
                         ContextualRating.NEUTRAL: "orange",
-                        ContextualRating.NOT_CONTEXTUAL: "red"
+                        ContextualRating.NOT_CONTEXTUAL: "red",
                     }
-                    st.markdown(f"**AI Judgement:** :{rating_color[judgement.rating]}[{judgement.rating.value}] (Grade: {judgement.grade})")
+                    st.markdown(
+                        f"**AI Judgement:** :{rating_color[judgement.rating]}[{judgement.rating.value}] (Grade: {judgement.grade})"
+                    )
                     with st.expander("Reasoning"):
                         st.write(judgement.reasoning)
 
             if video_list_id in st.session_state:
                 # Perform video search based on the keyword
                 videos = st.session_state[video_list_id]
-                st.selectbox(f"Video for {sentence[:15]}", options=videos,
-                             key=build_id("selected_video", sentence, i),
-                             )
+                st.selectbox(
+                    f"Video for {sentence[:15]}",
+                    options=videos,
+                    key=build_id("selected_video", sentence, i),
+                )
                 for j, video in enumerate(videos):
                     st.subheader(j)
                     st.video(video)
+
 
 # Tab 3: Audio Generation
 def make_audio_gen(sentence_id, audio_id):
@@ -720,10 +778,13 @@ def make_audio_gen(sentence_id, audio_id):
         sentence = st.session_state[sentence_id]
         audio = txt_to_speech_call(sentence)
         st.session_state[audio_id] = audio
+
     return search
 
 
-def generate_search_keyword(dialogue: str, previous_keywords: list[str]) -> Optional[str]:
+def generate_search_keyword(
+    dialogue: str, previous_keywords: list[str]
+) -> Optional[str]:
     """
     Use LLM to generate a search keyword for finding relevant video clips.
 
@@ -735,12 +796,14 @@ def generate_search_keyword(dialogue: str, previous_keywords: list[str]) -> Opti
         A new search keyword or None if generation fails
     """
     try:
-        previous_keywords_str = "\n".join([f"- {kw}" for kw in previous_keywords]) if previous_keywords else "None"
-
+        previous_keywords_str = (
+            "\n".join([f"- {kw}" for kw in previous_keywords])
+            if previous_keywords
+            else "None"
+        )
 
         prompt = KEYWORD_GENERATION_PROMPT.format(
-            previous_keywords=previous_keywords_str,
-            dialogue=dialogue
+            previous_keywords=previous_keywords_str, dialogue=dialogue
         )
 
         messages = [{"role": "user", "content": prompt}]
@@ -780,8 +843,11 @@ def tab3_ui():
                 video = st.session_state[video_id]
                 st.video(video)
             selected_audio_id = build_id("selected_audio", sentence, i)
-            st.button("Generate Audio", key=build_id("audio", sentence, i),
-                      on_click=make_audio_gen(sentence_id, selected_audio_id))
+            st.button(
+                "Generate Audio",
+                key=build_id("audio", sentence, i),
+                on_click=make_audio_gen(sentence_id, selected_audio_id),
+            )
             if selected_audio_id in st.session_state:
                 st.audio(st.session_state[selected_audio_id])
 
@@ -800,7 +866,10 @@ def tab4_ui():
         for i, sentence in enumerate(generated_sentences):
             selected_audio_id = build_id("selected_audio", sentence, i)
             selected_video_id = build_id("selected_video", sentence, i)
-            if selected_audio_id in st.session_state and selected_video_id in st.session_state:
+            if (
+                selected_audio_id in st.session_state
+                and selected_video_id in st.session_state
+            ):
                 video = st.session_state[selected_video_id]
                 audio = st.session_state[selected_audio_id]
                 outfile = f"./temp_{build_id('gen', sentence, i)}.mp4"
@@ -822,15 +891,21 @@ def tab4_ui():
             combine_part_in_concat_file(video_chunks, "./temp.txt", final_video)
             st.video(final_video)
 
-    st.button("Dump state", on_click=lambda : json.dump({k: v for k, v in st.session_state.items() if "selected" in k},
-                                                        open("session_dump.json", "w")))
-
+    st.button(
+        "Dump state",
+        on_click=lambda: json.dump(
+            {k: v for k, v in st.session_state.items() if "selected" in k},
+            open("session_dump.json", "w"),
+        ),
+    )
 
 
 # Main app
 def main():
     st.sidebar.title("Navigation")
-    tab1, tab2, tab3, tab4 = st.tabs(["Text Generation", "Video Search", "Audio Generation", "Combined Results"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Text Generation", "Video Search", "Audio Generation", "Combined Results"]
+    )
 
     with tab1:
         tab1_ui()
@@ -841,6 +916,6 @@ def main():
     with tab4:
         tab4_ui()
 
+
 if __name__ == "__main__":
     main()
-

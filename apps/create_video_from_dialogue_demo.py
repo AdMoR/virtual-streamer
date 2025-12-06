@@ -5,7 +5,10 @@ import time
 import httpx
 from virtual_streamer.utils.utils import s3_download
 from virtual_streamer.video_server.models import Character
-from virtual_streamer.video_server.utils import get_character_data_sync, get_characters_data
+from virtual_streamer.video_server.utils import (
+    get_character_data_sync,
+    get_characters_data,
+)
 
 # --- Configuration ---
 # Get the backend URL from environment variable or use a default
@@ -15,16 +18,23 @@ ENTITY_URL = os.environ.get("ENTITY_WEBSERVICE_URL", "http://localhost:8002")
 
 # --- Helper Functions ---
 
-def call_process_endpoint(question_text, character_name, subtitle_mode, gpt_response_text, user_name="StreamlitUser"):
+
+def call_process_endpoint(
+    question_text,
+    character_name,
+    subtitle_mode,
+    gpt_response_text,
+    user_name="StreamlitUser",
+):
     """Sends the request to the backend webservice."""
     payload = {
         "question": {
             "question": question_text,
             "character_name": character_name,
             "subtitle_mode": subtitle_mode,
-            "name": user_name
+            "name": user_name,
         },
-        "gpt_response": gpt_response_text
+        "gpt_response": gpt_response_text,
     }
     try:
         character: Character = get_character_data_sync(character_name)
@@ -33,8 +43,10 @@ def call_process_endpoint(question_text, character_name, subtitle_mode, gpt_resp
         return None
 
     try:
-        response = requests.post(PROCESS_ENDPOINT, json=payload, timeout=360) # Increased timeout for potentially long process
-        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response = requests.post(
+            PROCESS_ENDPOINT, json=payload, timeout=360
+        )  # Increased timeout for potentially long process
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
         return response.json()
     except requests.exceptions.RequestException as e:
         st.error(f"Error connecting to backend: {e}")
@@ -42,6 +54,7 @@ def call_process_endpoint(question_text, character_name, subtitle_mode, gpt_resp
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
         return None
+
 
 # --- Streamlit UI ---
 
@@ -56,7 +69,9 @@ available_characters = get_characters_data()
 
 
 st.sidebar.header("Configuration")
-character = st.sidebar.selectbox("Select Character:", options=available_characters, format_func=lambda x: x.name)
+character = st.sidebar.selectbox(
+    "Select Character:", options=available_characters, format_func=lambda x: x.name
+)
 
 subtitle_options = ["NONE", "QUESTION", "VOICE_SUBTITLE"]
 subtitle_mode = st.sidebar.selectbox("Select Subtitle Mode:", subtitle_options)
@@ -64,7 +79,9 @@ subtitle_mode = st.sidebar.selectbox("Select Subtitle Mode:", subtitle_options)
 st.header("Input")
 question = st.text_input("Enter your question for the character:")
 # The backend /process endpoint requires the response text, so we need an input for it.
-gpt_response = st.text_area("Enter the desired response text for the character:", height=150)
+gpt_response = st.text_area(
+    "Enter the desired response text for the character:", height=150
+)
 
 generate_button = st.button("Generate Video")
 
@@ -80,11 +97,13 @@ if generate_button:
     elif not character:
         st.warning("Please select a character.")
     else:
-        video_placeholder.empty() # Clear previous video
+        video_placeholder.empty()  # Clear previous video
         status_placeholder.info("🚀 Sending request to backend... Please wait.")
         start_time = time.time()
 
-        result = call_process_endpoint(question, character.name, subtitle_mode, gpt_response)
+        result = call_process_endpoint(
+            question, character.name, subtitle_mode, gpt_response
+        )
 
         end_time = time.time()
         processing_time = end_time - start_time
@@ -92,14 +111,16 @@ if generate_button:
         if result:
             video_path = result.get("video_path")
             s3_path = result.get("s3_path")
-            response_text = result.get("response_text") # Might be useful to display
+            response_text = result.get("response_text")  # Might be useful to display
 
-            status_placeholder.success(f"✅ Video generated successfully in {processing_time:.2f} seconds!")
+            status_placeholder.success(
+                f"✅ Video generated successfully in {processing_time:.2f} seconds!"
+            )
             st.write(f"**Backend Response Text:** {response_text}")
             if s3_path:
                 st.write(f"**S3 Path:** {s3_path}")
             else:
-                 st.write(f"**Local Server Path:** {video_path}")
+                st.write(f"**Local Server Path:** {video_path}")
 
             # Display the video - Streamlit needs the file bytes
             try:
@@ -112,14 +133,16 @@ if generate_button:
                 # a URL or streams the file).
                 # For local testing where both run on host or share volumes, this might work.
                 video_path = s3_download(s3_path)
-                with open(video_path, 'rb') as video_file:
+                with open(video_path, "rb") as video_file:
                     video_bytes = video_file.read()
                     video_placeholder.video(video_bytes)
                 st.caption(f"Showing video from: {video_path}")
             except FileNotFoundError:
-                 st.error(f"❌ Frontend could not find the video file at the path returned by the backend: {video_path}. Ensure the path is accessible.")
+                st.error(
+                    f"❌ Frontend could not find the video file at the path returned by the backend: {video_path}. Ensure the path is accessible."
+                )
             except Exception as e:
-                 st.error(f"❌ An error occurred trying to display the video: {e}")
+                st.error(f"❌ An error occurred trying to display the video: {e}")
 
         else:
             # Error message already shown by call_process_endpoint
@@ -130,10 +153,21 @@ with tab2:
     st.header("Create New Character")
     name = st.text_input("Name", key="new_char_name")
     description = st.text_area("Description", key="new_char_desc")
-    voice_files = st.file_uploader("Voice Sample Files", type=["wav","mp3"], accept_multiple_files=True, key="new_char_voice_files")
-    transcripts_text = st.text_area("Transcripts (newline separated for each voice file)", "", key="new_char_transcripts")
+    voice_files = st.file_uploader(
+        "Voice Sample Files",
+        type=["wav", "mp3"],
+        accept_multiple_files=True,
+        key="new_char_voice_files",
+    )
+    transcripts_text = st.text_area(
+        "Transcripts (newline separated for each voice file)",
+        "",
+        key="new_char_transcripts",
+    )
     tts_config = st.text_area("TTS Model Config (JSON)", "", key="new_char_tts")
-    video_file = st.file_uploader("Representative Video", type=["mp4", "mov", "avi"], key="new_char_video")
+    video_file = st.file_uploader(
+        "Representative Video", type=["mp4", "mov", "avi"], key="new_char_video"
+    )
     if st.button("Create Character", key="create_char_btn"):
         if not name:
             st.warning("Character name is required.")
@@ -146,14 +180,21 @@ with tab2:
                     "name": name,
                     "description": description,
                     "transcripts": transcripts_list,
-                    "tts_model_config": tts_config
+                    "tts_model_config": tts_config,
                 }
                 files = []
                 for vf in voice_files:
                     files.append(("voice_files", (vf.name, vf.getvalue(), vf.type)))
                 if video_file:
-                    files.append(("video_file", (video_file.name, video_file.getvalue(), video_file.type)))
-                resp = requests.post(f"{ENTITY_URL}/characters", data=data, files=files, timeout=60)
+                    files.append(
+                        (
+                            "video_file",
+                            (video_file.name, video_file.getvalue(), video_file.type),
+                        )
+                    )
+                resp = requests.post(
+                    f"{ENTITY_URL}/characters", data=data, files=files, timeout=60
+                )
                 resp.raise_for_status()
                 st.success(f"Character '{name}' created successfully!")
                 # Optionally reload or update available_characters list here

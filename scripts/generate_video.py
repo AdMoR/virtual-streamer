@@ -104,10 +104,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from virtual_streamer.video_generation import (
     VideoGenerationConfig,
     SimpleProgressCallback,
-    create_llm, create_tts, create_stt,
-    create_video_retriever, create_prompt_provider,
-    generate_story, generate_video_from_story, recreate_from_config_dump,
-    create_html_report
+    create_llm,
+    create_tts,
+    create_stt,
+    create_video_retriever,
+    create_prompt_provider,
+    generate_story,
+    generate_video_from_story,
+    recreate_from_config_dump,
+    create_html_report,
 )
 
 
@@ -116,7 +121,7 @@ async def main():
     # Load configuration from CLI args, env vars, and .env files
     # Pydantic will automatically parse CLI arguments!
     config = VideoGenerationConfig()
-    
+
     # Validate inputs
     try:
         config.validate_inputs()
@@ -126,14 +131,14 @@ async def main():
         print("   or: python scripts/generate_video.py --story-file story.txt")
         print("   or: python scripts/generate_video.py --from-config-dump config.json")
         return 1
-    
+
     # Override prompt file if specified
     if config.prompt_file:
         config.prompt.local_file = config.prompt_file
-    
+
     # Set up progress callback
     progress = None if config.quiet else SimpleProgressCallback()
-    
+
     # Print configuration summary
     if not config.quiet:
         print("=" * 70)
@@ -150,82 +155,73 @@ async def main():
         print(f"  Parallel LLM calls: {config.max_parallel_llm_calls}")
         print("=" * 70)
         print()
-    
+
     try:
         # Handle recreate from config dump
         if config.from_config_dump:
             if not config.quiet:
                 print(f"Recreating video from config dump: {config.from_config_dump}\n")
-            
+
             # Only need TTS and STT for recreation
             tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
-            
+
             result = await recreate_from_config_dump(
-                config.from_config_dump,
-                tts,
-                stt,
-                config,
-                progress
+                config.from_config_dump, tts, stt, config, progress
             )
-        
+
         else:
             # Initialize all components
             if progress:
                 progress.update("Initializing components...")
-            
+
             llm = create_llm(config.llm)
             tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
             video_retriever = create_video_retriever(config.video_retrieval)
             prompt_provider = create_prompt_provider(config.prompt)
-            
+
             # Create semaphore for LLM concurrency control
             llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
-            
+
             # Generate or load story
             story_output = None
             if config.title:
                 if not config.quiet:
                     print(f"Generating story from title: {config.title}\n")
-                
+
                 story_output = await generate_story(
-                    config.title,
-                    llm,
-                    prompt_provider,
-                    config,
-                    progress,
-                    llm_semaphore
+                    config.title, llm, prompt_provider, config, progress, llm_semaphore
                 )
-                
+
                 if not config.quiet:
-                    print(f"\n{'='*70}")
+                    print(f"\n{'=' * 70}")
                     print("Generated Story:")
-                    print('='*70)
+                    print("=" * 70)
                     print(f"\n📝 Title: {story_output.title}\n")
                     print(f"🎯 Story Plan:")
-                    print('-' * 70)
+                    print("-" * 70)
                     print(story_output.story_plan)
-                    print('-' * 70)
+                    print("-" * 70)
                     print(f"\n💬 Dialog:")
-                    print('-' * 70)
+                    print("-" * 70)
                     print(story_output.dialog)
-                    print('='*70)
+                    print("=" * 70)
                     print()
-                
+
                 # Use the dialog for video generation
                 story = story_output.dialog
             else:
                 if not config.quiet:
                     print(f"Loading story from file: {config.story_file}\n")
-                
-                with open(config.story_file, 'r') as f:
+
+                with open(config.story_file, "r") as f:
                     story = f.read()
-            
+
             # Generate video
             if not config.quiet:
                 print("Starting video generation...\n")
-            
+
             result = await generate_video_from_story(
                 story,
                 llm,
@@ -234,9 +230,9 @@ async def main():
                 video_retriever,
                 config,
                 progress,
-                story_output=story_output
+                story_output=story_output,
             )
-        
+
         # Generate HTML report if config dump is available
         html_report_path = None
         if result.config_dump_path and config.enable_config_dump:
@@ -247,7 +243,7 @@ async def main():
             except Exception as e:
                 if config.verbose:
                     print(f"\n⚠ Could not generate HTML report: {e}")
-        
+
         # Print results
         if not config.quiet:
             print("\n" + "=" * 70)
@@ -256,39 +252,44 @@ async def main():
             print(f"\n✓ Video saved to: {result.video_path}")
             print(f"  Duration: {result.metadata.get('total_duration', 'N/A'):.2f}s")
             print(f"  Sentences: {result.metadata.get('sentence_count', 'N/A')}")
-            
-            if 'timing' in result.metadata:
-                timing = result.metadata['timing']
+
+            if "timing" in result.metadata:
+                timing = result.metadata["timing"]
                 print(f"\n  Timing:")
                 print(f"    Video search: {timing.get('video_search', 0):.2f}s")
                 print(f"    Audio generation: {timing.get('audio_generation', 0):.2f}s")
-                print(f"    Subtitle generation: {timing.get('subtitle_generation', 0):.2f}s")
+                print(
+                    f"    Subtitle generation: {timing.get('subtitle_generation', 0):.2f}s"
+                )
                 print(f"    Total: {timing.get('total', 0):.2f}s")
-            
+
             if result.config_dump_path:
                 print(f"\n✓ Config dump saved to: {result.config_dump_path}")
                 print(f"\n  To recreate this exact video:")
-                print(f"    python scripts/generate_video.py --from-config-dump {result.config_dump_path}")
-            
+                print(
+                    f"    python scripts/generate_video.py --from-config-dump {result.config_dump_path}"
+                )
+
             if html_report_path:
                 print(f"\n  To view detailed report:")
                 print(f"    open {html_report_path}")
-            
+
             print("\n" + "=" * 70)
         else:
             # Quiet mode: just print the video path
             print(result.video_path)
-        
+
         return 0
-    
+
     except KeyboardInterrupt:
         print("\n\nInterrupted by user")
         return 130
-    
+
     except Exception as e:
         print(f"\n\nError: {e}", file=sys.stderr)
         if config.verbose:
             import traceback
+
             traceback.print_exc()
         return 1
 

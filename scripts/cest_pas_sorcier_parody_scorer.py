@@ -19,6 +19,7 @@ mlflow.set_experiment(EXPERIMENT_NAME)
 @dataclass
 class RubricScore:
     """Represents a score for a single rubric dimension"""
+
     dimension: str
     score: int
     reasoning: str
@@ -28,6 +29,7 @@ class RubricScore:
 @dataclass
 class RubricResult:
     """Represents the complete scoring result for a rubric"""
+
     rubric_name: str
     scores: List[RubricScore]
     total_score: int
@@ -38,6 +40,7 @@ class RubricResult:
 @dataclass
 class ParodyEvaluation:
     """Complete evaluation result for a parody story"""
+
     story: str
     rubric_1_result: RubricResult
     rubric_2_result: RubricResult
@@ -52,7 +55,7 @@ class CestPasSorcierParodyScorer:
     1. Character Voice & Personality Authenticity
     2. Comedic Structure & Absurdity
     3. Cultural & Contextual Relevance
-    
+
     Prompts are stored and retrieved from MLflow for version control.
     """
 
@@ -147,20 +150,22 @@ Provide your evaluation in the following JSON format:
             self._register_prompt_in_mlflow(
                 self.RUBRIC_1_PROMPT_NAME,
                 self.RUBRIC_1_PROMPT_TEMPLATE,
-                "Rubric 1: Character Voice & Personality Authenticity"
+                "Rubric 1: Character Voice & Personality Authenticity",
             )
             self._register_prompt_in_mlflow(
                 self.RUBRIC_2_PROMPT_NAME,
                 self.RUBRIC_2_PROMPT_TEMPLATE,
-                "Rubric 2: Comedic Structure & Absurdity"
+                "Rubric 2: Comedic Structure & Absurdity",
             )
             self._register_prompt_in_mlflow(
                 self.RUBRIC_3_PROMPT_NAME,
                 self.RUBRIC_3_PROMPT_TEMPLATE,
-                "Rubric 3: Cultural & Contextual Relevance"
+                "Rubric 3: Cultural & Contextual Relevance",
             )
 
-    def _register_prompt_in_mlflow(self, prompt_name: str, prompt_template: str, description: str):
+    def _register_prompt_in_mlflow(
+        self, prompt_name: str, prompt_template: str, description: str
+    ):
         """Register a prompt in MLflow"""
         with mlflow.start_run():
             mlflow.log_param("prompt_name", prompt_name)
@@ -173,19 +178,17 @@ Provide your evaluation in the following JSON format:
         experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
         if not experiment:
             raise ValueError(f"Experiment {EXPERIMENT_NAME} not found")
-        
+
         runs = mlflow.search_runs(
             experiment_ids=[experiment.experiment_id],
             filter_string=f"params.prompt_name = '{prompt_name}'",
-            max_results=1
+            max_results=1,
         )
-        
+
         if not runs.empty:
             run_id = runs.iloc[0]["run_id"]
             artifacts = mlflow.artifacts.download_artifacts(
-                run_id=run_id,
-                artifact_path="",
-                dst_path=None
+                run_id=run_id, artifact_path="", dst_path=None
             )
             # Return the template based on prompt name
             if prompt_name == self.RUBRIC_1_PROMPT_NAME:
@@ -194,7 +197,7 @@ Provide your evaluation in the following JSON format:
                 return self.RUBRIC_2_PROMPT_TEMPLATE
             elif prompt_name == self.RUBRIC_3_PROMPT_NAME:
                 return self.RUBRIC_3_PROMPT_TEMPLATE
-        
+
         # Fallback to template if not found in MLflow
         if prompt_name == self.RUBRIC_1_PROMPT_NAME:
             return self.RUBRIC_1_PROMPT_TEMPLATE
@@ -202,7 +205,7 @@ Provide your evaluation in the following JSON format:
             return self.RUBRIC_2_PROMPT_TEMPLATE
         elif prompt_name == self.RUBRIC_3_PROMPT_NAME:
             return self.RUBRIC_3_PROMPT_TEMPLATE
-        
+
         raise ValueError(f"Prompt {prompt_name} not found")
 
     def _call_claude_for_rubric(self, prompt: str) -> Dict:
@@ -210,126 +213,143 @@ Provide your evaluation in the following JSON format:
         message = client.messages.create(
             model=self.model,
             max_tokens=1024,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "user", "content": prompt}],
         )
-        
+
         # Extract JSON from response
         response_text = message.content[0].text
-        
+
         # Try to parse JSON from the response
         try:
             # Find JSON in the response
-            start_idx = response_text.find('{')
-            end_idx = response_text.rfind('}') + 1
+            start_idx = response_text.find("{")
+            end_idx = response_text.rfind("}") + 1
             if start_idx != -1 and end_idx > start_idx:
                 json_str = response_text[start_idx:end_idx]
                 return json.loads(json_str)
         except json.JSONDecodeError:
             pass
-        
+
         return {"scores": [], "feedback": "Error parsing response"}
 
     def _parse_rubric_response(self, response: Dict, rubric_name: str) -> RubricResult:
         """Parse Claude's response into a RubricResult"""
         scores = []
         total_score = 0
-        
+
         for score_data in response.get("scores", []):
             score = RubricScore(
                 dimension=score_data.get("dimension", "Unknown"),
                 score=score_data.get("score", 0),
                 reasoning=score_data.get("reasoning", ""),
-                max_score=5
+                max_score=5,
             )
             scores.append(score)
             total_score += score.score
-        
+
         max_total = len(scores) * 5
-        
+
         return RubricResult(
             rubric_name=rubric_name,
             scores=scores,
             total_score=total_score,
             max_total_score=max_total,
-            feedback=response.get("feedback", "")
+            feedback=response.get("feedback", ""),
         )
 
     def evaluate_story(self, story: str) -> ParodyEvaluation:
         """
         Evaluate a parody story using all three rubrics
-        
+
         Args:
             story: The parody story text to evaluate
-            
+
         Returns:
             ParodyEvaluation object with all scores and feedback
         """
         with mlflow.start_run():
             # Log the story being evaluated
             mlflow.log_text(story, "story_evaluated.txt")
-            
-            print("Evaluating story with Rubric 1: Character Voice & Personality Authenticity...")
+
+            print(
+                "Evaluating story with Rubric 1: Character Voice & Personality Authenticity..."
+            )
             rubric_1_prompt = self._get_prompt_from_mlflow(self.RUBRIC_1_PROMPT_NAME)
             rubric_1_response = self._call_claude_for_rubric(
                 rubric_1_prompt.format(story=story)
             )
-            rubric_1_result = self._parse_rubric_response(rubric_1_response, "Character Voice & Personality Authenticity")
-            
+            rubric_1_result = self._parse_rubric_response(
+                rubric_1_response, "Character Voice & Personality Authenticity"
+            )
+
             print("Evaluating story with Rubric 2: Comedic Structure & Absurdity...")
             rubric_2_prompt = self._get_prompt_from_mlflow(self.RUBRIC_2_PROMPT_NAME)
             rubric_2_response = self._call_claude_for_rubric(
                 rubric_2_prompt.format(story=story)
             )
-            rubric_2_result = self._parse_rubric_response(rubric_2_response, "Comedic Structure & Absurdity")
-            
+            rubric_2_result = self._parse_rubric_response(
+                rubric_2_response, "Comedic Structure & Absurdity"
+            )
+
             print("Evaluating story with Rubric 3: Cultural & Contextual Relevance...")
             rubric_3_prompt = self._get_prompt_from_mlflow(self.RUBRIC_3_PROMPT_NAME)
             rubric_3_response = self._call_claude_for_rubric(
                 rubric_3_prompt.format(story=story)
             )
-            rubric_3_result = self._parse_rubric_response(rubric_3_response, "Cultural & Contextual Relevance")
-            
+            rubric_3_result = self._parse_rubric_response(
+                rubric_3_response, "Cultural & Contextual Relevance"
+            )
+
             # Calculate overall score
-            total_score = (rubric_1_result.total_score + 
-                          rubric_2_result.total_score + 
-                          rubric_3_result.total_score)
-            max_total = (rubric_1_result.max_total_score + 
-                        rubric_2_result.max_total_score + 
-                        rubric_3_result.max_total_score)
+            total_score = (
+                rubric_1_result.total_score
+                + rubric_2_result.total_score
+                + rubric_3_result.total_score
+            )
+            max_total = (
+                rubric_1_result.max_total_score
+                + rubric_2_result.max_total_score
+                + rubric_3_result.max_total_score
+            )
             overall_score = (total_score / max_total) * 100 if max_total > 0 else 0
-            
+
             # Generate overall feedback
             overall_feedback = self._generate_overall_feedback(
                 rubric_1_result, rubric_2_result, rubric_3_result, overall_score
             )
-            
+
             # Log metrics to MLflow
             mlflow.log_metric("overall_score", overall_score)
             mlflow.log_metric("rubric_1_score", rubric_1_result.total_score)
             mlflow.log_metric("rubric_2_score", rubric_2_result.total_score)
             mlflow.log_metric("rubric_3_score", rubric_3_result.total_score)
-            
+
             # Log individual dimension scores
             for score in rubric_1_result.scores:
-                mlflow.log_metric(f"rubric_1_{score.dimension.lower().replace(' ', '_')}", score.score)
+                mlflow.log_metric(
+                    f"rubric_1_{score.dimension.lower().replace(' ', '_')}", score.score
+                )
             for score in rubric_2_result.scores:
-                mlflow.log_metric(f"rubric_2_{score.dimension.lower().replace(' ', '_')}", score.score)
+                mlflow.log_metric(
+                    f"rubric_2_{score.dimension.lower().replace(' ', '_')}", score.score
+                )
             for score in rubric_3_result.scores:
-                mlflow.log_metric(f"rubric_3_{score.dimension.lower().replace(' ', '_')}", score.score)
-            
+                mlflow.log_metric(
+                    f"rubric_3_{score.dimension.lower().replace(' ', '_')}", score.score
+                )
+
             return ParodyEvaluation(
                 story=story,
                 rubric_1_result=rubric_1_result,
                 rubric_2_result=rubric_2_result,
                 rubric_3_result=rubric_3_result,
                 overall_score=overall_score,
-                overall_feedback=overall_feedback
+                overall_feedback=overall_feedback,
             )
 
-    def _generate_overall_feedback(self, r1: RubricResult, r2: RubricResult, 
-                                   r3: RubricResult, score: float) -> str:
+    def _generate_overall_feedback(
+        self, r1: RubricResult, r2: RubricResult, r3: RubricResult, score: float
+    ) -> str:
         """Generate overall feedback based on all rubric results"""
         if score >= 80:
             quality = "Excellent"
@@ -339,8 +359,10 @@ Provide your evaluation in the following JSON format:
             quality = "Fair"
         else:
             quality = "Needs Improvement"
-        
-        return f"{quality} parody with {score:.1f}% alignment to C'est pas Sorcier spirit."
+
+        return (
+            f"{quality} parody with {score:.1f}% alignment to C'est pas Sorcier spirit."
+        )
 
     def format_evaluation_report(self, evaluation: ParodyEvaluation) -> str:
         """Format the evaluation into a readable report"""
@@ -349,53 +371,59 @@ Provide your evaluation in the following JSON format:
         report.append("C'EST PAS SORCIER PARODY EVALUATION REPORT")
         report.append("=" * 80)
         report.append("")
-        
+
         # Overall Score
         report.append(f"OVERALL SCORE: {evaluation.overall_score:.1f}%")
         report.append(f"OVERALL FEEDBACK: {evaluation.overall_feedback}")
         report.append("")
-        
+
         # Rubric 1
         report.append("-" * 80)
         report.append(f"RUBRIC 1: {evaluation.rubric_1_result.rubric_name}")
-        report.append(f"Score: {evaluation.rubric_1_result.total_score}/{evaluation.rubric_1_result.max_total_score}")
+        report.append(
+            f"Score: {evaluation.rubric_1_result.total_score}/{evaluation.rubric_1_result.max_total_score}"
+        )
         report.append("")
         for score in evaluation.rubric_1_result.scores:
             report.append(f"  • {score.dimension}: {score.score}/5")
             report.append(f"    {score.reasoning}")
         report.append(f"\nFeedback: {evaluation.rubric_1_result.feedback}")
         report.append("")
-        
+
         # Rubric 2
         report.append("-" * 80)
         report.append(f"RUBRIC 2: {evaluation.rubric_2_result.rubric_name}")
-        report.append(f"Score: {evaluation.rubric_2_result.total_score}/{evaluation.rubric_2_result.max_total_score}")
+        report.append(
+            f"Score: {evaluation.rubric_2_result.total_score}/{evaluation.rubric_2_result.max_total_score}"
+        )
         report.append("")
         for score in evaluation.rubric_2_result.scores:
             report.append(f"  • {score.dimension}: {score.score}/5")
             report.append(f"    {score.reasoning}")
         report.append(f"\nFeedback: {evaluation.rubric_2_result.feedback}")
         report.append("")
-        
+
         # Rubric 3
         report.append("-" * 80)
         report.append(f"RUBRIC 3: {evaluation.rubric_3_result.rubric_name}")
-        report.append(f"Score: {evaluation.rubric_3_result.total_score}/{evaluation.rubric_3_result.max_total_score}")
+        report.append(
+            f"Score: {evaluation.rubric_3_result.total_score}/{evaluation.rubric_3_result.max_total_score}"
+        )
         report.append("")
         for score in evaluation.rubric_3_result.scores:
             report.append(f"  • {score.dimension}: {score.score}/5")
             report.append(f"    {score.reasoning}")
         report.append(f"\nFeedback: {evaluation.rubric_3_result.feedback}")
         report.append("")
-        
+
         report.append("=" * 80)
-        
+
         return "\n".join(report)
 
 
 def main():
     """Main function to demonstrate the scorer"""
-    
+
     # Example stories
     example_story_1 = """Eh bien, dis donc Jamy, aujourd'hui, j'ai une idée qui va te retourner ton caleçon ! Tu sais quoi ? Je veux lancer ma propre chaîne de twerking sur TikTok ! Eh oui, twerking, le truc où on se frotte le cul sur quelqu'un d'autre, tu sais, comme à nos soirées bien arrosées avec Marcel.
 
@@ -408,14 +436,14 @@ Et tu sais quoi, Jamy ? Avec notre école de twerk, tu vas enfin pouvoir pécho 
 Alors, qu'est-ce que t'en penses, Jamy ?"""
 
     scorer = CestPasSorcierParodyScorer()
-    
+
     print("Starting evaluation...")
     print("")
-    
+
     evaluation = scorer.evaluate_story(example_story_1)
     report = scorer.format_evaluation_report(evaluation)
     print(report)
-    
+
     # Save report to file
     output_file = "parody_evaluation_report.txt"
     with open(output_file, "w", encoding="utf-8") as f:

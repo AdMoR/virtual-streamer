@@ -5,12 +5,16 @@
 #!pip install pip3-autoremove
 #!pip-autoremove torch torchvision torchaudio -y
 #!pip install torch torchvision torchaudio xformers --index-url https://download.pytorch.org/whl/cu121
-#!pip install --upgrade --no-cache-dir git+https://github.com/huggingface/transformers.git git+https://github.com/huggingface/trl.git 
+#!pip install --upgrade --no-cache-dir git+https://github.com/huggingface/transformers.git git+https://github.com/huggingface/trl.git
 
 
 import face_recognition
 import os
-from transformers import LlavaOnevisionProcessor, LlavaOnevisionForConditionalGeneration, TextIteratorStreamer
+from transformers import (
+    LlavaOnevisionProcessor,
+    LlavaOnevisionForConditionalGeneration,
+    TextIteratorStreamer,
+)
 import torch
 import av
 from PIL import Image
@@ -29,10 +33,11 @@ import subprocess
 import argparse
 
 
-
 model_id = "llava-hf/llava-onevision-qwen2-0.5b-ov-hf"
 video_processor = LlavaOnevisionProcessor.from_pretrained(model_id)
-video_model = LlavaOnevisionForConditionalGeneration.from_pretrained(model_id, torch_dtype=torch.float16)
+video_model = LlavaOnevisionForConditionalGeneration.from_pretrained(
+    model_id, torch_dtype=torch.float16
+)
 video_model.to("cuda")
 
 
@@ -53,14 +58,14 @@ def sample_frames(video_file, num_frames):
 
 
 def read_video_pyav(container, indices):
-    '''
+    """
     Decode the video with PyAV decoder.
     Args:
         container (`av.container.input.InputContainer`): PyAV container.
         indices (`List[int]`): List of frame indices to decode.
     Returns:
         result (np.ndarray): np array of decoded frames of shape (num_frames, height, width, 3).
-    '''
+    """
     frames = []
     container.seek(0)
     start_index = indices[0]
@@ -78,49 +83,76 @@ def video_process_inference(my_video_path):
     total_frames = container.streams.video[0].frames
     indices = np.arange(0, total_frames, total_frames / 8).astype(int)
     video = read_video_pyav(container, indices)
-    
+
     # For videos we have to feed a "video" type instead of "image"
     conversation = [
         {
-    
             "role": "user",
             "content": [
                 {"type": "video"},
-                {"type": "text", "text": "Explain the action and background of this video in a very detailled manner."},
-                ],
+                {
+                    "type": "text",
+                    "text": "Explain the action and background of this video in a very detailled manner.",
+                },
+            ],
         },
     ]
-    
-    prompt = video_processor.apply_chat_template(conversation, add_generation_prompt=True)
-    inputs = video_processor(videos=list(video), text=prompt, return_tensors="pt").to("cuda:0", torch.float16)
+
+    prompt = video_processor.apply_chat_template(
+        conversation, add_generation_prompt=True
+    )
+    inputs = video_processor(videos=list(video), text=prompt, return_tensors="pt").to(
+        "cuda:0", torch.float16
+    )
     out = video_model.generate(**inputs, max_new_tokens=100)
-    rez = video_processor.batch_decode(out, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    rez = video_processor.batch_decode(
+        out, skip_special_tokens=True, clean_up_tokenization_spaces=True
+    )
     return rez[0].split("assistant")[1].strip()
 
 
+fred1_image = face_recognition.load_image_file(
+    "/home/amor/Documents/code_dw/virtual-streamer/assets/fred_1.jpeg"
+)
+fred2_image = face_recognition.load_image_file(
+    "/home/amor/Documents/code_dw/virtual-streamer/assets/fred_2.jpeg"
+)
+fred3_image = face_recognition.load_image_file(
+    "/home/amor/Documents/code_dw/virtual-streamer/assets/fred_3.jpeg"
+)
 
-fred1_image = face_recognition.load_image_file("/home/amor/Documents/code_dw/virtual-streamer/assets/fred_1.jpeg")
-fred2_image = face_recognition.load_image_file("/home/amor/Documents/code_dw/virtual-streamer/assets/fred_2.jpeg")
-fred3_image = face_recognition.load_image_file("/home/amor/Documents/code_dw/virtual-streamer/assets/fred_3.jpeg")
+fred_embedding = [
+    face_recognition.face_encodings(
+        face_recognition.load_image_file(
+            f"/home/amor/Documents/code_dw/virtual-streamer/assets/fred_{i}.jpeg"
+        )
+    )[0]
+    for i in range(1, 4)
+]
 
-fred_embedding = [face_recognition.face_encodings(
-    face_recognition.load_image_file(f"/home/amor/Documents/code_dw/virtual-streamer/assets/fred_{i}.jpeg"))[0] 
-                  for i in range(1, 4)]
+jamy_embedding = [
+    face_recognition.face_encodings(
+        face_recognition.load_image_file(
+            f"/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_{i}.jpeg"
+        )
+    )[0]
+    for i in range(1, 4)
+]
 
-jamy_embedding = [face_recognition.face_encodings(
-    face_recognition.load_image_file(f"/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_{i}.jpeg"))[0] 
-                  for i in range(1, 4)]
-
-jamy1_image = face_recognition.load_image_file("/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_1.jpeg")
-jamy2_image = face_recognition.load_image_file("/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_2.jpeg")
-jamy_1_image = face_recognition.load_image_file("/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_3.jpeg")
-
-
-
-results = face_recognition.compare_faces(fred_embedding[1:] + jamy_embedding, fred_embedding[0])
+jamy1_image = face_recognition.load_image_file(
+    "/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_1.jpeg"
+)
+jamy2_image = face_recognition.load_image_file(
+    "/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_2.jpeg"
+)
+jamy_1_image = face_recognition.load_image_file(
+    "/home/amor/Documents/code_dw/virtual-streamer/assets/jamy_3.jpeg"
+)
 
 
-
+results = face_recognition.compare_faces(
+    fred_embedding[1:] + jamy_embedding, fred_embedding[0]
+)
 
 
 def process(video_path, known_face_encodings, known_face_names):
@@ -136,7 +168,7 @@ def process(video_path, known_face_encodings, known_face_names):
     face_encodings = []
     face_names = []
     process_this_frame = True
-    
+
     while True:
         # Grab a single frame of video
         index += 1
@@ -146,17 +178,21 @@ def process(video_path, known_face_encodings, known_face_names):
             break
         if index % (fps * speed_up_factor) != 1:
             continue
-        #print("face index frame", index)
+        # print("face index frame", index)
 
         # This is the function block such that frame => result_dict
         face_locations = face_recognition.face_locations(frame)
         face_encodings = face_recognition.face_encodings(frame, face_locations)
         for i, face_encoding in enumerate(face_encodings):
             # See if the face is a match for the known face(s)
-            matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+            matches = face_recognition.compare_faces(
+                known_face_encodings, face_encoding
+            )
             name = "Unknown"
             # Or instead, use the known face with the smallest distance to the new face
-            face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+            face_distances = face_recognition.face_distance(
+                known_face_encodings, face_encoding
+            )
             best_match_index = np.argmin(face_distances)
             if matches[best_match_index]:
                 name = known_face_names[best_match_index]
@@ -169,8 +205,17 @@ def build_personality_embedding(filepath):
     pers_dict: dict[str, list] = json.load(open(filepath))
     results = list()
     for k, v in pers_dict.items():
-        results.append(([face_recognition.face_encodings(
-            face_recognition.load_image_file(img_path)[0]) for img_path in v], [k] * len(v)))
+        results.append(
+            (
+                [
+                    face_recognition.face_encodings(
+                        face_recognition.load_image_file(img_path)[0]
+                    )
+                    for img_path in v
+                ],
+                [k] * len(v),
+            )
+        )
     return [x[0] for x in results], [x[1] for x in results]
 
 
@@ -179,17 +224,20 @@ video_path = "/media/amor/data/Downloads/CPS/clips/Alerte au froid - C'est pas s
 rez = process(video_path, fred_embedding + jamy_embedding, ["fred"] * 3 + ["jamy"] * 3)
 
 
-
-
-
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
 
 feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-large-v3")
-tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-large-v3", language="french", task="transcribe")
+tokenizer = WhisperTokenizer.from_pretrained(
+    "openai/whisper-large-v3", language="french", task="transcribe"
+)
 
-model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3", torch_dtype=torch_dtype)
-forced_decoder_ids = tokenizer.get_decoder_prompt_ids(language="french", task="transcribe")
+model = WhisperForConditionalGeneration.from_pretrained(
+    "openai/whisper-large-v3", torch_dtype=torch_dtype
+)
+forced_decoder_ids = tokenizer.get_decoder_prompt_ids(
+    language="french", task="transcribe"
+)
 
 asr_pipe = pipeline(
     "automatic-speech-recognition",
@@ -197,42 +245,54 @@ asr_pipe = pipeline(
     feature_extractor=feature_extractor,
     tokenizer=tokenizer,
     chunk_length_s=30,
-    stride_length_s=(4, 2)
+    stride_length_s=(4, 2),
 )
 
 
 # In[13]:
 
 
-filename = '/home/amor/Downloads/audio(1).wav'
+filename = "/home/amor/Downloads/audio(1).wav"
 
 
 # In[14]:
 
 
-
-def trascribe(filename, outdir = "/media/amor/data/Downloads/CPS/clip_infos"):
+def trascribe(filename, outdir="/media/amor/data/Downloads/CPS/clip_infos"):
     return asr_pipe(filename)["text"]
 
+
 def get_length(filename):
-    result = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                             "format=duration", "-of",
-                             "default=noprint_wrappers=1:nokey=1", filename],
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL)
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            filename,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
     return float(result.stdout)
 
 
-
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
-        prog='video_understanding',
-        description='From a folder of video, create a description for each clip',
-        epilog='Text at the bottom of help')
-    parser.add_argument('-d', '--dirname', default="/media/amor/data/Downloads/CPS/clips")
-    parser.add_argument('-o', '--outdirname', default="/media/amor/data/Downloads/CPS/clip_infos_test")
-    parser.add_argument('-p', '--personality', default="./assets/personality_cps.json")
+        prog="video_understanding",
+        description="From a folder of video, create a description for each clip",
+        epilog="Text at the bottom of help",
+    )
+    parser.add_argument(
+        "-d", "--dirname", default="/media/amor/data/Downloads/CPS/clips"
+    )
+    parser.add_argument(
+        "-o", "--outdirname", default="/media/amor/data/Downloads/CPS/clip_infos_test"
+    )
+    parser.add_argument("-p", "--personality", default="./assets/personality_cps.json")
     args = parser.parse_args()
 
     too_short = list()
@@ -265,25 +325,23 @@ if __name__ == "__main__":
 
         # Find faces
         people_emb, people_names = build_personality_embedding(args.personality)
-        faces = process(path, fred_embedding + jamy_embedding, ["fred"] * 3 + ["jamy"] * 3)
+        faces = process(
+            path, fred_embedding + jamy_embedding, ["fred"] * 3 + ["jamy"] * 3
+        )
         # Audio transcription
         mp3_path = os.path.join(args.outdirname, f.split(".")[0] + ".mp3")
-        args = [
-            "ffmpeg", "-y",  "-i",
-            path, "-b:a",
-            "192K", "-vn", mp3_path]
-        rez = subprocess.run(args, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL)
+        args = ["ffmpeg", "-y", "-i", path, "-b:a", "192K", "-vn", mp3_path]
+        rez = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         transcription = trascribe(mp3_path, outdir=args.outdirname)
         # Image transcription
         visual_transcript = video_process_inference(path)
 
         data_dict = {
-                "path": path,
-                "who": list(faces),
-                "transcription": transcription,
-                "description": visual_transcript,
-                "duration":  duration
-            }
+            "path": path,
+            "who": list(faces),
+            "transcription": transcription,
+            "description": visual_transcript,
+            "duration": duration,
+        }
         # Save it
         json.dump(data_dict, open(filename_out, "w"))
-
