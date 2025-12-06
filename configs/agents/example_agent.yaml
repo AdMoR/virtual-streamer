@@ -1,0 +1,50 @@
+# Example Agent Configuration
+# ============================
+# This is a sample configuration file for an ADK agent.
+# Copy this file and rename it to match your agent name.
+#
+# File naming convention: {agent_name}.yaml
+# Example: my_agent.yaml for an agent named "my_agent"
+
+# Agent name (must match the name used in code)
+name: example_agent
+
+# Model configuration
+model:
+  # LLM provider: google (Gemini), anthropic, openai, or litellm
+  provider: google
+  # Model identifier
+  model: gemini-2.0-flash
+  # Sampling temperature (0.0 = deterministic, 2.0 = very creative)
+  temperature: 0.7
+  # Maximum tokens to generate (optional, None for model default)
+  max_tokens: null
+  # Nucleus sampling parameter (optional)
+  top_p: null
+  # Top-k sampling parameter (optional)
+  top_k: null
+
+# Agent metadata (for tracking and documentation)
+metadata:
+  # Semantic version
+  version: "1.0.0"
+  # Human-readable description
+  description: "Example agent demonstrating configuration structure"
+  # Owner identifiers (emails or usernames)
+  owners:
+    - "team@example.com"
+  # Tags for categorization
+  tags:
+    - "example"
+    - "demo"
+
+# Transfer policy for multi-agent systems
+transfer_policy:
+  # Whether this agent can transfer control to others
+  allow_transfer: true
+  # Allowed target agents (empty = all agents)
+  allowed_targets: []
+
+# Include full content in responses
+include_contents: true
+
