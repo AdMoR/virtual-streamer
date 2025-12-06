@@ -6,7 +6,7 @@
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.9
+ARG PYTHON_VERSION=3.11
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
