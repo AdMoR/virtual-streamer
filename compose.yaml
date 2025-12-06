@@ -22,7 +22,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
       - FISH_TTS_HOST=tts
-      - FISH_TTS_PORT=7860
+      - FISH_TTS_PORT=8003
       - OUT_VIDEO_FOLDER=/src/generations
       - S3_BUCKET_URL=virtual-streamer-output
       - AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
@@ -66,10 +66,21 @@ services:
   entity_api:
     build:
       context: .
-      dockerfile: docker/docker_entity_api/Dockerfile
+      dockerfile: docker/docker_worker/Dockerfile
+    entrypoint: "uv"
+    command: " run fastapi run /src/virtual_streamer/video_server/entity_webservice.py --host 0.0.0.0 --port 8002"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
     ports:
       - "8002:8002"
     environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
       # Pass environment variables from your host or a .env file
       - AWS_REGION_NAME=${AWS_REGION_NAME}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
