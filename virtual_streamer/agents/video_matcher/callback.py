@@ -43,7 +43,7 @@ class InjectVisionFrameCallback(BeforeModelCallback):
     async def __call__(
             self,
             callback_context: CallbackContext,
-            request: LlmRequest,
+            llm_request: LlmRequest,
     ) -> Optional[types.Content]:
         """
         Inject the vision frame into state for the LLM to use.
@@ -64,7 +64,8 @@ class InjectVisionFrameCallback(BeforeModelCallback):
 
         if not (sentence and video_path):
             # Try to parse the input
-            video_sentence = extract_llm_content_json(request.contents[0], VideoSentenceInput)
+            video_sentence = extract_llm_content_json(llm_request.contents[0], VideoSentenceInput)
+            logging.info(f"Video sentence: {video_sentence}")
             sentence = video_sentence.sentence
             video_path = video_sentence.video_path
         if not (sentence and video_path):
@@ -72,9 +73,9 @@ class InjectVisionFrameCallback(BeforeModelCallback):
 
         frame = extract_middle_frame(video_path)
 
-        request.contents[-1].parts.append(
+        llm_request.contents[-1].parts.append(
             types.Part(inline_data=types.Blob(data=frame, display_name="video_frame", mime_type="image/jpeg")))
-        logging.info(f"Injected vision frame : {request}")
+        logging.info(f"Injected vision frame : {llm_request.contents}")
         # Must return None to avoid shortcut
         return None
 

@@ -11,7 +11,7 @@ Rating: CONTEXTUAL/NEUTRAL/NOT_CONTEXTUAL
 Grade: count the factors supporting one rating (for ranking, 0-10)
 Reasoning: brief explanation
 
-Dialogue line: {dialogue}"""
+Dialogue line: """
 
 
 def format_judge_prompt(dialogue: str) -> str:

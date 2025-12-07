@@ -111,7 +111,6 @@ class BaseLlmAgent(LlmAgent):
         before_model_callback: Optional[BeforeModelCallbackType] = None,
         after_model_callback: Optional[AfterModelCallbackType] = None,
         tools: Optional[List[Any]] = None,
-        # Additional LlmAgent kwargs
         **kwargs: Any,
     ):
         """Initialize the base agent.
@@ -135,15 +134,9 @@ class BaseLlmAgent(LlmAgent):
         # Load configuration
         agent_config = get_config_for_agent(name)
 
-<<<<<<< Updated upstream
-        # Build model string from config
-        model = self._build_model_string(agent_config)
-=======
         # Build LiteLlm model with parameters from config
-        model = self._build_model()
-        model_string = self.agent_config.model.get_model_string()
->>>>>>> Stashed changes
-
+        model = self._build_model(agent_config)
+        model_string = agent_config.model.get_model_string()
 
         # Initialize parent LlmAgent
         super().__init__(
@@ -160,24 +153,18 @@ class BaseLlmAgent(LlmAgent):
         )
 
         # Log model and parameters for debugging
-        params = self.agent_config.model.parameters.get_non_null_params()
+        params = agent_config.model.parameters.get_non_null_params()
         params_str = f", params={params}" if params else ""
         logger.info(
             f"Initialized agent '{name}' with model '{model_string}'{params_str} "
-            f"(version: {self.agent_config.metadata.version})"
+            f"(version: {agent_config.metadata.version})"
         )
 
-<<<<<<< Updated upstream
-    def _build_model_string(self, agent_config) -> str:
-        """Build the model string from configuration.
-=======
-    def _build_model(self) -> LiteLlm:
+    def _build_model(self, agent_config) -> LiteLlm:
         """Build the LiteLlm model wrapper with configuration parameters.
 
         Creates a LiteLlm instance that provides a unified interface for
         multiple LLM providers (Google, Anthropic, OpenAI, Azure, etc.).
->>>>>>> Stashed changes
-
         Returns:
             Configured LiteLlm instance for the agent.
 
@@ -209,35 +196,6 @@ class BaseLlmAgent(LlmAgent):
 
         # Create LiteLlm with model and parameters
         return LiteLlm(model=model_string, **llm_kwargs)
-
-    def _normalize_callbacks(
-        self,
-        callbacks: Optional[
-            Union[
-                AgentCallback,
-                BeforeModelCallback,
-                AfterModelCallback,
-                Callable,
-                List,
-            ]
-        ],
-    ) -> Optional[List[Callable]]:
-        """Normalize callbacks to a list.
-
-        Args:
-            callbacks: Single callback, list of callbacks, or None.
-
-        Returns:
-            List of callbacks or None.
-        """
-        if callbacks is None:
-            return None
-
-        if isinstance(callbacks, list):
-            return callbacks
-
-        return [callbacks]
-
 
 
 def create_agent(
