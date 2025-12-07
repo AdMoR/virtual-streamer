@@ -12,10 +12,16 @@ google-adk>=1.0.0
 # Google GenAI SDK (for types and utilities)
 google-genai>=1.0.0
 
+# LiteLLM for unified multi-provider LLM interface
+# Supports: OpenAI, Anthropic, Azure, Google, and 100+ providers
+# https://docs.litellm.ai/
+litellm>=1.0.0
+
 # Pydantic for configuration and data models
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 
 # YAML support for configuration files
 pyyaml>=6.0.0
+
 

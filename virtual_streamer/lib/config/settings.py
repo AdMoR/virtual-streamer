@@ -13,27 +13,23 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class ModelConfig(BaseModel):
-    """Configuration for the LLM model used by an agent."""
+class LlmParameters(BaseModel):
+    """LLM generation parameters.
 
-    provider: str = Field(
-        default="google",
-        description="LLM provider: google (Gemini), anthropic, openai, or litellm",
-    )
-    model: str = Field(
-        default="gemini-2.0-flash",
-        description="Model identifier (e.g., gemini-2.0-flash, claude-sonnet-4-5-20250929)",
-    )
-    temperature: float = Field(
-        default=0.7,
+    These parameters are passed directly to the LLM via LiteLlm.
+    All parameters are optional - omit them to use model defaults.
+    """
+
+    temperature: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=2.0,
-        description="Sampling temperature for response generation",
+        description="Sampling temperature (0.0 = deterministic, 2.0 = very creative)",
     )
-    max_tokens: Optional[int] = Field(
+    max_output_tokens: Optional[int] = Field(
         default=None,
         gt=0,
-        description="Maximum tokens to generate (None for model default)",
+        description="Maximum tokens to generate in response",
     )
     top_p: Optional[float] = Field(
         default=None,
@@ -46,6 +42,70 @@ class ModelConfig(BaseModel):
         gt=0,
         description="Top-k sampling parameter",
     )
+    seed: Optional[int] = Field(
+        default=None,
+        description="Random seed for reproducibility",
+    )
+    thinking_budget: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Gemini-only: thinking token budget for extended reasoning",
+    )
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description="GPT-5+: reasoning effort level (minimal, low, medium, high)",
+    )
+
+    def get_non_null_params(self) -> Dict[str, Any]:
+        """Get only the parameters that are explicitly set (non-None).
+
+        Returns:
+            Dictionary of parameter name to value, excluding None values.
+        """
+        return self.model_dump(exclude_unset=True, exclude_none=True)
+
+
+class ModelConfig(BaseModel):
+    """Configuration for the LLM model used by an agent.
+
+    Example YAML:
+        model:
+          provider: anthropic
+          model: anthropic/claude-sonnet-4-5-20250929
+          parameters:
+            temperature: 0.0
+            max_output_tokens: 4096
+            seed: 42
+    """
+
+    provider: str = Field(
+        default="google",
+        description="LLM provider: google (Gemini), anthropic, openai, azure, etc.",
+    )
+    model: str = Field(
+        default="gemini-2.0-flash",
+        description="Model identifier (e.g., gemini-2.0-flash, anthropic/claude-sonnet-4-5-20250929)",
+    )
+    parameters: LlmParameters = Field(
+        default_factory=LlmParameters,
+        description="LLM generation parameters (temperature, max_output_tokens, etc.)",
+    )
+
+    def get_model_string(self) -> str:
+        """Get the full model string for LiteLlm.
+
+        For Google models, returns just the model name.
+        For other providers, returns provider/model format.
+
+        Returns:
+            Model identifier string.
+        """
+        if self.provider == "google":
+            return self.model
+        # For other providers, use provider/model format if not already included
+        if "/" in self.model:
+            return self.model
+        return f"{self.provider}/{self.model}"
 
 
 class AgentMetadata(BaseModel):

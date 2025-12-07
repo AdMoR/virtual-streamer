@@ -5,6 +5,10 @@ This module provides BaseLlmAgent, a wrapper around Google ADK's LlmAgent
 that integrates with the configuration system and provides a standardized
 interface for creating agents.
 
+The agent uses LiteLlm for multi-provider LLM support, allowing you to
+switch between providers (Google, Anthropic, OpenAI, Azure, etc.) by
+changing only the YAML configuration.
+
 Example usage:
 
     from lib.agents import BaseLlmAgent
@@ -27,12 +31,27 @@ Example usage:
         return MyAgent()
 
     root_agent = get_my_agent()
+
+Configuration (configs/agents/my_agent.yaml):
+
+    name: my_agent
+    model:
+      provider: anthropic
+      model: anthropic/claude-sonnet-4-5-20250929
+      parameters:
+        temperature: 0.0
+        max_output_tokens: 4096
+        seed: 42
+    metadata:
+      version: "1.0.0"
+      description: "My helpful assistant agent"
 """
 
 import logging
 from typing import Any, Callable, List, Optional, Type, Union
 
 from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
 from pydantic import BaseModel
 
 from virtual_streamer.lib.agents.callbacks import (
@@ -116,8 +135,14 @@ class BaseLlmAgent(LlmAgent):
         # Load configuration
         agent_config = get_config_for_agent(name)
 
+<<<<<<< Updated upstream
         # Build model string from config
         model = self._build_model_string(agent_config)
+=======
+        # Build LiteLlm model with parameters from config
+        model = self._build_model()
+        model_string = self.agent_config.model.get_model_string()
+>>>>>>> Stashed changes
 
 
         # Initialize parent LlmAgent
@@ -134,25 +159,56 @@ class BaseLlmAgent(LlmAgent):
             **kwargs,
         )
 
+        # Log model and parameters for debugging
+        params = self.agent_config.model.parameters.get_non_null_params()
+        params_str = f", params={params}" if params else ""
         logger.info(
-            f"Initialized agent '{name}' with model '{model}' "
+            f"Initialized agent '{name}' with model '{model_string}'{params_str} "
             f"(version: {self.agent_config.metadata.version})"
         )
 
+<<<<<<< Updated upstream
     def _build_model_string(self, agent_config) -> str:
         """Build the model string from configuration.
+=======
+    def _build_model(self) -> LiteLlm:
+        """Build the LiteLlm model wrapper with configuration parameters.
+
+        Creates a LiteLlm instance that provides a unified interface for
+        multiple LLM providers (Google, Anthropic, OpenAI, Azure, etc.).
+>>>>>>> Stashed changes
 
         Returns:
-            Model identifier string for the LLM.
+            Configured LiteLlm instance for the agent.
+
+        Example:
+            For a config with:
+                model:
+                  provider: anthropic
+                  model: anthropic/claude-sonnet-4-5-20250929
+                  parameters:
+                    temperature: 0.0
+                    max_output_tokens: 4096
+                    seed: 42
+
+            This creates:
+                LiteLlm(
+                    model="anthropic/claude-sonnet-4-5-20250929",
+                    temperature=0.0,
+                    max_output_tokens=4096,
+                    seed=42,
+                )
         """
         model_config = agent_config.model
 
-        # For Google models, just use the model name directly
-        if model_config.provider == "google":
-            return model_config.model
+        # Get the model string (handles provider prefix logic)
+        model_string = model_config.get_model_string()
 
-        # For other providers, include the provider prefix
-        return f"{model_config.provider}/{model_config.model}"
+        # Get only explicitly set parameters (exclude None values)
+        llm_kwargs = model_config.parameters.get_non_null_params()
+
+        # Create LiteLlm with model and parameters
+        return LiteLlm(model=model_string, **llm_kwargs)
 
     def _normalize_callbacks(
         self,

@@ -5,24 +5,42 @@
 #
 # File naming convention: {agent_name}.yaml
 # Example: my_agent.yaml for an agent named "my_agent"
+#
+# The agent uses LiteLLM for multi-provider support. Changing the LLM
+# only requires updating this YAML file - no Python code changes needed.
 
 # Agent name (must match the name used in code)
 name: example_agent
 
 # Model configuration
+# -------------------
+# Supports multiple providers via LiteLLM:
+#   - google: gemini-2.0-flash, gemini-1.5-pro, etc.
+#   - anthropic: anthropic/claude-sonnet-4-5-20250929, anthropic/claude-3-opus, etc.
+#   - openai: openai/gpt-4, openai/gpt-4-turbo, etc.
+#   - azure: azure/gpt-4.1, azure/gpt-4-turbo, etc.
+#   - See https://docs.litellm.ai/docs/providers for full list
 model:
-  # LLM provider: google (Gemini), anthropic, openai, or litellm
-  provider: google
-  # Model identifier
-  model: gemini-2.0-flash
-  # Sampling temperature (0.0 = deterministic, 2.0 = very creative)
-  temperature: 0.7
-  # Maximum tokens to generate (optional, None for model default)
-  max_tokens: null
-  # Nucleus sampling parameter (optional)
-  top_p: null
-  # Top-k sampling parameter (optional)
-  top_k: null
+  # LLM provider
+  provider: anthropic
+  # Model identifier (for non-Google providers, use format: provider/model)
+  model: anthropic/claude-sonnet-4-20250514
+  # LLM generation parameters (all optional - omit to use model defaults)
+  parameters:
+    # Sampling temperature (0.0 = deterministic, 2.0 = very creative)
+    temperature: 0.0
+    # Maximum tokens to generate in response
+    max_output_tokens: 4096
+    # Random seed for reproducibility
+    seed: 42
+    # Nucleus sampling parameter
+    # top_p: 0.95
+    # Top-k sampling parameter
+    # top_k: 40
+    # Gemini-only: thinking token budget for extended reasoning
+    # thinking_budget: 1024
+    # GPT-5+: reasoning effort level (minimal, low, medium, high)
+    # reasoning_effort: medium
 
 # Agent metadata (for tracking and documentation)
 metadata:
