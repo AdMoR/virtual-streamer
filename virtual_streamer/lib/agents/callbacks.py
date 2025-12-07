@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Type, TypeVar, Union, overload
 
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.models import LlmResponse
+from google.adk.models import LlmResponse, LlmRequest
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 
@@ -49,6 +49,13 @@ def extract_llm_response_json(
     llm_response: LlmResponse,
     response_model: Type[T],
 ) -> Optional[T]: ...
+
+
+def extract_llm_content_json(
+    llm_content: types.Content,
+    response_model: Optional[Type[T]] = None,
+) -> Optional[Union[Dict[str, Any], T]]:
+    return extract_llm_response_json(LlmResponse(content=llm_content), response_model)
 
 
 def extract_llm_response_json(
@@ -204,6 +211,7 @@ class BeforeModelCallback(ABC):
     async def __call__(
         self,
         callback_context: CallbackContext,
+        request: LlmRequest,
     ) -> Optional[types.Content]:
         """Execute the callback before the model is called.
 

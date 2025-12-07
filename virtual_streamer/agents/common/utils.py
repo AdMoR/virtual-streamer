@@ -21,6 +21,8 @@ from virtual_streamer.utils.utils import (
     combine_part_in_concat_file,
     get_length,
 )
+from PIL import Image
+import io
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -73,7 +75,7 @@ def separation_fn(raw_text: str, max_length: int = 35) -> List[str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def extract_middle_frame(video_path: str) -> Optional[str]:
+def extract_middle_frame(video_path: str) -> Optional[bytes]:
     """
     Extract the middle frame from a video and return as base64 encoded string.
 
@@ -103,10 +105,12 @@ def extract_middle_frame(video_path: str) -> Optional[str]:
             return None
 
         # Encode frame to JPEG
-        _, buffer = cv2.imencode(".jpg", frame)
-        base64_image = base64.b64encode(buffer).decode("utf-8")
-
-        return base64_image
+        #_, buffer = cv2.imencode(".jpg", frame)
+        #base64_image = base64.b64encode(buffer).decode("utf-8")
+        pil_im = Image.fromarray(frame)
+        b = io.BytesIO()
+        pil_im.save(b, "JPEG")
+        return b.read()
     except Exception as e:
         print(f"Error extracting frame from {video_path}: {e}")
         return None

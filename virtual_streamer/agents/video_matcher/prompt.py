@@ -1,8 +1,3 @@
-"""
-Prompt template for VideoMatcherAgent.
-
-This prompt is used for the vision LLM to judge video-dialogue matching.
-"""
 
 JUDGE_PROMPT = """You are a contextual image rater. You grade if an image where a character is located and speaks a line of dialogue is contextual or not.
 
@@ -30,4 +25,3 @@ def format_judge_prompt(dialogue: str) -> str:
         Formatted prompt string
     """
     return JUDGE_PROMPT.format(dialogue=dialogue)
-

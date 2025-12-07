@@ -12,13 +12,18 @@ The FinalizeVideoCallback concatenates all segments into the final video.
 import logging
 import os
 from functools import lru_cache
-from typing import Optional
 
 from google.adk.agents import SequentialAgent
 
-from virtual_streamer.agents.story_generator import get_story_generator
-from virtual_streamer.agents.sentence_processor import SentenceProcessorAgent
 from virtual_streamer.agents.common.callbacks import FinalizeVideoCallback
+from virtual_streamer.agents.sentence_processor import SentenceProcessorAgent
+from virtual_streamer.agents.story_generator import get_story_generator
+from virtual_streamer.video_generation import (
+    VideoGenerationConfig,
+    create_tts,
+    create_stt,
+    create_video_retriever,
+)
 from virtual_streamer.video_generation.interfaces import (
     VideoRetrieverInterface,
     TTSInterface,
@@ -26,7 +31,6 @@ from virtual_streamer.video_generation.interfaces import (
 )
 
 logger = logging.getLogger(__name__)
-
 
 # Default configuration values (from compose.yaml and VideoGenerationConfig)
 DEFAULT_TTS_HOST = os.environ.get("FISH_TTS_HOST", "127.0.0.1")
@@ -37,14 +41,14 @@ DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", "/media/amor/data1/Downloads/CPS/c
 
 
 def get_video_generation_orchestrator(
-    video_retriever: VideoRetrieverInterface,
-    tts: TTSInterface,
-    stt: STTInterface,
-    output_dir: str,
-    temp_dir: str,
-    max_video_candidates: int = 5,
-    max_search_attempts: int = 3,
-    fontsize: int = 14,
+        video_retriever: VideoRetrieverInterface,
+        tts: TTSInterface,
+        stt: STTInterface,
+        output_dir: str,
+        temp_dir: str,
+        max_video_candidates: int = 5,
+        max_search_attempts: int = 3,
+        fontsize: int = 14,
 ) -> SequentialAgent:
     """
     Create the main video generation orchestrator.
@@ -104,7 +108,7 @@ def get_video_generation_orchestrator(
     """
     # Create the story generator (singleton)
     story_generator = get_story_generator()
-    
+
     # Create the sentence processor with all dependencies
     sentence_processor = SentenceProcessorAgent(
         video_retriever=video_retriever,
@@ -116,10 +120,10 @@ def get_video_generation_orchestrator(
         max_search_attempts=max_search_attempts,
         fontsize=fontsize,
     )
-    
+
     # Create the finalize callback
     finalize_callback = FinalizeVideoCallback(output_dir=output_dir)
-    
+
     # Create the sequential orchestrator
     orchestrator = SequentialAgent(
         name="video_generator",
@@ -129,9 +133,9 @@ def get_video_generation_orchestrator(
         ],
         after_agent_callback=[finalize_callback],
     )
-    
+
     logger.info("Created video generation orchestrator")
-    
+
     return orchestrator
 
 
@@ -161,32 +165,26 @@ def create_root_agent() -> SequentialAgent:
         
         # The agent expects TITLE in state before running
     """
-    from virtual_streamer.video_generation import (
-        VideoGenerationConfig,
-        create_tts,
-        create_stt,
-        create_video_retriever,
-    )
-    
+
     # Load configuration from environment and defaults
     config = VideoGenerationConfig()
-    
+
     # Override from environment if available
     config.tts.host = DEFAULT_TTS_HOST
     config.tts.port = DEFAULT_TTS_PORT
     config.video_retrieval.index_path = DEFAULT_DATA_DIR
-    
+
     logger.info(f"Initializing ADK root agent with config:")
     logger.info(f"  TTS: {config.tts.provider} @ {config.tts.host}:{config.tts.port}")
     logger.info(f"  STT: {config.stt.provider}/{config.stt.model}")
     logger.info(f"  Video Retrieval: {config.video_retrieval.method}")
     logger.info(f"  Output: {DEFAULT_OUTPUT_DIR}")
-    
+
     # Create interfaces using factory functions
     video_retriever = create_video_retriever(config.video_retrieval)
     tts = create_tts(config.tts, character_name=config.character_name)
     stt = create_stt(config.stt)
-    
+
     return get_video_generation_orchestrator(
         video_retriever=video_retriever,
         tts=tts,
@@ -200,21 +198,4 @@ def create_root_agent() -> SequentialAgent:
 
 
 # Expose root_agent at module level for ADK compatibility
-root_agent = None  # Lazy initialization to avoid import-time side effects
-
-
-def get_root_agent() -> SequentialAgent:
-    """
-    Get or create the root agent singleton.
-    
-    This provides lazy initialization of the root agent, avoiding
-    heavy initialization at import time.
-    
-    Returns:
-        The root agent instance
-    """
-    global root_agent
-    if root_agent is None:
-        root_agent = create_root_agent()
-    return root_agent
-
+#root_agent = create_root_agent()  # Lazy initialization to avoid import-time side effects

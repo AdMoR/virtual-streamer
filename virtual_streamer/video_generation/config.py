@@ -155,7 +155,7 @@ class VideoGenerationConfig(BaseSettings):
         env_file=(".env", ".env.public"),
         env_file_encoding="utf-8",
         extra="ignore",
-        cli_parse_args=True,  # Enable automatic CLI parsing
+        cli_parse_args=False,  # Enable automatic CLI parsing
         cli_prog_name="generate_video.py",
     )
 

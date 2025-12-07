@@ -37,3 +37,6 @@ class VideoJudgementOutput(BaseModel):
                     "describing what visual elements match or don't match the dialogue."
     )
 
+class VideoSentenceInput(BaseModel):
+    sentence: str
+    video_path: str

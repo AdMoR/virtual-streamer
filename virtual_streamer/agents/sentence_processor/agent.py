@@ -155,15 +155,7 @@ class SentenceProcessorAgent(BaseAgent):
             candidates = self.video_retriever.search(sentence, top_k=10)
             
             if not candidates:
-                logger.warning(f"No video candidates found for sentence {idx}")
-                all_matches.append({
-                    "sentence": sentence,
-                    "video_path": "",
-                    "rating": "NOT_CONTEXTUAL",
-                    "grade": 0,
-                    "reasoning": "No candidates found",
-                })
-                continue
+                raise Exception("No candidate for this sentence : ", sentence)
             
             # Extract frames for vision LLM
             frames = {}

@@ -61,15 +61,6 @@ class BaseLlmAgent(LlmAgent):
     """
     Base class for ADK agents with configuration injection.
 
-    BaseLlmAgent extends Google ADK's LlmAgent with:
-    - Automatic configuration loading from YAML files
-    - Standardized callback integration
-    - Support for dynamic instruction providers
-    - Consistent logging and error handling
-
-    Agents should inherit from this class and implement their
-    specific behavior through prompts, output schemas, and callbacks.
-
     Attributes:
         agent_config: The loaded AgentConfig for this agent.
 
@@ -96,15 +87,10 @@ class BaseLlmAgent(LlmAgent):
         name: str,
         instruction: Optional[Union[str, InstructionProvider]] = None,
         output_schema: Optional[Type[BaseModel]] = None,
-        config: Optional[AgentConfig] = None,
-        # Callbacks
         before_agent_callback: Optional[BeforeAgentCallbackType] = None,
         after_agent_callback: Optional[AfterAgentCallbackType] = None,
         before_model_callback: Optional[BeforeModelCallbackType] = None,
         after_model_callback: Optional[AfterModelCallbackType] = None,
-        # Sub-agents for multi-agent systems
-        sub_agents: Optional[List["BaseLlmAgent"]] = None,
-        # Tools
         tools: Optional[List[Any]] = None,
         # Additional LlmAgent kwargs
         **kwargs: Any,
@@ -124,36 +110,26 @@ class BaseLlmAgent(LlmAgent):
             after_agent_callback: Callback(s) to run when agent completes.
             before_model_callback: Callback(s) to run before LLM call.
             after_model_callback: Callback(s) to run after LLM returns.
-            sub_agents: List of sub-agents for multi-agent systems.
             tools: List of tools available to this agent.
             **kwargs: Additional arguments passed to LlmAgent.
         """
         # Load configuration
-        self.agent_config = config or get_config_for_agent(name)
+        agent_config = get_config_for_agent(name)
 
         # Build model string from config
-        model = self._build_model_string()
+        model = self._build_model_string(agent_config)
 
-        # Prepare instruction
-        resolved_instruction = self._resolve_instruction(instruction)
-
-        # Normalize callbacks to lists
-        before_agent = self._normalize_callbacks(before_agent_callback)
-        after_agent = self._normalize_callbacks(after_agent_callback)
-        before_model = self._normalize_callbacks(before_model_callback)
-        after_model = self._normalize_callbacks(after_model_callback)
 
         # Initialize parent LlmAgent
         super().__init__(
             name=name,
             model=model,
-            instruction=resolved_instruction,
+            instruction=instruction,
             output_schema=output_schema,
-            before_agent_callback=before_agent if before_agent else None,
-            after_agent_callback=after_agent if after_agent else None,
-            before_model_callback=before_model if before_model else None,
-            after_model_callback=after_model if after_model else None,
-            sub_agents=sub_agents or [],
+            before_agent_callback=before_agent_callback if before_agent_callback else None,
+            after_agent_callback=after_agent_callback if after_agent_callback else None,
+            before_model_callback=before_model_callback if before_model_callback else None,
+            after_model_callback=after_model_callback if after_model_callback else None,
             tools=tools or [],
             **kwargs,
         )
@@ -163,13 +139,13 @@ class BaseLlmAgent(LlmAgent):
             f"(version: {self.agent_config.metadata.version})"
         )
 
-    def _build_model_string(self) -> str:
+    def _build_model_string(self, agent_config) -> str:
         """Build the model string from configuration.
 
         Returns:
             Model identifier string for the LLM.
         """
-        model_config = self.agent_config.model
+        model_config = agent_config.model
 
         # For Google models, just use the model name directly
         if model_config.provider == "google":
@@ -177,31 +153,6 @@ class BaseLlmAgent(LlmAgent):
 
         # For other providers, include the provider prefix
         return f"{model_config.provider}/{model_config.model}"
-
-    def _resolve_instruction(
-        self,
-        instruction: Optional[Union[str, InstructionProvider]],
-    ) -> Optional[Union[str, Callable]]:
-        """Resolve the instruction to a string or callable.
-
-        Args:
-            instruction: Static string or InstructionProvider.
-
-        Returns:
-            Resolved instruction for the LlmAgent.
-        """
-        if instruction is None:
-            return None
-
-        if isinstance(instruction, str):
-            return instruction
-
-        if isinstance(instruction, InstructionProvider):
-            # InstructionProvider is already a callable
-            return instruction
-
-        # Assume it's already a callable
-        return instruction
 
     def _normalize_callbacks(
         self,
@@ -231,20 +182,6 @@ class BaseLlmAgent(LlmAgent):
 
         return [callbacks]
 
-    @property
-    def version(self) -> str:
-        """Get the agent version from config."""
-        return self.agent_config.metadata.version
-
-    @property
-    def description(self) -> Optional[str]:
-        """Get the agent description from config."""
-        return self.agent_config.metadata.description
-
-    @property
-    def owners(self) -> List[str]:
-        """Get the agent owners from config."""
-        return self.agent_config.metadata.owners
 
 
 def create_agent(
