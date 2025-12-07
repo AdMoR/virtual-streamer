@@ -87,33 +87,33 @@ def extract_middle_frame(video_path: str) -> Optional[bytes]:
     Returns:
         Base64 encoded JPEG image string, or None if extraction fails
     """
-    try:
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            return None
 
-        # Get total frame count
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        middle_frame_idx = total_frames // 2
-
-        # Set position to middle frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame_idx)
-        ret, frame = cap.read()
-        cap.release()
-
-        if not ret:
-            return None
-
-        # Encode frame to JPEG
-        #_, buffer = cv2.imencode(".jpg", frame)
-        #base64_image = base64.b64encode(buffer).decode("utf-8")
-        pil_im = Image.fromarray(frame)
-        b = io.BytesIO()
-        pil_im.save(b, "JPEG")
-        return b.read()
-    except Exception as e:
-        print(f"Error extracting frame from {video_path}: {e}")
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
         return None
+
+    # Get total frame count
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    middle_frame_idx = total_frames // 2
+
+    # Set position to middle frame
+    cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame_idx)
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret:
+        return None
+
+    # Encode frame to JPEG
+    #_, buffer = cv2.imencode(".jpg", frame)
+    #base64_image = base64.b64encode(buffer).decode("utf-8")
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    pil_im = Image.fromarray(frame, mode="RGB")
+    pil_im.save(open("./my_image.jpg", "wb"), "JPEG")
+    img_byte_arr = io.BytesIO()
+    pil_im.save(img_byte_arr, format='JPEG')
+    return img_byte_arr.getvalue()
+
 
 
 def combine_segment(

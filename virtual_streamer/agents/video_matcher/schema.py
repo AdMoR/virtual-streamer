@@ -12,6 +12,7 @@ class ContextualRating(str, Enum):
     CONTEXTUAL = "CONTEXTUAL"
     NEUTRAL = "NEUTRAL"
     NOT_CONTEXTUAL = "NOT_CONTEXTUAL"
+    FAILURE = "FAILURE"
 
 
 class VideoJudgementOutput(BaseModel):

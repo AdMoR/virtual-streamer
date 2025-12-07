@@ -43,11 +43,17 @@ def get_video_matcher(run_id: str) -> BaseLlmAgent:
         Configured BaseLlmAgent for video matching
     
     Example of input :
-    {"sentence": "La Jamy, je suis dans un datacenter de youtube",
-    video_path": "/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp4"}
+
+    WORKING
+    {"sentence": "La Jamy, je suis dans un datacenter", "video_path": "/home/amor/Downloads/FRED ET JAMY FONT TOUT POUR ÊTRE DANS LES TENDANCES YOUTUBE !! [DCf-EI5WgEw]-Scene-017.mp4"}
+
+    FAILING
+    {"sentence": "La Jamy, je suis dans un datacenter", "video_path": "/home/amor/Documents/video.mp4"}
+    {"sentence": "Coucou Jamy, la je me balade en forêt de Fontainebleau", "video_path": "/home/amor/Documents/result_2025-08-10-19:34:50.249412Test.mp4"}
+
     """
     return BaseLlmAgent(
-        name="video_matcher_{}".format(run_id),
+        name="video_matcher",
         instruction=JUDGE_PROMPT,
         input_schema=VideoSentenceInput,
         output_schema=VideoJudgementOutput,
