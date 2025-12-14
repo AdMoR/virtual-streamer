@@ -26,20 +26,28 @@ Usage:
 """
 
 import json
+import logging
 import secrets
 from abc import abstractmethod
-from typing import Any, Callable, Dict, List, Protocol, Optional
+from typing import Any, Callable, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
 from google.adk.events import Event, EventActions
 from google.adk.agents import BaseAgent, ParallelAgent
 from google.genai import types
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class StatefulWorker(Protocol):
-    """Protocol for workers that expose input/output keys."""
+    """Protocol for workers that expose input/output keys and schemas."""
     
     def get_input_key(self) -> str:
         """Return the state key where input should be written."""
+        ...
+    
+    def get_input_schema(self) -> Type[BaseModel]:
+        """Return the Pydantic model for input validation."""
         ...
     
     def get_output_key(self) -> str:
@@ -103,6 +111,9 @@ class MapperAgent(ParallelAgent):
         Yields events for:
         1. State delta with all input data written to worker keys
         2. Events from parallel worker execution
+        
+        Raises:
+            ValidationError: If any item fails schema validation
         """
         # Generate unique run ID for this batch
         run_id = secrets.token_hex(2)
@@ -115,12 +126,21 @@ class MapperAgent(ParallelAgent):
             worker_run_id = f"{run_id}:w{i}"
             worker = self.worker_factory(worker_run_id)
             
-            # Get the input key from the worker (type-safe!)
+            # Get the input key and schema from the worker (type-safe!)
             input_key = worker.get_input_key()
+            input_schema = worker.get_input_schema()
             
-            # Serialize item to JSON and store in state delta
-            state_delta[input_key] = json.dumps(item)
+            # Validate item against the worker's input schema
+            validated_item = input_schema.model_validate(item)
+            
+            # Serialize validated item to JSON and store in state delta
+            state_delta[input_key] = validated_item.model_dump_json()
             workers.append(worker)
+            
+            logger.debug(
+                f"Validated item {i} for worker {worker_run_id}: "
+                f"{input_schema.__name__}"
+            )
         
         # Emit state delta with all inputs
         yield Event(
@@ -142,99 +162,176 @@ class MapperAgent(ParallelAgent):
             yield event
 
 
-class AbstractAggregator(BaseAgent):
+T = TypeVar("T", bound=BaseModel)
+
+
+class AbstractAggregator(BaseAgent, Generic[T]):
     """
     Abstract base class for aggregating results from parallel workers.
     
-    Subclasses must implement aggregation_fn to define how results
-    are combined. The aggregator reads results from all worker output
-    keys matching the current run.
+    From the aggregator's perspective:
+    - state_input_keys: where to read results from (worker outputs = aggregator inputs)
+    - input_schema: Pydantic model to parse each result
+    - aggregation_fn: subclass implements to combine parsed results
+    
+    The base class handles:
+    - Collecting results from specified state keys
+    - Parsing each result with the input schema
+    - Storing aggregated result in state (optional)
+    - Event emission
     
     Example:
-        class BestResultAggregator(AbstractAggregator):
-            async def aggregation_fn(self, results: List[Any]) -> str:
-                best = max(results, key=lambda r: r.get("grade", 0))
-                return json.dumps(best)
+        class BestMatchAggregator(AbstractAggregator[VideoJudgementOutput]):
+            def __init__(self, input_keys: List[str]):
+                super().__init__(
+                    name="best_match",
+                    state_input_keys=input_keys,
+                    input_schema=VideoJudgementOutput,
+                    result_state_key="best_video_match",
+                )
+            
+            async def aggregation_fn(self, results: List[VideoJudgementOutput]):
+                return max(results, key=lambda r: r.grade)
     """
     
     def __init__(
         self,
-        name: str = "aggregator",
-        output_key_pattern: str = "result",
+        name: str,
+        state_input_keys: List[str],
+        input_schema: Type[T],
+        result_state_key: Optional[str] = None,
     ):
         """
         Initialize the aggregator.
         
         Args:
             name: Name for this agent
-            output_key_pattern: Prefix pattern to match result keys
-                               (e.g., "result" matches "result:a1b2:w0:...")
+            state_input_keys: List of state keys to read results from.
+                             These are typically the output keys from workers.
+            input_schema: Pydantic model to parse each result into.
+            result_state_key: Optional key to store aggregated result in state.
+                             If None, result is only emitted in event.
         """
         super().__init__(name=name)
-        self.output_key_pattern = output_key_pattern
+        self.state_input_keys = state_input_keys
+        self.input_schema = input_schema
+        self.result_state_key = result_state_key
+    
+    def _collect_results(self, ctx) -> List[T]:
+        """
+        Collect and parse results from state.
+        
+        Reads from state_input_keys, parses each with input_schema.
+        
+        Args:
+            ctx: Invocation context with session state
+        
+        Returns:
+            List of validated Pydantic model instances
+        """
+        results: List[T] = []
+        
+        for key in self.state_input_keys:
+            value = ctx.session.state.get(key)
+            
+            if value is None:
+                logger.warning(f"No value found for state key: {key}")
+                continue
+            
+            try:
+                if isinstance(value, str):
+                    parsed = self.input_schema.model_validate_json(value)
+                elif isinstance(value, dict):
+                    parsed = self.input_schema.model_validate(value)
+                elif isinstance(value, self.input_schema):
+                    parsed = value
+                else:
+                    logger.warning(
+                        f"Unexpected value type for key {key}: {type(value)}"
+                    )
+                    continue
+                
+                results.append(parsed)
+                logger.debug(f"Parsed result from {key}: {parsed}")
+                
+            except Exception as e:
+                logger.error(f"Failed to parse result from {key}: {e}")
+        
+        return results
     
     async def _run_async_impl(self, ctx):
         """
         Collect results from workers and aggregate them.
         
-        Reads all state keys matching "result:{current_run}:*"
-        and passes values to aggregation_fn.
+        1. Collects and parses results from state_input_keys
+        2. Calls aggregation_fn with parsed results
+        3. Stores result in state if result_state_key is set
+        4. Emits event with aggregation summary
         """
-        run_id = ctx.session.state.get("current_run")
+        # Collect and parse results
+        results = self._collect_results(ctx)
         
-        if not run_id:
+        if not results:
             yield Event(
                 author=self.name,
                 content=types.Content(
                     role=self.name,
-                    parts=[types.Part(text="No current_run found in state")]
+                    parts=[types.Part(text="No valid results to aggregate")]
                 ),
                 actions=EventActions(escalate=True)
             )
             return
         
-        # Collect all results matching the pattern
-        pattern = f"{self.output_key_pattern}:{run_id}:"
-        results = []
+        logger.info(f"Aggregating {len(results)} results from {len(self.state_input_keys)} keys")
         
-        for key, value in ctx.session.state.items():
-            if key.startswith(pattern):
-                # Parse JSON if string, otherwise use as-is
-                if isinstance(value, str):
-                    try:
-                        results.append(json.loads(value))
-                    except json.JSONDecodeError:
-                        results.append(value)
-                else:
-                    results.append(value)
-        
-        # Aggregate results
+        # Aggregate results (subclass implements)
         aggregated = await self.aggregation_fn(results)
+        
+        # Prepare state delta if result key is specified
+        state_delta: Dict[str, str] = {}
+        if self.result_state_key and aggregated is not None:
+            if isinstance(aggregated, BaseModel):
+                state_delta[self.result_state_key] = aggregated.model_dump_json()
+            else:
+                state_delta[self.result_state_key] = json.dumps(aggregated)
+            
+            logger.debug(f"Stored aggregated result at {self.result_state_key}")
+        
+        # Emit completion event
+        summary = f"Aggregated {len(results)} results"
+        if self.result_state_key:
+            summary += f" -> {self.result_state_key}"
         
         yield Event(
             author=self.name,
             content=types.Content(
                 role=self.name,
-                parts=[types.Part(text=aggregated)]
+                parts=[types.Part(text=summary)]
             ),
-            actions=EventActions(escalate=True)
+            actions=EventActions(
+                state_delta=state_delta if state_delta else None,
+                escalate=True
+            )
         )
 
     @abstractmethod
-    async def aggregation_fn(self, results: List[Any]) -> str:
+    async def aggregation_fn(self, results: List[T]) -> Optional[T]:
         """
-        Aggregate results from all workers.
+        Aggregate parsed results from workers.
         
         Args:
-            results: List of parsed results from worker output keys
+            results: List of validated Pydantic model instances.
+                    Guaranteed to be non-empty when called.
         
         Returns:
-            Aggregated result as a string (can be JSON)
+            Aggregated result. Can be:
+            - A single model instance (e.g., best match)
+            - A new model instance (e.g., combined result)
+            - None if aggregation produces no result
         
         Example:
-            async def aggregation_fn(self, results):
+            async def aggregation_fn(self, results: List[VideoJudgementOutput]):
                 # Return the result with highest grade
-                best = max(results, key=lambda r: r.get("grade", 0))
-                return json.dumps(best)
+                return max(results, key=lambda r: r.grade)
         """
         raise NotImplementedError()

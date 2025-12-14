@@ -125,6 +125,19 @@ class StatefulLlmAgent(BaseLlmAgent):
         """
         return self._input_callback.get_input_key()
     
+    def get_input_schema(self) -> Type[BaseModel]:
+        """
+        Get the Pydantic model for input validation.
+        
+        Delegates to the input callback's get_input_schema method.
+        This enables the DynamicParallelAgent to validate items before
+        writing them to state.
+        
+        Returns:
+            The Pydantic model class for input validation
+        """
+        return self._input_callback.get_input_schema()
+    
     def get_output_key(self) -> str:
         """
         Get the state key where output will be written.
