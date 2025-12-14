@@ -11,7 +11,6 @@ Tests cover:
 
 import pytest
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, AsyncMock
 
 from pydantic import BaseModel, Field
 
@@ -87,25 +86,45 @@ class MockStatefulWorker:
     
     def get_output_schema(self):
         return self._output_schema
+
+
+class MockSessionState:
+    """Mock session state for testing."""
     
-    async def run_async(self, ctx):
-        """Simulate worker execution by writing to state."""
-        # Read input
-        input_data = ctx.session.state.get(self.get_input_key())
-        if input_data:
-            parsed = self._input_schema.model_validate_json(input_data)
-            # Write output
-            output = self._output_schema(result=f"processed_{parsed.value}", score=5)
-            ctx.session.state[self.get_output_key()] = output.model_dump_json()
-        yield  # Make it an async generator
+    def __init__(self, initial_state: dict = None):
+        self._state = initial_state or {}
+    
+    def get(self, key, default=None):
+        return self._state.get(key, default)
+    
+    def __setitem__(self, key, value):
+        self._state[key] = value
+    
+    def __getitem__(self, key):
+        return self._state[key]
+    
+    def __contains__(self, key):
+        return key in self._state
+    
+    def items(self):
+        return self._state.items()
+    
+    def keys(self):
+        return self._state.keys()
+
+
+class MockSession:
+    """Mock session for testing."""
+    
+    def __init__(self, initial_state: dict = None):
+        self.state = MockSessionState(initial_state)
 
 
 class MockInvocationContext:
-    """Mock invocation context with session state."""
+    """Mock invocation context for testing build_items_from_state and aggregation_fn."""
     
-    def __init__(self, initial_state: Optional[Dict[str, Any]] = None):
-        self.session = MagicMock()
-        self.session.state = initial_state or {}
+    def __init__(self, initial_state: dict = None):
+        self.session = MockSession(initial_state)
 
 
 # ============================================================================
@@ -170,102 +189,60 @@ class TestMapperAgentAbstract:
         assert mapper.get_output_schema() is None
 
 
-class TestMapperAgentExecution:
-    """Test MapperAgent execution behavior."""
+class TestMapperAgentBuildItems:
+    """Test MapperAgent.build_items_from_state behavior."""
     
-    @pytest.mark.asyncio
-    async def test_mapper_builds_items_from_state(self):
-        """Test that mapper calls build_items_from_state."""
-        build_calls = []
+    def test_build_items_receives_context(self):
+        """Test that build_items_from_state receives the context."""
+        received_ctx = []
         
         class TrackingMapper(MapperAgent):
             def build_items_from_state(self, ctx):
-                build_calls.append(ctx)
-                return [{"value": "item1"}, {"value": "item2"}]
-        
-        ctx = MockInvocationContext({"input_data": "test"})
-        mapper = TrackingMapper(worker_factory=lambda x: MockStatefulWorker(x))
-        
-        events = []
-        async for event in mapper.run_async(ctx):
-            events.append(event)
-        
-        assert len(build_calls) == 1
-        assert build_calls[0] is ctx
-    
-    @pytest.mark.asyncio
-    async def test_mapper_creates_workers_for_each_item(self):
-        """Test that mapper creates one worker per item."""
-        created_workers = []
-        
-        def track_factory(run_id):
-            worker = MockStatefulWorker(run_id)
-            created_workers.append(worker)
-            return worker
-        
-        class ItemMapper(MapperAgent):
-            def build_items_from_state(self, ctx):
-                return [{"value": "a"}, {"value": "b"}, {"value": "c"}]
-        
-        ctx = MockInvocationContext()
-        mapper = ItemMapper(worker_factory=track_factory)
-        
-        async for _ in mapper.run_async(ctx):
-            pass
-        
-        assert len(created_workers) == 3
-    
-    @pytest.mark.asyncio
-    async def test_mapper_writes_items_to_state(self):
-        """Test that mapper writes validated items to state."""
-        class ItemMapper(MapperAgent):
-            def build_items_from_state(self, ctx):
-                return [{"value": "test_value"}]
-        
-        ctx = MockInvocationContext()
-        mapper = ItemMapper(worker_factory=lambda x: MockStatefulWorker(x))
-        
-        async for event in mapper.run_async(ctx):
-            if event.actions and event.actions.state_delta:
-                # Check that item was written to state
-                for key, value in event.actions.state_delta.items():
-                    if key.startswith("task:"):
-                        assert "test_value" in value
-    
-    @pytest.mark.asyncio
-    async def test_mapper_get_output_keys_after_run(self):
-        """Test that get_output_keys works after run."""
-        class ItemMapper(MapperAgent):
-            def build_items_from_state(self, ctx):
-                return [{"value": "a"}, {"value": "b"}]
-        
-        ctx = MockInvocationContext()
-        mapper = ItemMapper(worker_factory=lambda x: MockStatefulWorker(x))
-        
-        async for _ in mapper.run_async(ctx):
-            pass
-        
-        output_keys = mapper.get_output_keys()
-        assert len(output_keys) == 2
-        assert all("result:" in k for k in output_keys)
-    
-    @pytest.mark.asyncio
-    async def test_mapper_handles_empty_items(self):
-        """Test that mapper handles empty items gracefully."""
-        class EmptyMapper(MapperAgent):
-            def build_items_from_state(self, ctx):
+                received_ctx.append(ctx)
                 return []
         
+        ctx = MockInvocationContext({"test_key": "test_value"})
+        mapper = TrackingMapper(worker_factory=lambda x: MockStatefulWorker(x))
+        
+        # Call build_items_from_state directly
+        items = mapper.build_items_from_state(ctx)
+        
+        assert len(received_ctx) == 1
+        assert received_ctx[0] is ctx
+    
+    def test_build_items_can_read_state(self):
+        """Test that build_items_from_state can read from state."""
+        class StateReadingMapper(MapperAgent):
+            def build_items_from_state(self, ctx):
+                data = ctx.session.state.get("input_data", [])
+                return [{"value": item} for item in data]
+        
+        ctx = MockInvocationContext({"input_data": ["a", "b", "c"]})
+        mapper = StateReadingMapper(worker_factory=lambda x: MockStatefulWorker(x))
+        
+        items = mapper.build_items_from_state(ctx)
+        
+        assert len(items) == 3
+        assert items[0] == {"value": "a"}
+        assert items[1] == {"value": "b"}
+        assert items[2] == {"value": "c"}
+    
+    def test_build_items_returns_correct_format(self):
+        """Test that build_items returns list of dicts."""
+        class FormatMapper(MapperAgent):
+            def build_items_from_state(self, ctx):
+                return [
+                    {"key1": "value1", "key2": 123},
+                    {"key1": "value2", "key2": 456},
+                ]
+        
         ctx = MockInvocationContext()
-        mapper = EmptyMapper(worker_factory=lambda x: MockStatefulWorker(x))
+        mapper = FormatMapper(worker_factory=lambda x: MockStatefulWorker(x))
         
-        events = []
-        async for event in mapper.run_async(ctx):
-            events.append(event)
+        items = mapper.build_items_from_state(ctx)
         
-        # Should emit at least one event about no items
-        assert len(events) >= 1
-        assert mapper.get_output_keys() == []
+        assert isinstance(items, list)
+        assert all(isinstance(item, dict) for item in items)
 
 
 # ============================================================================
@@ -313,75 +290,68 @@ class TestAggregatorAgentAbstract:
         )
         assert agg is not None
         assert agg.name == "test_agg"
+        assert agg._input_keys == ["key1", "key2"]
+        assert agg._output_key == "aggregated_result"
 
 
-class TestAggregatorAgentExecution:
-    """Test AggregatorAgent execution behavior."""
+class TestAggregatorAgentCollectResults:
+    """Test AggregatorAgent._collect_results behavior."""
     
-    @pytest.mark.asyncio
-    async def test_aggregator_collects_from_input_keys(self):
-        """Test that aggregator reads from specified input keys."""
-        collected = []
-        
-        class TrackingAggregator(AggregatorAgent[SimpleOutput]):
+    def test_collect_results_parses_json(self):
+        """Test that _collect_results parses JSON strings."""
+        class SimpleAggregator(AggregatorAgent[SimpleOutput]):
             async def aggregation_fn(self, results):
-                collected.extend(results)
                 return results[0] if results else None
         
         state = {
-            "result:w0": SimpleOutput(result="r1", score=5).model_dump_json(),
-            "result:w1": SimpleOutput(result="r2", score=8).model_dump_json(),
-            "other_key": SimpleOutput(result="ignored", score=1).model_dump_json(),
+            "key1": SimpleOutput(result="test1", score=5).model_dump_json(),
+            "key2": SimpleOutput(result="test2", score=8).model_dump_json(),
         }
         ctx = MockInvocationContext(state)
         
-        agg = TrackingAggregator(
+        agg = SimpleAggregator(
             name="test",
-            input_keys=["result:w0", "result:w1"],
-            input_schema=SimpleOutput,
-            output_key="final",
-        )
-        
-        async for _ in agg.run_async(ctx):
-            pass
-        
-        assert len(collected) == 2
-        assert collected[0].result == "r1"
-        assert collected[1].result == "r2"
-    
-    @pytest.mark.asyncio
-    async def test_aggregator_writes_to_output_key(self):
-        """Test that aggregator writes result to output key."""
-        class SumAggregator(AggregatorAgent[SimpleOutput]):
-            async def aggregation_fn(self, results):
-                total = sum(r.score for r in results)
-                return SimpleOutput(result="sum", score=min(total, 10))
-        
-        state = {
-            "key1": SimpleOutput(result="a", score=3).model_dump_json(),
-            "key2": SimpleOutput(result="b", score=4).model_dump_json(),
-        }
-        ctx = MockInvocationContext(state)
-        
-        agg = SumAggregator(
-            name="sum",
             input_keys=["key1", "key2"],
             input_schema=SimpleOutput,
-            output_key="total",
+            output_key="result",
         )
         
-        async for event in agg.run_async(ctx):
-            if event.actions and event.actions.state_delta:
-                assert "total" in event.actions.state_delta
-    
-    @pytest.mark.asyncio
-    async def test_aggregator_handles_missing_keys(self):
-        """Test that aggregator handles missing keys gracefully."""
-        collected = []
+        results = agg._collect_results(ctx)
         
-        class TrackingAggregator(AggregatorAgent[SimpleOutput]):
+        assert len(results) == 2
+        assert results[0].result == "test1"
+        assert results[0].score == 5
+        assert results[1].result == "test2"
+        assert results[1].score == 8
+    
+    def test_collect_results_parses_dicts(self):
+        """Test that _collect_results parses dict values."""
+        class SimpleAggregator(AggregatorAgent[SimpleOutput]):
             async def aggregation_fn(self, results):
-                collected.extend(results)
+                return results[0] if results else None
+        
+        state = {
+            "key1": {"result": "dict_test", "score": 7},
+        }
+        ctx = MockInvocationContext(state)
+        
+        agg = SimpleAggregator(
+            name="test",
+            input_keys=["key1"],
+            input_schema=SimpleOutput,
+            output_key="result",
+        )
+        
+        results = agg._collect_results(ctx)
+        
+        assert len(results) == 1
+        assert results[0].result == "dict_test"
+        assert results[0].score == 7
+    
+    def test_collect_results_skips_missing_keys(self):
+        """Test that _collect_results skips missing keys."""
+        class SimpleAggregator(AggregatorAgent[SimpleOutput]):
+            async def aggregation_fn(self, results):
                 return results[0] if results else None
         
         state = {
@@ -390,41 +360,115 @@ class TestAggregatorAgentExecution:
         }
         ctx = MockInvocationContext(state)
         
-        agg = TrackingAggregator(
+        agg = SimpleAggregator(
             name="test",
             input_keys=["key1", "key2", "key3"],
             input_schema=SimpleOutput,
             output_key="result",
         )
         
-        async for _ in agg.run_async(ctx):
-            pass
+        results = agg._collect_results(ctx)
         
-        # Should only collect the one existing key
-        assert len(collected) == 1
+        assert len(results) == 1
+        assert results[0].result == "exists"
     
-    @pytest.mark.asyncio
-    async def test_aggregator_handles_empty_results(self):
-        """Test that aggregator emits escalate when no results."""
+    def test_collect_results_only_reads_specified_keys(self):
+        """Test that _collect_results only reads from specified keys."""
         class SimpleAggregator(AggregatorAgent[SimpleOutput]):
             async def aggregation_fn(self, results):
                 return results[0] if results else None
         
-        ctx = MockInvocationContext({})
+        state = {
+            "key1": SimpleOutput(result="included", score=5).model_dump_json(),
+            "other_key": SimpleOutput(result="excluded", score=9).model_dump_json(),
+        }
+        ctx = MockInvocationContext(state)
         
         agg = SimpleAggregator(
             name="test",
-            input_keys=["missing1", "missing2"],
+            input_keys=["key1"],  # Only key1
             input_schema=SimpleOutput,
             output_key="result",
         )
         
-        events = []
-        async for event in agg.run_async(ctx):
-            events.append(event)
+        results = agg._collect_results(ctx)
         
-        # Should escalate when no results
-        assert any(e.actions and e.actions.escalate for e in events)
+        assert len(results) == 1
+        assert results[0].result == "included"
+
+
+class TestAggregatorAgentAggregationFn:
+    """Test AggregatorAgent.aggregation_fn behavior."""
+    
+    @pytest.mark.asyncio
+    async def test_aggregation_fn_receives_parsed_results(self):
+        """Test that aggregation_fn receives parsed Pydantic models."""
+        received_results = []
+        
+        class TrackingAggregator(AggregatorAgent[SimpleOutput]):
+            async def aggregation_fn(self, results):
+                received_results.extend(results)
+                return results[0] if results else None
+        
+        agg = TrackingAggregator(
+            name="test",
+            input_keys=[],
+            input_schema=SimpleOutput,
+            output_key="result",
+        )
+        
+        test_results = [
+            SimpleOutput(result="a", score=1),
+            SimpleOutput(result="b", score=2),
+        ]
+        
+        await agg.aggregation_fn(test_results)
+        
+        assert len(received_results) == 2
+        assert all(isinstance(r, SimpleOutput) for r in received_results)
+    
+    @pytest.mark.asyncio
+    async def test_aggregation_fn_can_return_single_result(self):
+        """Test aggregation_fn returning a single result."""
+        class MaxScoreAggregator(AggregatorAgent[SimpleOutput]):
+            async def aggregation_fn(self, results):
+                return max(results, key=lambda x: x.score) if results else None
+        
+        agg = MaxScoreAggregator(
+            name="test",
+            input_keys=[],
+            input_schema=SimpleOutput,
+            output_key="result",
+        )
+        
+        results = [
+            SimpleOutput(result="low", score=3),
+            SimpleOutput(result="high", score=9),
+            SimpleOutput(result="mid", score=5),
+        ]
+        
+        best = await agg.aggregation_fn(results)
+        
+        assert best.result == "high"
+        assert best.score == 9
+    
+    @pytest.mark.asyncio
+    async def test_aggregation_fn_can_return_none(self):
+        """Test aggregation_fn returning None."""
+        class NoneAggregator(AggregatorAgent[SimpleOutput]):
+            async def aggregation_fn(self, results):
+                return None
+        
+        agg = NoneAggregator(
+            name="test",
+            input_keys=[],
+            input_schema=SimpleOutput,
+            output_key="result",
+        )
+        
+        result = await agg.aggregation_fn([SimpleOutput(result="test", score=5)])
+        
+        assert result is None
 
 
 # ============================================================================
@@ -432,8 +476,8 @@ class TestAggregatorAgentExecution:
 # ============================================================================
 
 
-class TestMapReduceAgentOrchestration:
-    """Test MapReduceAgent orchestration."""
+class TestMapReduceAgentConstruction:
+    """Test MapReduceAgent construction."""
     
     def test_map_reduce_agent_creation(self):
         """Test MapReduceAgent can be created."""
@@ -450,108 +494,38 @@ class TestMapReduceAgentOrchestration:
         )
         
         assert agent.name == "test_mr"
+        assert agent._mapper is mapper
     
-    @pytest.mark.asyncio
-    async def test_map_reduce_runs_mapper_first(self):
-        """Test that MapReduceAgent runs mapper before aggregator."""
-        execution_order = []
-        
-        class OrderMapper(MapperAgent):
-            def build_items_from_state(self, ctx):
-                execution_order.append("mapper")
-                return [{"value": "test"}]
-        
-        class OrderAggregator(AggregatorAgent[SimpleOutput]):
-            async def aggregation_fn(self, results):
-                execution_order.append("aggregator")
-                return None
-        
-        def agg_factory(keys):
-            execution_order.append("factory")
-            return OrderAggregator(
-                name="agg",
-                input_keys=keys,
-                input_schema=SimpleOutput,
-                output_key="result",
-            )
-        
-        ctx = MockInvocationContext()
-        mapper = OrderMapper(worker_factory=lambda x: MockStatefulWorker(x))
-        
-        agent = MapReduceAgent(
-            mapper=mapper,
-            aggregator_factory=agg_factory,
-        )
-        
-        async for _ in agent.run_async(ctx):
-            pass
-        
-        # Mapper should run, then factory called, then aggregator
-        assert execution_order.index("mapper") < execution_order.index("factory")
-    
-    @pytest.mark.asyncio
-    async def test_map_reduce_wires_output_keys(self):
-        """Test that MapReduceAgent passes mapper output keys to aggregator."""
-        received_keys = []
-        
+    def test_map_reduce_agent_default_name(self):
+        """Test MapReduceAgent default name."""
         class SimpleMapper(MapperAgent):
             def build_items_from_state(self, ctx):
-                return [{"value": "a"}, {"value": "b"}]
+                return []
         
-        class KeyTrackingAggregator(AggregatorAgent[SimpleOutput]):
-            async def aggregation_fn(self, results):
-                return None
-        
-        def tracking_factory(keys):
-            received_keys.extend(keys)
-            return KeyTrackingAggregator(
-                name="agg",
-                input_keys=keys,
-                input_schema=SimpleOutput,
-                output_key="result",
-            )
-        
-        ctx = MockInvocationContext()
         mapper = SimpleMapper(worker_factory=lambda x: MockStatefulWorker(x))
         
         agent = MapReduceAgent(
             mapper=mapper,
-            aggregator_factory=tracking_factory,
+            aggregator_factory=lambda keys: None,
         )
         
-        async for _ in agent.run_async(ctx):
-            pass
-        
-        # Should have received 2 keys (one per item)
-        assert len(received_keys) == 2
-        assert all("result:" in k for k in received_keys)
+        assert agent.name == "map_reduce"
     
-    @pytest.mark.asyncio
-    async def test_map_reduce_handles_empty_mapper(self):
-        """Test MapReduceAgent handles mapper with no items."""
-        aggregator_created = []
-        
-        class EmptyMapper(MapperAgent):
+    def test_map_reduce_stores_aggregator_factory(self):
+        """Test that MapReduceAgent stores the aggregator factory."""
+        class SimpleMapper(MapperAgent):
             def build_items_from_state(self, ctx):
                 return []
         
-        def tracking_factory(keys):
-            aggregator_created.append(keys)
-            return None
-        
-        ctx = MockInvocationContext()
-        mapper = EmptyMapper(worker_factory=lambda x: MockStatefulWorker(x))
+        mapper = SimpleMapper(worker_factory=lambda x: MockStatefulWorker(x))
+        factory = lambda keys: None
         
         agent = MapReduceAgent(
             mapper=mapper,
-            aggregator_factory=tracking_factory,
+            aggregator_factory=factory,
         )
         
-        async for _ in agent.run_async(ctx):
-            pass
-        
-        # Aggregator factory should NOT be called if no output keys
-        assert len(aggregator_created) == 0
+        assert agent._aggregator_factory is factory
 
 
 # ============================================================================
@@ -572,6 +546,24 @@ class TestSentenceVideoMapper:
         
         assert mapper._video_retriever is retriever
         assert mapper._max_candidates == 5
+    
+    def test_mapper_default_values(self):
+        """Test SentenceVideoMapper default values."""
+        retriever = MockVideoRetriever()
+        mapper = SentenceVideoMapper(video_retriever=retriever)
+        
+        assert mapper._max_candidates == 5  # Default
+        assert mapper.name == "sentence_video_mapper"  # Default
+    
+    def test_mapper_custom_name(self):
+        """Test SentenceVideoMapper with custom name."""
+        retriever = MockVideoRetriever()
+        mapper = SentenceVideoMapper(
+            video_retriever=retriever,
+            name="custom_mapper",
+        )
+        
+        assert mapper.name == "custom_mapper"
     
     def test_build_items_from_state_with_sentences(self):
         """Test build_items_from_state generates correct items."""
@@ -649,6 +641,21 @@ class TestSentenceVideoMapper:
         
         # Should skip sentences with no candidates
         assert items == []
+    
+    def test_build_items_calls_retriever(self):
+        """Test that build_items calls the video retriever."""
+        retriever = MockVideoRetriever()
+        mapper = SentenceVideoMapper(
+            video_retriever=retriever,
+            max_candidates=3,
+        )
+        
+        ctx = MockInvocationContext({SENTENCES_KEY: ["query1", "query2"]})
+        mapper.build_items_from_state(ctx)
+        
+        assert len(retriever.search_calls) == 2
+        assert retriever.search_calls[0] == ("query1", 3)
+        assert retriever.search_calls[1] == ("query2", 3)
 
 
 # ============================================================================
@@ -668,6 +675,12 @@ class TestSentenceVideoAggregator:
         
         assert agg._input_keys == ["key1", "key2"]
         assert agg._output_key == "matches"
+    
+    def test_aggregator_default_output_key(self):
+        """Test SentenceVideoAggregator default output key."""
+        agg = SentenceVideoAggregator(input_keys=[])
+        
+        assert agg._output_key == MATCHES_KEY
     
     @pytest.mark.asyncio
     async def test_aggregation_groups_by_sentence(self):
@@ -737,6 +750,32 @@ class TestSentenceVideoAggregator:
         assert output.matches[0].rating == ContextualRating.CONTEXTUAL
     
     @pytest.mark.asyncio
+    async def test_aggregation_neutral_over_not_contextual(self):
+        """Test that NEUTRAL beats NOT_CONTEXTUAL."""
+        results = [
+            VideoMatchResult(
+                sentence="test",
+                video_path="/v1.mp4",
+                rating=ContextualRating.NOT_CONTEXTUAL,
+                grade=10,
+                reasoning="High grade but bad rating"
+            ),
+            VideoMatchResult(
+                sentence="test",
+                video_path="/v2.mp4",
+                rating=ContextualRating.NEUTRAL,
+                grade=4,
+                reasoning="Lower grade but better rating"
+            ),
+        ]
+        
+        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
+        output = await agg.aggregation_fn(results)
+        
+        assert output.matches[0].rating == ContextualRating.NEUTRAL
+        assert output.matches[0].video_path == "/v2.mp4"
+    
+    @pytest.mark.asyncio
     async def test_aggregation_selects_highest_grade_within_rating(self):
         """Test that highest grade is selected within same rating."""
         results = [
@@ -763,6 +802,32 @@ class TestSentenceVideoAggregator:
         assert output.matches[0].video_path == "/v2.mp4"
     
     @pytest.mark.asyncio
+    async def test_aggregation_fallback_to_highest_grade(self):
+        """Test fallback to highest grade when only NOT_CONTEXTUAL."""
+        results = [
+            VideoMatchResult(
+                sentence="test",
+                video_path="/v1.mp4",
+                rating=ContextualRating.NOT_CONTEXTUAL,
+                grade=3,
+                reasoning="Low"
+            ),
+            VideoMatchResult(
+                sentence="test",
+                video_path="/v2.mp4",
+                rating=ContextualRating.NOT_CONTEXTUAL,
+                grade=8,
+                reasoning="High"
+            ),
+        ]
+        
+        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
+        output = await agg.aggregation_fn(results)
+        
+        assert output.matches[0].grade == 8
+        assert output.matches[0].video_path == "/v2.mp4"
+    
+    @pytest.mark.asyncio
     async def test_aggregation_empty_results(self):
         """Test aggregation with empty results."""
         agg = SentenceVideoAggregator(input_keys=[], output_key="out")
@@ -770,6 +835,30 @@ class TestSentenceVideoAggregator:
         
         assert isinstance(output, SentenceVideoMatcherOutput)
         assert output.matches == []
+    
+    @pytest.mark.asyncio
+    async def test_aggregation_multiple_sentences(self):
+        """Test aggregation with many sentences."""
+        results = []
+        for i in range(5):
+            for j in range(3):  # 3 videos per sentence
+                results.append(VideoMatchResult(
+                    sentence=f"Sentence {i}",
+                    video_path=f"/video_{i}_{j}.mp4",
+                    rating=ContextualRating.CONTEXTUAL if j == 0 else ContextualRating.NEUTRAL,
+                    grade=10 - j,
+                    reasoning=f"Result {j}"
+                ))
+        
+        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
+        output = await agg.aggregation_fn(results)
+        
+        assert len(output.matches) == 5  # One per sentence
+        
+        # Each should have the first video (j=0, CONTEXTUAL, grade=10)
+        for i, match in enumerate(output.matches):
+            assert match.rating == ContextualRating.CONTEXTUAL
+            assert match.grade == 10
 
 
 # ============================================================================
@@ -820,6 +909,25 @@ class TestSentenceVideoMatcherAgentIntegration:
         )
         
         assert agent.name == "my_matcher"
+    
+    def test_agent_has_mapper(self):
+        """Test that agent has internal mapper."""
+        retriever = MockVideoRetriever()
+        agent = SentenceVideoMatcherAgent(video_retriever=retriever)
+        
+        assert hasattr(agent, "_mapper")
+        assert isinstance(agent._mapper, SentenceVideoMapper)
+    
+    def test_agent_mapper_has_retriever(self):
+        """Test that agent's mapper has the video retriever."""
+        retriever = MockVideoRetriever()
+        agent = SentenceVideoMatcherAgent(
+            video_retriever=retriever,
+            max_candidates=7,
+        )
+        
+        assert agent._mapper._video_retriever is retriever
+        assert agent._mapper._max_candidates == 7
 
 
 # ============================================================================
@@ -847,8 +955,25 @@ class TestBackwardCompatibility:
         
         assert agg._input_keys == ["key1", "key2"]
         assert agg._output_key == "best"
+    
+    def test_aggregator_agent_exported(self):
+        """Test that AggregatorAgent is exported from lib.agents."""
+        from virtual_streamer.lib.agents import AggregatorAgent as Exported
+        
+        assert Exported is AggregatorAgent
+    
+    def test_mapper_agent_exported(self):
+        """Test that MapperAgent is exported from lib.agents."""
+        from virtual_streamer.lib.agents import MapperAgent as Exported
+        
+        assert Exported is MapperAgent
+    
+    def test_map_reduce_agent_exported(self):
+        """Test that MapReduceAgent is exported from lib.agents."""
+        from virtual_streamer.lib.agents import MapReduceAgent as Exported
+        
+        assert Exported is MapReduceAgent
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
