@@ -1,3 +1,11 @@
+"""
+Callbacks for VideoMatcher agent.
+
+These callbacks handle:
+- InjectVisionFrameCallback: Reads video/sentence from state, extracts frame, injects into LLM request
+- StoreJudgementCallback: Parses LLM response and stores judgement in state
+"""
+
 import logging
 from typing import Optional
 
@@ -5,137 +13,192 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmResponse, LlmRequest
 from google.genai import types
 
-from virtual_streamer.agents.common.state_keys import task_key, result_key
-from virtual_streamer.agents.video_matcher.schema import VideoJudgementOutput, VideoSentenceInput
-from virtual_streamer.lib.agents.callbacks import (
-    BeforeModelCallback,
-    AfterModelCallback,
+from virtual_streamer.lib.agents import (
+    StateInputCallback,
+    StateOutputCallback,
     extract_llm_response_json,
-    extract_llm_content_json
 )
-from virtual_streamer.agents.common.utils import (
-    extract_middle_frame,
+from virtual_streamer.agents.video_matcher.schema import (
+    VideoJudgementOutput,
+    VideoSentenceInput,
 )
+from virtual_streamer.agents.common.utils import extract_middle_frame
 
-VIDEO_PATH_KEY = "video_path"
-SENTENCE_KEY = "sentence"
+logger = logging.getLogger(__name__)
 
 
-class InjectVisionFrameCallback(BeforeModelCallback):
+class InjectVisionFrameCallback(StateInputCallback):
     """
     Callback that injects the base64 video frame into the LLM request.
 
     This enables the vision LLM to analyze the video frame when judging
-    the video-dialogue match.
+    the video-dialogue match. It reads the video path and sentence from
+    the namespaced state key, extracts the middle frame, and injects it
+    into the LLM request.
     """
 
-
-    def __init__(self, run_id: str):
+    def __init__(self, run_id: Optional[str] = None):
         """
         Initialize the callback.
 
         Args:
-            run_id: Unique ID for this processing run
-            worker_name: Name of this worker
+            run_id: Unique ID for this processing run (e.g., "s0_w1")
         """
-        self.run_id = run_id
+        super().__init__(
+            input_key="video_sentence",
+            input_schema=VideoSentenceInput,
+            run_id=run_id,
+        )
 
     async def __call__(
-            self,
-            callback_context: CallbackContext,
-            llm_request: LlmRequest,
+        self,
+        callback_context: CallbackContext,
+        llm_request: LlmRequest,
     ) -> Optional[types.Content]:
         """
-        Inject the vision frame into state for the LLM to use.
+        Inject the vision frame into the LLM request.
 
-        The frame is stored in a special key that the LLM agent
-        will use for vision input.
+        Reads video_path and sentence from state, extracts the middle frame
+        from the video, and appends it to the LLM request for vision analysis.
 
         Args:
             callback_context: Context with access to mutable state
+            llm_request: The LLM request to modify
 
         Returns:
             None to continue with LLM call
-        """
-        frame_key = task_key(self.run_id, VIDEO_PATH_KEY)
-        video_path = callback_context.state.get(frame_key)
-        sentence_key = task_key(self.run_id, SENTENCE_KEY)
-        sentence = callback_context.state.get(sentence_key)
 
-        if not (sentence and video_path):
-            # Try to parse the input
-            to_parse = llm_request.contents[0].parts[0].text
-            video_sentence = VideoSentenceInput.model_validate_json(to_parse)
-            logging.info(f"Video sentence: {video_sentence}")
+        Raises:
+            Exception: If sentence/video_path are missing or frame extraction fails
+        """
+        input_key = self.get_input_key()
+        
+        # Try to read from state first
+        state_data = callback_context.state.get(input_key)
+        
+        if state_data:
+            # Parse from state
+            video_sentence = self.input_schema.model_validate_json(state_data)
             sentence = video_sentence.sentence
             video_path = video_sentence.video_path
+        else:
+            # Fallback: try to parse from request content
+            try:
+                to_parse = llm_request.contents[0].parts[0].text
+                video_sentence = self.input_schema.model_validate_json(to_parse)
+                logger.info(f"Parsed video sentence from request: {video_sentence}")
+                sentence = video_sentence.sentence
+                video_path = video_sentence.video_path
+            except Exception as e:
+                raise Exception(
+                    f"Could not find input at key '{input_key}' in state "
+                    f"or parse from request: {e}"
+                )
+        
         if not (sentence and video_path):
-            raise Exception(f"Sentence and video path are empty : {sentence}, {video_path} for run {self.run_id}")
+            raise Exception(
+                f"Sentence and video path are empty: {sentence}, {video_path} "
+                f"for key '{input_key}'"
+            )
 
+        # Extract middle frame from video
         frame = extract_middle_frame(video_path)
         if frame is None:
-            raise Exception("Failed to extract frame")
+            raise Exception(f"Failed to extract frame from {video_path}")
+        
+        # Append sentence and frame to user content
         callback_context.user_content.parts.append(
             types.Part.from_text(text=f"Sentence : {sentence}")
         )
         callback_context.user_content.parts.append(
             types.Part.from_bytes(data=frame, mime_type="image/jpeg")
         )
+        
+        # Also append to request contents
         llm_request.contents[0].parts.append(
             types.Part.from_bytes(data=frame, mime_type="image/jpeg")
         )
-        logging.info(f"Injected vision frame : {callback_context.user_content.parts}")
-        # Must return None to avoid shortcut
+        
+        logger.info(f"Injected vision frame for: {sentence[:50]}...")
+        
+        # Return None to continue with LLM call
         return None
 
 
-class StoreJudgementCallback(AfterModelCallback):
+class StoreJudgementCallback(StateOutputCallback):
     """
     Callback that parses the LLM response and stores the judgement
     in namespaced state.
     """
-    RESULT_KEY = "judgement_result"
 
-    def __init__(self, run_id: str | None = None):
+    def __init__(self, run_id: Optional[str] = None):
         """
         Initialize the callback.
 
         Args:
-            run_id: Unique ID for this processing run
-            worker_name: Name of this worker
+            run_id: Unique ID for this processing run (e.g., "s0_w1")
         """
-        self.run_id = run_id
-
-    @property
-    def result_key(self):
-        return self.RESULT_KEY if self.run_id is None else f"{self.run_id}_{self.RESULT_KEY}"
+        super().__init__(
+            output_key="judgement",
+            output_schema=VideoJudgementOutput,
+            run_id=run_id,
+        )
 
     async def __call__(
-            self,
-            callback_context: CallbackContext,
-            llm_response: LlmResponse,
-    ) -> LlmResponse | None:
+        self,
+        callback_context: CallbackContext,
+        llm_response: LlmResponse,
+    ) -> Optional[LlmResponse]:
         """
         Parse judgement and store in namespaced state.
 
         Args:
             callback_context: Context with access to mutable state
             llm_response: Response from the vision LLM
+
+        Returns:
+            Modified LlmResponse with video frame appended for display,
+            or None if video data not found.
         """
         # Parse the structured output into VideoJudgementOutput model
-        parsed: VideoJudgementOutput = extract_llm_response_json(llm_response, VideoJudgementOutput)
-        # Store in namespaced result key
-        callback_context.state[result_key(self.run_id, self.RESULT_KEY)] = parsed.rating
-
-        # Optional part : display the judgement better with the image
-        frame_key = task_key(self.run_id, VIDEO_PATH_KEY)
-        video_path = callback_context.state.get(frame_key)
-        sentence_key = task_key(self.run_id, SENTENCE_KEY)
-        sentence = callback_context.state.get(sentence_key)
-        if not (sentence and video_path):
-            logging.warning("Did not find the video data or sentence")
+        parsed: VideoJudgementOutput = extract_llm_response_json(
+            llm_response, self.output_schema
+        )
+        
+        if parsed is None:
+            logger.warning("Failed to parse judgement from LLM response")
             return None
-        frame = extract_middle_frame(video_path)
-        llm_response.content.parts.append(
-            types.Part(inline_data=types.Blob(data=frame, display_name="video_frame", mime_type="image/jpeg")))
-        return llm_response
+        
+        # Store the full parsed result in state
+        output_key = self.get_output_key()
+        callback_context.state[output_key] = parsed.model_dump_json()
+        
+        logger.info(
+            f"Stored judgement at '{output_key}': "
+            f"rating={parsed.rating}, grade={parsed.grade}"
+        )
+        
+        # Optional: Try to append the video frame for better display
+        # Read from input key if available
+        input_key = f"task:{self.run_id}:video_sentence" if self.run_id else "video_sentence"
+        state_data = callback_context.state.get(input_key)
+        
+        if state_data:
+            try:
+                video_sentence = VideoSentenceInput.model_validate_json(state_data)
+                frame = extract_middle_frame(video_sentence.video_path)
+                if frame:
+                    llm_response.content.parts.append(
+                        types.Part(
+                            inline_data=types.Blob(
+                                data=frame,
+                                display_name="video_frame",
+                                mime_type="image/jpeg"
+                            )
+                        )
+                    )
+                    return llm_response
+            except Exception as e:
+                logger.debug(f"Could not append frame to response: {e}")
+        
+        return None
