@@ -148,4 +148,17 @@ class StatefulLlmAgent(BaseLlmAgent):
             The full namespaced output key (e.g., "result:s0_w1:judgement")
         """
         return self._output_callback.get_output_key()
+    
+    def get_output_schema(self) -> Type[BaseModel]:
+        """
+        Get the Pydantic model for output validation.
+        
+        Delegates to the output callback's get_output_schema method.
+        This enables aggregators to know what schema to expect when
+        collecting results from workers.
+        
+        Returns:
+            The Pydantic model class for output validation
+        """
+        return self._output_callback.get_output_schema()
 

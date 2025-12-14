@@ -53,6 +53,10 @@ class StatefulWorker(Protocol):
     def get_output_key(self) -> str:
         """Return the state key where output will be written."""
         ...
+    
+    def get_output_schema(self) -> Type[BaseModel]:
+        """Return the Pydantic model for output validation."""
+        ...
 
 
 # Type alias for worker factory function
@@ -213,9 +217,11 @@ class AbstractAggregator(BaseAgent, Generic[T]):
                              If None, result is only emitted in event.
         """
         super().__init__(name=name)
-        self.state_input_keys = state_input_keys
-        self.input_schema = input_schema
-        self.result_state_key = result_state_key
+        # Use object.__setattr__ to bypass Pydantic's attribute handling
+        # since BaseAgent uses Pydantic and would reject these custom fields
+        object.__setattr__(self, 'state_input_keys', state_input_keys)
+        object.__setattr__(self, 'input_schema', input_schema)
+        object.__setattr__(self, 'result_state_key', result_state_key)
     
     def _collect_results(self, ctx) -> List[T]:
         """

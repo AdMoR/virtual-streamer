@@ -1,9 +1,13 @@
 """
-Pydantic schema for VideoMatcherAgent output.
+Pydantic schemas for VideoMatcherAgent.
+
+Schemas:
+- VideoSentenceInput: Input for video matching (sentence + video path)
+- VideoJudgementOutput: LLM output (rating + grade + reasoning)
+- VideoMatchResult: Full result combining input and output (for aggregation)
 """
 
 from enum import Enum
-from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -15,9 +19,15 @@ class ContextualRating(str, Enum):
     FAILURE = "FAILURE"
 
 
+class VideoSentenceInput(BaseModel):
+    """Input for video matching: sentence and video path."""
+    sentence: str = Field(description="The dialogue sentence to match")
+    video_path: str = Field(description="Path to the video file to evaluate")
+
+
 class VideoJudgementOutput(BaseModel):
     """
-    Structured output from video-dialogue matching judgement.
+    Structured output from vision LLM judgement.
     
     The vision LLM analyzes a video frame and determines how well
     it matches the dialogue line being spoken.
@@ -38,6 +48,32 @@ class VideoJudgementOutput(BaseModel):
                     "describing what visual elements match or don't match the dialogue."
     )
 
-class VideoSentenceInput(BaseModel):
-    sentence: str
-    video_path: str
+
+class VideoMatchResult(BaseModel):
+    """
+    Complete video match result combining input and LLM output.
+    
+    This is what gets stored in state and used by aggregators.
+    Includes the video_path so we know which video was judged.
+    """
+    
+    sentence: str = Field(description="The original sentence being matched")
+    video_path: str = Field(description="Path to the video that was evaluated")
+    rating: ContextualRating = Field(description="Match quality rating")
+    grade: int = Field(description="Numeric grade for ranking", ge=0, le=10)
+    reasoning: str = Field(description="Explanation of the rating")
+    
+    @classmethod
+    def from_input_and_output(
+        cls,
+        input_data: VideoSentenceInput,
+        output_data: VideoJudgementOutput,
+    ) -> "VideoMatchResult":
+        """Create VideoMatchResult by combining input and output."""
+        return cls(
+            sentence=input_data.sentence,
+            video_path=input_data.video_path,
+            rating=output_data.rating,
+            grade=output_data.grade,
+            reasoning=output_data.reasoning,
+        )

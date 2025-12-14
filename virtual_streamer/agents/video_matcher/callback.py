@@ -20,6 +20,7 @@ from virtual_streamer.lib.agents import (
 )
 from virtual_streamer.agents.video_matcher.schema import (
     VideoJudgementOutput,
+    VideoMatchResult,
     VideoSentenceInput,
 )
 from virtual_streamer.agents.common.utils import extract_middle_frame
@@ -127,8 +128,12 @@ class InjectVisionFrameCallback(StateInputCallback):
 
 class StoreJudgementCallback(StateOutputCallback):
     """
-    Callback that parses the LLM response and stores the judgement
-    in namespaced state.
+    Callback that parses the LLM response and stores the full match result
+    (including video_path) in namespaced state.
+    
+    The output schema is VideoMatchResult which combines:
+    - Input data (sentence, video_path)
+    - LLM output (rating, grade, reasoning)
     """
 
     def __init__(self, run_id: Optional[str] = None):
@@ -140,7 +145,7 @@ class StoreJudgementCallback(StateOutputCallback):
         """
         super().__init__(
             output_key="judgement",
-            output_schema=VideoJudgementOutput,
+            output_schema=VideoMatchResult,
             run_id=run_id,
         )
 
@@ -150,7 +155,7 @@ class StoreJudgementCallback(StateOutputCallback):
         llm_response: LlmResponse,
     ) -> Optional[LlmResponse]:
         """
-        Parse judgement and store in namespaced state.
+        Parse judgement, combine with input, and store full result in state.
 
         Args:
             callback_context: Context with access to mutable state
@@ -160,45 +165,56 @@ class StoreJudgementCallback(StateOutputCallback):
             Modified LlmResponse with video frame appended for display,
             or None if video data not found.
         """
-        # Parse the structured output into VideoJudgementOutput model
-        parsed: VideoJudgementOutput = extract_llm_response_json(
-            llm_response, self.output_schema
+        # Parse the LLM output into VideoJudgementOutput
+        llm_output: VideoJudgementOutput = extract_llm_response_json(
+            llm_response, VideoJudgementOutput
         )
         
-        if parsed is None:
+        if llm_output is None:
             logger.warning("Failed to parse judgement from LLM response")
             return None
         
-        # Store the full parsed result in state
-        output_key = self.get_output_key()
-        callback_context.state[output_key] = parsed.model_dump_json()
-        
-        logger.info(
-            f"Stored judgement at '{output_key}': "
-            f"rating={parsed.rating}, grade={parsed.grade}"
-        )
-        
-        # Optional: Try to append the video frame for better display
-        # Read from input key if available
+        # Read the input data to get sentence and video_path
         input_key = f"task:{self.run_id}:video_sentence" if self.run_id else "video_sentence"
         state_data = callback_context.state.get(input_key)
         
-        if state_data:
-            try:
-                video_sentence = VideoSentenceInput.model_validate_json(state_data)
-                frame = extract_middle_frame(video_sentence.video_path)
-                if frame:
-                    llm_response.content.parts.append(
-                        types.Part(
-                            inline_data=types.Blob(
-                                data=frame,
-                                display_name="video_frame",
-                                mime_type="image/jpeg"
-                            )
+        if not state_data:
+            logger.warning(f"Could not find input data at key '{input_key}'")
+            # Store just the LLM output without video_path
+            output_key = self.get_output_key()
+            callback_context.state[output_key] = llm_output.model_dump_json()
+            return None
+        
+        # Parse input data
+        input_data = VideoSentenceInput.model_validate_json(state_data)
+        
+        # Combine input and output into VideoMatchResult
+        result = VideoMatchResult.from_input_and_output(input_data, llm_output)
+        
+        # Store the full result in state
+        output_key = self.get_output_key()
+        callback_context.state[output_key] = result.model_dump_json()
+        
+        logger.info(
+            f"Stored match result at '{output_key}': "
+            f"video={result.video_path}, rating={result.rating}, grade={result.grade}"
+        )
+        
+        # Optional: Append the video frame for better display
+        try:
+            frame = extract_middle_frame(input_data.video_path)
+            if frame:
+                llm_response.content.parts.append(
+                    types.Part(
+                        inline_data=types.Blob(
+                            data=frame,
+                            display_name="video_frame",
+                            mime_type="image/jpeg"
                         )
                     )
-                    return llm_response
-            except Exception as e:
-                logger.debug(f"Could not append frame to response: {e}")
+                )
+                return llm_response
+        except Exception as e:
+            logger.debug(f"Could not append frame to response: {e}")
         
         return None
