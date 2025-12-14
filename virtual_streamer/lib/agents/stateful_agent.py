@@ -104,9 +104,10 @@ class StatefulLlmAgent(BaseLlmAgent):
             **kwargs,
         )
         
-        # Store callbacks after super().__init__ for our delegation methods
-        object.__setattr__(self, '_input_callback', input_callback)
-        object.__setattr__(self, '_output_callback', output_callback)
+        # Store callbacks for our delegation methods
+        # (underscore prefix bypasses Pydantic's field validation)
+        self._input_callback = input_callback
+        self._output_callback = output_callback
         
         logger.debug(
             f"StatefulLlmAgent '{name}' initialized with "

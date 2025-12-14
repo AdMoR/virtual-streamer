@@ -114,10 +114,10 @@ class MapperAgent(ParallelAgent):
             name: Name for this agent (default: "mapper")
         """
         super().__init__(name=name, sub_agents=[])
-        # Use object.__setattr__ to bypass Pydantic
-        object.__setattr__(self, 'items', items)
-        object.__setattr__(self, 'worker_factory', worker_factory)
-        object.__setattr__(self, '_workers', [])
+        # Use underscore prefix to bypass Pydantic's field validation
+        self._items = items
+        self._worker_factory = worker_factory
+        self._workers = []
 
     async def _run_async_impl(self, ctx):
         """
@@ -138,9 +138,9 @@ class MapperAgent(ParallelAgent):
         self._workers = []
         state_delta: Dict[str, str] = {"current_run": run_id}
         
-        for i, item in enumerate(self.items):
+        for i, item in enumerate(self._items):
             worker_run_id = f"{run_id}:w{i}"
-            worker = self.worker_factory(worker_run_id)
+            worker = self._worker_factory(worker_run_id)
             
             # Get the input key and schema from the worker (type-safe!)
             input_key = worker.get_input_key()
@@ -163,7 +163,7 @@ class MapperAgent(ParallelAgent):
             author=self.name,
             content=types.Content(
                 role=self.name,
-                parts=[types.Part(text=f"Run {run_id}: distributing {len(self.items)} tasks")]
+                parts=[types.Part(text=f"Run {run_id}: distributing {len(self._items)} tasks")]
             ),
             actions=EventActions(state_delta=state_delta)
         )
@@ -262,11 +262,10 @@ class AbstractAggregator(BaseAgent, Generic[T]):
                              If None, result is only emitted in event.
         """
         super().__init__(name=name)
-        # Use object.__setattr__ to bypass Pydantic's attribute handling
-        # since BaseAgent uses Pydantic and would reject these custom fields
-        object.__setattr__(self, 'state_input_keys', state_input_keys)
-        object.__setattr__(self, 'input_schema', input_schema)
-        object.__setattr__(self, 'result_state_key', result_state_key)
+        # Use underscore prefix to bypass Pydantic's field validation
+        self._state_input_keys = state_input_keys
+        self._input_schema = input_schema
+        self._result_state_key = result_state_key
     
     def _collect_results(self, ctx) -> List[T]:
         """
@@ -282,7 +281,7 @@ class AbstractAggregator(BaseAgent, Generic[T]):
         """
         results: List[T] = []
         
-        for key in self.state_input_keys:
+        for key in self._state_input_keys:
             value = ctx.session.state.get(key)
             
             if value is None:
@@ -291,10 +290,10 @@ class AbstractAggregator(BaseAgent, Generic[T]):
             
             try:
                 if isinstance(value, str):
-                    parsed = self.input_schema.model_validate_json(value)
+                    parsed = self._input_schema.model_validate_json(value)
                 elif isinstance(value, dict):
-                    parsed = self.input_schema.model_validate(value)
-                elif isinstance(value, self.input_schema):
+                    parsed = self._input_schema.model_validate(value)
+                elif isinstance(value, self._input_schema):
                     parsed = value
                 else:
                     logger.warning(
@@ -333,25 +332,25 @@ class AbstractAggregator(BaseAgent, Generic[T]):
             )
             return
         
-        logger.info(f"Aggregating {len(results)} results from {len(self.state_input_keys)} keys")
+        logger.info(f"Aggregating {len(results)} results from {len(self._state_input_keys)} keys")
         
         # Aggregate results (subclass implements)
         aggregated = await self.aggregation_fn(results)
         
         # Prepare state delta if result key is specified
         state_delta: Dict[str, str] = {}
-        if self.result_state_key and aggregated is not None:
+        if self._result_state_key and aggregated is not None:
             if isinstance(aggregated, BaseModel):
-                state_delta[self.result_state_key] = aggregated.model_dump_json()
+                state_delta[self._result_state_key] = aggregated.model_dump_json()
             else:
-                state_delta[self.result_state_key] = json.dumps(aggregated)
+                state_delta[self._result_state_key] = json.dumps(aggregated)
             
-            logger.debug(f"Stored aggregated result at {self.result_state_key}")
+            logger.debug(f"Stored aggregated result at {self._result_state_key}")
         
         # Emit completion event
         summary = f"Aggregated {len(results)} results"
-        if self.result_state_key:
-            summary += f" -> {self.result_state_key}"
+        if self._result_state_key:
+            summary += f" -> {self._result_state_key}"
         
         yield Event(
             author=self.name,

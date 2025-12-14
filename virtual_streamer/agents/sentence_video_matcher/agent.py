@@ -78,10 +78,10 @@ class SentenceVideoMatcherAgent(BaseAgent):
             name: Agent name
         """
         super().__init__(name=name)
-        # Use object.__setattr__ to bypass Pydantic's attribute handling
-        # since BaseAgent uses Pydantic and would reject these custom fields
-        object.__setattr__(self, 'video_retriever', video_retriever)
-        object.__setattr__(self, 'max_candidates', max_candidates)
+        # Use underscore prefix to bypass Pydantic's field validation
+        # (Pydantic ignores attributes starting with underscore)
+        self._video_retriever = video_retriever
+        self._max_candidates = max_candidates
     
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -171,14 +171,14 @@ class SentenceVideoMatcherAgent(BaseAgent):
             The best VideoMatchResult, or None if no match found
         """
         # Step 1: Search for candidate videos
-        candidates = self.video_retriever.search(sentence, top_k=self.max_candidates * 2)
+        candidates = self._video_retriever.search(sentence, top_k=self._max_candidates * 2)
         
         if not candidates:
             logger.warning(f"No candidate videos found for sentence: {sentence[:50]}")
             return None
         
         # Limit to max_candidates
-        candidates = candidates[:self.max_candidates]
+        candidates = candidates[:self._max_candidates]
         
         logger.debug(f"Found {len(candidates)} candidate videos for sentence {sentence_idx}")
         

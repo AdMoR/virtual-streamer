@@ -88,14 +88,15 @@ class SentenceProcessorAgent(BaseAgent):
             fontsize: Font size for subtitles
         """
         super().__init__(name="sentence_processor")
-        self.video_retriever = video_retriever
-        self.tts = tts
-        self.stt = stt
-        self.output_dir = output_dir
-        self.temp_dir = temp_dir
-        self.max_video_candidates = max_video_candidates
-        self.max_search_attempts = max_search_attempts
-        self.fontsize = fontsize
+        # Use underscore prefix to bypass Pydantic's field validation
+        self._video_retriever = video_retriever
+        self._tts = tts
+        self._stt = stt
+        self._output_dir = output_dir
+        self._temp_dir = temp_dir
+        self._max_video_candidates = max_video_candidates
+        self._max_search_attempts = max_search_attempts
+        self._fontsize = fontsize
     
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -152,14 +153,14 @@ class SentenceProcessorAgent(BaseAgent):
             # ═══════════════════════════════════════════════════════════════
             # STEP 1: Retrieve candidate videos
             # ═══════════════════════════════════════════════════════════════
-            candidates = self.video_retriever.search(sentence, top_k=10)
+            candidates = self._video_retriever.search(sentence, top_k=10)
             
             if not candidates:
                 raise Exception("No candidate for this sentence : ", sentence)
             
             # Extract frames for vision LLM
             frames = {}
-            for vp in candidates[:self.max_video_candidates]:
+            for vp in candidates[:self._max_video_candidates]:
                 frame = extract_middle_frame(vp)
                 if frame:
                     frames[vp] = frame
@@ -212,8 +213,8 @@ class SentenceProcessorAgent(BaseAgent):
             # ═══════════════════════════════════════════════════════════════
             prev_keywords = [sentence]
             
-            if best["rating"] == "NOT_CONTEXTUAL" and self.max_search_attempts > 0:
-                for attempt in range(self.max_search_attempts):
+            if best["rating"] == "NOT_CONTEXTUAL" and self._max_search_attempts > 0:
+                for attempt in range(self._max_search_attempts):
                     kw_run_id = f"{run_id}_kw{attempt}"
                     
                     # Set up keyword generation task
@@ -236,7 +237,7 @@ class SentenceProcessorAgent(BaseAgent):
                         prev_keywords.append(new_keyword)
                         
                         # Search with new keyword
-                        alt_candidates = self.video_retriever.search(new_keyword, top_k=5)
+                        alt_candidates = self._video_retriever.search(new_keyword, top_k=5)
                         if alt_candidates:
                             # Extract frames and set up matchers
                             alt_run_id = f"{run_id}_alt{attempt}"
@@ -287,11 +288,11 @@ class SentenceProcessorAgent(BaseAgent):
             # STEP 6: Generate audio using TTS
             # ═══════════════════════════════════════════════════════════════
             import os
-            os.makedirs(self.temp_dir, exist_ok=True)
+            os.makedirs(self._temp_dir, exist_ok=True)
             
-            audio_path = os.path.join(self.temp_dir, f"audio_{idx}.wav")
+            audio_path = os.path.join(self._temp_dir, f"audio_{idx}.wav")
             try:
-                audio_path = self.tts.generate_speech(sentence, audio_path)
+                audio_path = self._tts.generate_speech(sentence, audio_path)
                 all_audio.append(audio_path)
             except Exception as e:
                 logger.error(f"TTS failed for sentence {idx}: {e}")
@@ -300,9 +301,9 @@ class SentenceProcessorAgent(BaseAgent):
             # ═══════════════════════════════════════════════════════════════
             # STEP 7: Generate subtitles using STT
             # ═══════════════════════════════════════════════════════════════
-            subtitle_path = os.path.join(self.temp_dir, f"subtitle_{idx}.srt")
+            subtitle_path = os.path.join(self._temp_dir, f"subtitle_{idx}.srt")
             try:
-                subtitle_path = self.stt.transcribe_to_srt(audio_path, subtitle_path)
+                subtitle_path = self._stt.transcribe_to_srt(audio_path, subtitle_path)
                 all_subtitles.append(subtitle_path)
             except Exception as e:
                 logger.error(f"STT failed for sentence {idx}: {e}")
@@ -312,14 +313,14 @@ class SentenceProcessorAgent(BaseAgent):
             # STEP 8: Combine video + audio + subtitles
             # ═══════════════════════════════════════════════════════════════
             if best["video_path"]:
-                segment_path = os.path.join(self.temp_dir, f"segment_{idx}.mp4")
+                segment_path = os.path.join(self._temp_dir, f"segment_{idx}.mp4")
                 try:
                     segment_path = combine_segment(
                         best["video_path"],
                         audio_path,
                         subtitle_path,
                         segment_path,
-                        fontsize=self.fontsize,
+                        fontsize=self._fontsize,
                     )
                     all_segments.append(segment_path)
                 except Exception as e:

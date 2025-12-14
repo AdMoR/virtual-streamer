@@ -1147,8 +1147,8 @@ class TestSentenceVideoMatcherAgentBehavior:
         )
         
         assert agent.name == "sentence_video_matcher"
-        assert agent.max_candidates == 5
-        assert agent.video_retriever is retriever
+        assert agent._max_candidates == 5
+        assert agent._video_retriever is retriever
     
     def test_agent_custom_name(self):
         """Test agent with custom name."""
