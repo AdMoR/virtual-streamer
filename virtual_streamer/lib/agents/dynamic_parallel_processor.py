@@ -76,6 +76,9 @@ class MapperAgent(ParallelAgent):
     The worker factory receives a unique run_id (e.g., "a1b2:w0", "a1b2:w1")
     that the worker uses to namespace its state keys.
     
+    After running, use get_output_keys() to get the state keys where
+    workers wrote their results.
+    
     Example:
         def create_matcher(run_id: str) -> StatefulLlmAgent:
             return get_video_matcher(run_id)
@@ -87,7 +90,13 @@ class MapperAgent(ParallelAgent):
         # 1. Create worker with run_id="a1b2:w0"
         # 2. Write {"sentence": ..., "video_path": ...} to "task:a1b2:w0:video_sentence"
         # 3. Run worker which reads from that key and writes to "result:a1b2:w0:judgement"
+        
+        # After running:
+        output_keys = mapper.get_output_keys()  # ["result:a1b2:w0:judgement"]
     """
+    
+    # Track workers created during run
+    _workers: List[StatefulWorker]
 
     def __init__(
         self,
@@ -105,8 +114,10 @@ class MapperAgent(ParallelAgent):
             name: Name for this agent (default: "mapper")
         """
         super().__init__(name=name, sub_agents=[])
-        self.items = items
-        self.worker_factory = worker_factory
+        # Use object.__setattr__ to bypass Pydantic
+        object.__setattr__(self, 'items', items)
+        object.__setattr__(self, 'worker_factory', worker_factory)
+        object.__setattr__(self, '_workers', [])
 
     async def _run_async_impl(self, ctx):
         """
@@ -123,7 +134,8 @@ class MapperAgent(ParallelAgent):
         run_id = secrets.token_hex(2)
 
         # Create workers and prepare state delta
-        workers: List[StatefulWorker] = []
+        # Store workers on instance so get_output_keys() can access them
+        self._workers = []
         state_delta: Dict[str, str] = {"current_run": run_id}
         
         for i, item in enumerate(self.items):
@@ -139,7 +151,7 @@ class MapperAgent(ParallelAgent):
             
             # Serialize validated item to JSON and store in state delta
             state_delta[input_key] = validated_item.model_dump_json()
-            workers.append(worker)
+            self._workers.append(worker)
             
             logger.debug(
                 f"Validated item {i} for worker {worker_run_id}: "
@@ -159,11 +171,44 @@ class MapperAgent(ParallelAgent):
         # Create parallel agent with workers and run
         parallel = ParallelAgent(
             name=f"parallel_{run_id}",
-            sub_agents=workers  # type: ignore (workers are agents)
+            sub_agents=self._workers  # type: ignore (workers are agents)
         )
         
         async for event in parallel.run_async(ctx):
             yield event
+    
+    def get_output_keys(self) -> List[str]:
+        """
+        Get output keys from all workers after run.
+        
+        Call this after running the mapper to get the state keys
+        where workers wrote their results. These can be passed to
+        an aggregator's state_input_keys.
+        
+        Returns:
+            List of output state keys from workers.
+            Empty list if run() hasn't been called yet.
+        
+        Example:
+            mapper = MapperAgent(items=items, worker_factory=factory)
+            async for event in mapper.run_async(ctx):
+                pass
+            
+            output_keys = mapper.get_output_keys()
+            aggregator = BestMatchAggregator(state_input_keys=output_keys, ...)
+        """
+        return [worker.get_output_key() for worker in self._workers]
+    
+    def get_output_schema(self) -> Optional[Type[BaseModel]]:
+        """
+        Get the output schema from workers.
+        
+        Returns:
+            The output schema from the first worker, or None if no workers.
+        """
+        if self._workers:
+            return self._workers[0].get_output_schema()
+        return None
 
 
 T = TypeVar("T", bound=BaseModel)

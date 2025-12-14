@@ -191,37 +191,21 @@ class SentenceVideoMatcherAgent(BaseAgent):
         # Step 3: Create and run MapperAgent
         run_id = f"s{sentence_idx}"
         
-        def worker_factory(worker_run_id: str):
-            return get_video_matcher(worker_run_id)
-        
         mapper = MapperAgent(
             items=items,
-            worker_factory=worker_factory,
+            worker_factory=get_video_matcher,
             name=f"mapper_{run_id}",
         )
         
         # Run the mapper (this will update state with results)
         async for event in mapper.run_async(ctx):
-            # Yield events from mapper for observability
             pass  # Events are processed internally
         
-        # Step 4: Collect output keys from workers
-        # The MapperAgent uses run_id format: "{hex}:w{i}"
-        # We need to find the actual keys that were written
-        current_run = ctx.session.state.get("current_run")
-        
-        if not current_run:
-            logger.error("No current_run in state after MapperAgent")
-            return None
-        
-        # Find all result keys for this run
-        output_keys = []
-        for key in ctx.session.state.keys():
-            if key.startswith(f"result:{current_run}:"):
-                output_keys.append(key)
+        # Step 4: Get output keys directly from mapper (no state scanning!)
+        output_keys = mapper.get_output_keys()
         
         if not output_keys:
-            logger.warning(f"No results found for run {current_run}")
+            logger.warning(f"No results found for sentence {sentence_idx}")
             return None
         
         logger.debug(f"Found {len(output_keys)} results to aggregate")
