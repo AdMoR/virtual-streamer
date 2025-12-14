@@ -196,39 +196,3 @@ class BaseLlmAgent(LlmAgent):
 
         # Create LiteLlm with model and parameters
         return LiteLlm(model=model_string, **llm_kwargs)
-
-
-def create_agent(
-    name: str,
-    instruction: Union[str, InstructionProvider],
-    output_schema: Optional[Type[BaseModel]] = None,
-    **kwargs: Any,
-) -> BaseLlmAgent:
-    """Factory function to create an agent with minimal boilerplate.
-
-    This is a convenience function for simple agents that don't need
-    a custom class. For more complex agents, inherit from BaseLlmAgent.
-
-    Args:
-        name: Agent name (used for config loading).
-        instruction: System prompt or InstructionProvider.
-        output_schema: Optional Pydantic model for structured output.
-        **kwargs: Additional arguments passed to BaseLlmAgent.
-
-    Returns:
-        Configured BaseLlmAgent instance.
-
-    Example:
-        agent = create_agent(
-            name="simple_qa",
-            instruction="You answer questions concisely.",
-            output_schema=QAOutput,
-        )
-    """
-    return BaseLlmAgent(
-        name=name,
-        instruction=instruction,
-        output_schema=output_schema,
-        **kwargs,
-    )
-

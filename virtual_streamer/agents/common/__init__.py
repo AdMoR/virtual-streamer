@@ -23,7 +23,6 @@ from virtual_streamer.agents.common.state_keys import (
 )
 from virtual_streamer.agents.common.callbacks import (
     FinalizeVideoCallback,
-    LoggingCallback,
 )
 from virtual_streamer.agents.common.utils import (
     separation_fn,
@@ -49,7 +48,6 @@ __all__ = [
     "keyword_key",
     # Callbacks
     "FinalizeVideoCallback",
-    "LoggingCallback",
     # Utils
     "separation_fn",
     "extract_middle_frame",

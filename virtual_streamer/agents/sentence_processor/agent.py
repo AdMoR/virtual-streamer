@@ -383,3 +383,4 @@ class SentenceProcessorAgent(BaseAgent):
         # Return highest grade among NOT_CONTEXTUAL
         return max(judgements, key=lambda x: x.get("grade", 0))
 
+root_agent = None

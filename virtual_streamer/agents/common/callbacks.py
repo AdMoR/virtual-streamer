@@ -67,25 +67,3 @@ class FinalizeVideoCallback(AgentCallback):
         
         return None
 
-
-class LoggingCallback(AgentCallback):
-    """
-    Generic logging callback for debugging agent execution.
-    """
-    
-    def __init__(self, agent_name: str, phase: str = ""):
-        """
-        Initialize the callback.
-        
-        Args:
-            agent_name: Name of the agent for logging
-            phase: Phase description (e.g., "before", "after")
-        """
-        self.agent_name = agent_name
-        self.phase = phase
-    
-    async def __call__(self, callback_context: CallbackContext) -> None:
-        """Log agent execution phase."""
-        logger.info(f"[{self.agent_name}] {self.phase}")
-        return None
-

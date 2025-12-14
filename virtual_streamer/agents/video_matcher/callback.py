@@ -94,9 +94,9 @@ class StoreJudgementCallback(AfterModelCallback):
     Callback that parses the LLM response and stores the judgement
     in namespaced state.
     """
-    RESULT_KEY = "result"
+    RESULT_KEY = "judgement_result"
 
-    def __init__(self, run_id: str):
+    def __init__(self, run_id: str | None = None):
         """
         Initialize the callback.
 
@@ -105,6 +105,10 @@ class StoreJudgementCallback(AfterModelCallback):
             worker_name: Name of this worker
         """
         self.run_id = run_id
+
+    @property
+    def result_key(self):
+        return self.RESULT_KEY if self.run_id is None else f"{self.run_id}_{self.RESULT_KEY}"
 
     async def __call__(
             self,
