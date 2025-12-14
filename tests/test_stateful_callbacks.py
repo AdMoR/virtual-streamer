@@ -592,18 +592,18 @@ class SampleAggregator:
     
     def __init__(
         self,
-        state_input_keys: list,
+        input_keys: list,
         input_schema,
         result_state_key: str = None,
     ):
-        self.state_input_keys = state_input_keys
+        self.input_keys = input_keys
         self.input_schema = input_schema
         self.result_state_key = result_state_key
     
     def collect_results(self, state: dict) -> list:
         """Simulate _collect_results with a plain dict instead of ctx."""
         results = []
-        for key in self.state_input_keys:
+        for key in self.input_keys:
             value = state.get(key)
             if value is None:
                 continue
@@ -632,7 +632,7 @@ class TestAbstractAggregatorCollection:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["result:abc:w0:judgement", "result:abc:w1:judgement"],
+            input_keys=["result:abc:w0:judgement", "result:abc:w1:judgement"],
             input_schema=SampleInputSchema,
         )
         
@@ -648,7 +648,7 @@ class TestAbstractAggregatorCollection:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["key1"],
+            input_keys=["key1"],
             input_schema=SampleInputSchema,
         )
         
@@ -664,7 +664,7 @@ class TestAbstractAggregatorCollection:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["key1"],
+            input_keys=["key1"],
             input_schema=SampleInputSchema,
         )
         
@@ -681,7 +681,7 @@ class TestAbstractAggregatorCollection:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["key1", "key2"],
+            input_keys=["key1", "key2"],
             input_schema=SampleInputSchema,
         )
         
@@ -697,7 +697,7 @@ class TestAbstractAggregatorCollection:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["key1", "key2"],
+            input_keys=["key1", "key2"],
             input_schema=SampleInputSchema,
         )
         
@@ -713,7 +713,7 @@ class TestAbstractAggregatorCollection:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["key1", "key2"],
+            input_keys=["key1", "key2"],
             input_schema=SampleInputSchema,
         )
         
@@ -726,7 +726,7 @@ class TestAbstractAggregatorCollection:
         state = {"key1": '{"name": "test", "value": 1}'}
         
         agg = SampleAggregator(
-            state_input_keys=[],
+            input_keys=[],
             input_schema=SampleInputSchema,
         )
         
@@ -753,7 +753,7 @@ class TestAbstractAggregatorWithVideoSchema:
         }
         
         agg = SampleAggregator(
-            state_input_keys=["result:run1:w0:judgement", "result:run1:w1:judgement"],
+            input_keys=["result:run1:w0:judgement", "result:run1:w1:judgement"],
             input_schema=VideoJudgementOutput,
         )
         
@@ -895,7 +895,8 @@ class TestBestMatchAggregator:
         
         # Create aggregator and test aggregation function directly
         aggregator = BestMatchAggregator(
-            state_input_keys=[],  # Not used in direct test
+            input_keys=[],  # Not used in direct test
+            output_key="test_output",
         )
         
         best = await aggregator.aggregation_fn(results)
@@ -927,7 +928,7 @@ class TestBestMatchAggregator:
             ),
         ]
         
-        aggregator = BestMatchAggregator(state_input_keys=[])
+        aggregator = BestMatchAggregator(input_keys=[], output_key="test_output")
         best = await aggregator.aggregation_fn(results)
         
         assert best is not None
@@ -956,7 +957,7 @@ class TestBestMatchAggregator:
             ),
         ]
         
-        aggregator = BestMatchAggregator(state_input_keys=[])
+        aggregator = BestMatchAggregator(input_keys=[], output_key="test_output")
         best = await aggregator.aggregation_fn(results)
         
         assert best is not None
@@ -986,7 +987,7 @@ class TestBestMatchAggregator:
             ),
         ]
         
-        aggregator = BestMatchAggregator(state_input_keys=[])
+        aggregator = BestMatchAggregator(input_keys=[], output_key="test_output")
         best = await aggregator.aggregation_fn(results)
         
         assert best is not None
@@ -997,7 +998,7 @@ class TestBestMatchAggregator:
         """Test that empty results returns None."""
         from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
         
-        aggregator = BestMatchAggregator(state_input_keys=[])
+        aggregator = BestMatchAggregator(input_keys=[], output_key="test_output")
         best = await aggregator.aggregation_fn([])
         
         assert best is None
@@ -1275,8 +1276,8 @@ class TestSentenceVideoMatcherAgentWithMockedState:
         output_keys = [k for k in state.keys() if k.startswith("result:abc:")]
         
         aggregator = BestMatchAggregator(
-            state_input_keys=output_keys,
-            result_state_key="best_match",
+            input_keys=output_keys,
+            output_key="best_match",
         )
         
         # Manually test collection (simulating what _collect_results does)

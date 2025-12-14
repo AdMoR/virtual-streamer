@@ -8,7 +8,7 @@ based on rating priority (CONTEXTUAL > NEUTRAL > NOT_CONTEXTUAL) and grade.
 import logging
 from typing import List, Optional
 
-from virtual_streamer.lib.agents.dynamic_parallel_processor import AbstractAggregator
+from virtual_streamer.lib.agents import AggregatorAgent
 from virtual_streamer.agents.video_matcher.schema import (
     ContextualRating,
     VideoMatchResult,
@@ -17,7 +17,7 @@ from virtual_streamer.agents.video_matcher.schema import (
 logger = logging.getLogger(__name__)
 
 
-class BestMatchAggregator(AbstractAggregator[VideoMatchResult]):
+class BestMatchAggregator(AggregatorAgent[VideoMatchResult]):
     """
     Aggregator that selects the best video match from parallel workers.
     
@@ -27,12 +27,12 @@ class BestMatchAggregator(AbstractAggregator[VideoMatchResult]):
     3. NOT_CONTEXTUAL rating (fallback) - pick highest grade
     
     Example:
-        # After MapperAgent runs parallel VideoMatchers:
-        output_keys = [worker.get_output_key() for worker in workers]
+        # After MapperAgent runs:
+        output_keys = mapper.get_output_keys()
         
         aggregator = BestMatchAggregator(
-            state_input_keys=output_keys,
-            result_state_key="best_video_match",
+            input_keys=output_keys,
+            output_key="best_video_match",
         )
         async for event in aggregator.run_async(ctx):
             yield event
@@ -43,24 +43,24 @@ class BestMatchAggregator(AbstractAggregator[VideoMatchResult]):
     
     def __init__(
         self,
-        state_input_keys: List[str],
-        result_state_key: Optional[str] = None,
+        input_keys: List[str],
+        output_key: str = "best_video_match",
         name: str = "best_match_aggregator",
     ):
         """
         Initialize the aggregator.
         
         Args:
-            state_input_keys: List of state keys to read VideoMatchResult from.
-                             These are typically the output keys from VideoMatcher workers.
-            result_state_key: Optional key to store the best match result in state.
+            input_keys: List of state keys to read VideoMatchResult from.
+                       These are typically mapper.get_output_keys().
+            output_key: Key to store the best match result in state.
             name: Name for this agent.
         """
         super().__init__(
             name=name,
-            state_input_keys=state_input_keys,
+            input_keys=input_keys,
             input_schema=VideoMatchResult,
-            result_state_key=result_state_key,
+            output_key=output_key,
         )
     
     async def aggregation_fn(
@@ -106,4 +106,3 @@ class BestMatchAggregator(AbstractAggregator[VideoMatchResult]):
         best = max(results, key=lambda x: x.grade)
         logger.warning(f"No standard rating found, using highest grade: {best}")
         return best
-

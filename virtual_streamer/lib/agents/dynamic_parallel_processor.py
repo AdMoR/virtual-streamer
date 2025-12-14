@@ -2,37 +2,42 @@
 Dynamic Parallel Processing Agents.
 
 This module provides agents for dynamically distributing tasks across
-multiple workers and aggregating their results. It leverages StatefulLlmAgent
-for type-safe state key management.
+multiple workers and aggregating their results.
 
 Key components:
-- MapperAgent: Distributes tasks to workers, writing inputs to their state keys
-- AbstractAggregator: Base class for collecting and aggregating results
+- MapperAgent: Abstract base for distributing tasks to parallel workers
+- AggregatorAgent: Abstract base for collecting and aggregating worker results
+- MapReduceAgent: Orchestrates MapperAgent → AggregatorAgent pipeline
 
 Usage:
-    from virtual_streamer.lib.agents import StatefulLlmAgent
-    from virtual_streamer.lib.agents.dynamic_parallel_processor import MapperAgent
+    # Define concrete mapper
+    class MyMapper(MapperAgent):
+        def build_items_from_state(self, ctx):
+            data = ctx.session.state.get("input_data", [])
+            return [{"field": x} for x in data]
     
-    # Define a worker factory
-    def create_worker(run_id: str) -> StatefulLlmAgent:
-        return get_video_matcher(run_id)
+    # Define concrete aggregator
+    class MyAggregator(AggregatorAgent):
+        async def aggregation_fn(self, results):
+            return max(results, key=lambda r: r.score)
     
-    # Create mapper with items to process
-    items = [
-        {"sentence": "Hello", "video_path": "/path/video1.mp4"},
-        {"sentence": "World", "video_path": "/path/video2.mp4"},
-    ]
-    mapper = MapperAgent(items=items, worker_factory=create_worker)
+    # Wire together
+    mapper = MyMapper(worker_factory=get_my_worker)
+    agent = MapReduceAgent(
+        mapper=mapper,
+        aggregator_factory=lambda keys: MyAggregator(input_keys=keys, ...),
+    )
 """
 
 import json
 import logging
 import secrets
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
-from google.adk.events import Event, EventActions
 from google.adk.agents import BaseAgent, ParallelAgent
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event, EventActions
 from google.genai import types
 from pydantic import BaseModel
 
@@ -63,44 +68,41 @@ class StatefulWorker(Protocol):
 WorkerFactory = Callable[[str], StatefulWorker]
 
 
-class MapperAgent(ParallelAgent):
+class MapperAgent(ParallelAgent, ABC):
     """
-    Distributes tasks and dynamically creates workers for parallel processing.
+    Abstract base for parallel task distribution.
     
-    This agent takes a list of items and a worker factory, then:
-    1. Generates a unique run_id for this batch
-    2. Creates a worker for each item using the factory
-    3. Writes each item to the worker's input key in state
-    4. Runs all workers in parallel
-    
-    The worker factory receives a unique run_id (e.g., "a1b2:w0", "a1b2:w1")
-    that the worker uses to namespace its state keys.
+    Subclasses implement build_items_from_state() to:
+    - Read input from session state
+    - Generate items matching worker's input schema
     
     After running, use get_output_keys() to get the state keys where
     workers wrote their results.
     
     Example:
-        def create_matcher(run_id: str) -> StatefulLlmAgent:
-            return get_video_matcher(run_id)
-        
-        items = [{"sentence": "test", "video_path": "/test.mp4"}]
-        mapper = MapperAgent(items=items, worker_factory=create_matcher)
-        
-        # When run, mapper will:
-        # 1. Create worker with run_id="a1b2:w0"
-        # 2. Write {"sentence": ..., "video_path": ...} to "task:a1b2:w0:video_sentence"
-        # 3. Run worker which reads from that key and writes to "result:a1b2:w0:judgement"
-        
-        # After running:
-        output_keys = mapper.get_output_keys()  # ["result:a1b2:w0:judgement"]
+        class SentenceVideoMapper(MapperAgent):
+            def __init__(self, video_retriever, max_candidates=5):
+                super().__init__(
+                    worker_factory=get_video_matcher,
+                    name="sentence_mapper",
+                )
+                self._video_retriever = video_retriever
+                self._max_candidates = max_candidates
+            
+            def build_items_from_state(self, ctx):
+                sentences = ctx.session.state.get("sentences", [])
+                items = []
+                for sentence in sentences:
+                    candidates = self._video_retriever.search(sentence)
+                    for video_path in candidates:
+                        items.append({"sentence": sentence, "video_path": video_path})
+                return items
     """
     
-    # Track workers created during run
     _workers: List[StatefulWorker]
 
     def __init__(
         self,
-        items: List[Dict[str, Any]],
         worker_factory: WorkerFactory,
         name: str = "mapper",
     ):
@@ -108,20 +110,34 @@ class MapperAgent(ParallelAgent):
         Initialize the mapper agent.
         
         Args:
-            items: List of input items to distribute to workers.
-                   Each item should be a dict matching the worker's input schema.
             worker_factory: Function that creates a StatefulWorker given a run_id.
             name: Name for this agent (default: "mapper")
         """
         super().__init__(name=name, sub_agents=[])
-        # Use underscore prefix to bypass Pydantic's field validation
-        self._items = items
         self._worker_factory = worker_factory
         self._workers = []
 
-    async def _run_async_impl(self, ctx):
+    @abstractmethod
+    def build_items_from_state(self, ctx: InvocationContext) -> List[Dict[str, Any]]:
         """
-        Distribute items to workers and run them in parallel.
+        Build worker items by reading from session state.
+        
+        Subclasses implement this to:
+        1. Read input data from ctx.session.state
+        2. Generate items matching the worker's input schema
+        
+        Args:
+            ctx: Invocation context with session state access
+        
+        Returns:
+            List of dicts, each matching worker's input schema.
+            Empty list if no items to process.
+        """
+        ...
+
+    async def _run_async_impl(self, ctx: InvocationContext):
+        """
+        Build items from state, distribute to workers, run in parallel.
         
         Yields events for:
         1. State delta with all input data written to worker keys
@@ -130,15 +146,27 @@ class MapperAgent(ParallelAgent):
         Raises:
             ValidationError: If any item fails schema validation
         """
+        # Build items from state (subclass implements)
+        items = self.build_items_from_state(ctx)
+        
+        if not items:
+            yield Event(
+                author=self.name,
+                content=types.Content(
+                    role=self.name,
+                    parts=[types.Part(text="No items to process")]
+                ),
+            )
+            return
+        
         # Generate unique run ID for this batch
         run_id = secrets.token_hex(2)
 
         # Create workers and prepare state delta
-        # Store workers on instance so get_output_keys() can access them
         self._workers = []
         state_delta: Dict[str, str] = {"current_run": run_id}
         
-        for i, item in enumerate(self._items):
+        for i, item in enumerate(items):
             worker_run_id = f"{run_id}:w{i}"
             worker = self._worker_factory(worker_run_id)
             
@@ -163,7 +191,7 @@ class MapperAgent(ParallelAgent):
             author=self.name,
             content=types.Content(
                 role=self.name,
-                parts=[types.Part(text=f"Run {run_id}: distributing {len(self._items)} tasks")]
+                parts=[types.Part(text=f"Run {run_id}: distributing {len(items)} tasks")]
             ),
             actions=EventActions(state_delta=state_delta)
         )
@@ -182,20 +210,11 @@ class MapperAgent(ParallelAgent):
         Get output keys from all workers after run.
         
         Call this after running the mapper to get the state keys
-        where workers wrote their results. These can be passed to
-        an aggregator's state_input_keys.
+        where workers wrote their results.
         
         Returns:
             List of output state keys from workers.
             Empty list if run() hasn't been called yet.
-        
-        Example:
-            mapper = MapperAgent(items=items, worker_factory=factory)
-            async for event in mapper.run_async(ctx):
-                pass
-            
-            output_keys = mapper.get_output_keys()
-            aggregator = BestMatchAggregator(state_input_keys=output_keys, ...)
         """
         return [worker.get_output_key() for worker in self._workers]
     
@@ -214,64 +233,59 @@ class MapperAgent(ParallelAgent):
 T = TypeVar("T", bound=BaseModel)
 
 
-class AbstractAggregator(BaseAgent, Generic[T]):
+class AggregatorAgent(BaseAgent, Generic[T], ABC):
     """
-    Abstract base class for aggregating results from parallel workers.
+    Abstract base for aggregating results from parallel workers.
     
-    From the aggregator's perspective:
-    - state_input_keys: where to read results from (worker outputs = aggregator inputs)
-    - input_schema: Pydantic model to parse each result
-    - aggregation_fn: subclass implements to combine parsed results
+    Subclasses implement aggregation_fn() to combine worker results.
     
     The base class handles:
     - Collecting results from specified state keys
     - Parsing each result with the input schema
-    - Storing aggregated result in state (optional)
+    - Storing aggregated result in state
     - Event emission
     
     Example:
-        class BestMatchAggregator(AbstractAggregator[VideoJudgementOutput]):
+        class BestMatchAggregator(AggregatorAgent[VideoMatchResult]):
             def __init__(self, input_keys: List[str]):
                 super().__init__(
                     name="best_match",
-                    state_input_keys=input_keys,
-                    input_schema=VideoJudgementOutput,
-                    result_state_key="best_video_match",
+                    input_keys=input_keys,
+                    input_schema=VideoMatchResult,
+                    output_key="best_video_match",
                 )
             
-            async def aggregation_fn(self, results: List[VideoJudgementOutput]):
+            async def aggregation_fn(self, results: List[VideoMatchResult]):
                 return max(results, key=lambda r: r.grade)
     """
     
     def __init__(
         self,
         name: str,
-        state_input_keys: List[str],
+        input_keys: List[str],
         input_schema: Type[T],
-        result_state_key: Optional[str] = None,
+        output_key: str,
     ):
         """
         Initialize the aggregator.
         
         Args:
             name: Name for this agent
-            state_input_keys: List of state keys to read results from.
-                             These are typically the output keys from workers.
+            input_keys: List of state keys to read results from.
+                       These are typically mapper.get_output_keys().
             input_schema: Pydantic model to parse each result into.
-            result_state_key: Optional key to store aggregated result in state.
-                             If None, result is only emitted in event.
+            output_key: Key to store aggregated result in state.
         """
         super().__init__(name=name)
-        # Use underscore prefix to bypass Pydantic's field validation
-        self._state_input_keys = state_input_keys
+        self._input_keys = input_keys
         self._input_schema = input_schema
-        self._result_state_key = result_state_key
+        self._output_key = output_key
     
-    def _collect_results(self, ctx) -> List[T]:
+    def _collect_results(self, ctx: InvocationContext) -> List[T]:
         """
         Collect and parse results from state.
         
-        Reads from state_input_keys, parses each with input_schema.
+        Reads from input_keys, parses each with input_schema.
         
         Args:
             ctx: Invocation context with session state
@@ -281,7 +295,7 @@ class AbstractAggregator(BaseAgent, Generic[T]):
         """
         results: List[T] = []
         
-        for key in self._state_input_keys:
+        for key in self._input_keys:
             value = ctx.session.state.get(key)
             
             if value is None:
@@ -309,13 +323,13 @@ class AbstractAggregator(BaseAgent, Generic[T]):
         
         return results
     
-    async def _run_async_impl(self, ctx):
+    async def _run_async_impl(self, ctx: InvocationContext):
         """
         Collect results from workers and aggregate them.
         
-        1. Collects and parses results from state_input_keys
+        1. Collects and parses results from input_keys
         2. Calls aggregation_fn with parsed results
-        3. Stores result in state if result_state_key is set
+        3. Stores result in state at output_key
         4. Emits event with aggregation summary
         """
         # Collect and parse results
@@ -332,25 +346,23 @@ class AbstractAggregator(BaseAgent, Generic[T]):
             )
             return
         
-        logger.info(f"Aggregating {len(results)} results from {len(self._state_input_keys)} keys")
+        logger.info(f"Aggregating {len(results)} results from {len(self._input_keys)} keys")
         
         # Aggregate results (subclass implements)
         aggregated = await self.aggregation_fn(results)
         
-        # Prepare state delta if result key is specified
+        # Prepare state delta
         state_delta: Dict[str, str] = {}
-        if self._result_state_key and aggregated is not None:
+        if aggregated is not None:
             if isinstance(aggregated, BaseModel):
-                state_delta[self._result_state_key] = aggregated.model_dump_json()
+                state_delta[self._output_key] = aggregated.model_dump_json()
             else:
-                state_delta[self._result_state_key] = json.dumps(aggregated)
+                state_delta[self._output_key] = json.dumps(aggregated)
             
-            logger.debug(f"Stored aggregated result at {self._result_state_key}")
+            logger.debug(f"Stored aggregated result at {self._output_key}")
         
         # Emit completion event
-        summary = f"Aggregated {len(results)} results"
-        if self._result_state_key:
-            summary += f" -> {self._result_state_key}"
+        summary = f"Aggregated {len(results)} results -> {self._output_key}"
         
         yield Event(
             author=self.name,
@@ -378,10 +390,116 @@ class AbstractAggregator(BaseAgent, Generic[T]):
             - A single model instance (e.g., best match)
             - A new model instance (e.g., combined result)
             - None if aggregation produces no result
-        
-        Example:
-            async def aggregation_fn(self, results: List[VideoJudgementOutput]):
-                # Return the result with highest grade
-                return max(results, key=lambda r: r.grade)
         """
-        raise NotImplementedError()
+        ...
+
+
+# Type alias for aggregator factory
+AggregatorFactory = Callable[[List[str]], AggregatorAgent]
+
+
+class MapReduceAgent(BaseAgent):
+    """
+    Orchestrates a MapperAgent → AggregatorAgent pipeline.
+    
+    Handles the boilerplate of:
+    1. Running the mapper to generate and process items
+    2. Wiring mapper's output keys to aggregator's input keys
+    3. Running the aggregator to combine results
+    
+    Example:
+        mapper = SentenceVideoMapper(video_retriever, max_candidates=5)
+        
+        agent = MapReduceAgent(
+            mapper=mapper,
+            aggregator_factory=lambda keys: SentenceVideoAggregator(
+                input_keys=keys,
+                output_key="video_matches",
+            ),
+            name="sentence_video_matcher",
+        )
+        
+        # Run the pipeline
+        async for event in agent.run_async(ctx):
+            yield event
+        
+        # Results are in ctx.session.state["video_matches"]
+    """
+    
+    def __init__(
+        self,
+        mapper: MapperAgent,
+        aggregator_factory: AggregatorFactory,
+        name: str = "map_reduce",
+    ):
+        """
+        Initialize the map-reduce agent.
+        
+        Args:
+            mapper: A concrete MapperAgent that implements build_items_from_state
+            aggregator_factory: Function that takes input_keys and returns
+                               a concrete AggregatorAgent
+            name: Name for this agent
+        """
+        super().__init__(name=name)
+        self._mapper = mapper
+        self._aggregator_factory = aggregator_factory
+    
+    async def _run_async_impl(self, ctx: InvocationContext):
+        """
+        Run the map-reduce pipeline.
+        
+        1. Run mapper (builds items from state, processes in parallel)
+        2. Create aggregator with mapper's output keys
+        3. Run aggregator (collects results, applies aggregation_fn)
+        """
+        # Phase 1: Run mapper
+        yield Event(
+            author=self.name,
+            content=types.Content(
+                role=self.name,
+                parts=[types.Part(text="Starting map phase...")]
+            ),
+        )
+        
+        async for event in self._mapper.run_async(ctx):
+            yield event
+        
+        # Phase 2: Create aggregator with mapper's output keys
+        output_keys = self._mapper.get_output_keys()
+        
+        if not output_keys:
+            yield Event(
+                author=self.name,
+                content=types.Content(
+                    role=self.name,
+                    parts=[types.Part(text="Map phase produced no results")]
+                ),
+            )
+            return
+        
+        aggregator = self._aggregator_factory(output_keys)
+        
+        # Phase 3: Run aggregator
+        yield Event(
+            author=self.name,
+            content=types.Content(
+                role=self.name,
+                parts=[types.Part(text=f"Starting reduce phase with {len(output_keys)} results...")]
+            ),
+        )
+        
+        async for event in aggregator.run_async(ctx):
+            yield event
+        
+        yield Event(
+            author=self.name,
+            content=types.Content(
+                role=self.name,
+                parts=[types.Part(text="Map-reduce complete")]
+            ),
+        )
+
+
+# Keep backward compatibility alias
+AbstractAggregator = AggregatorAgent
