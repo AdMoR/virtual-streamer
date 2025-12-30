@@ -1,8 +1,11 @@
-"""
-Prompt template for StoryGeneratorAgent.
+import logging
 
-This prompt is adapted from prompts/story_generation.txt
-"""
+from google.adk.agents.readonly_context import ReadonlyContext
+
+from virtual_streamer.agents.common.state_keys import TITLE
+from virtual_streamer.lib.providers.instruction import InstructionProvider
+
+logger = logging.getLogger(__name__)
 
 # Base prompt for C'est pas Sorcier parody generation
 STORY_GENERATION_PROMPT = """You are a designer of a humorous parody of C'est pas Sorcier the French Science discovery show.
@@ -86,3 +89,25 @@ def format_story_prompt(title: str) -> str:
     """
     return STORY_GENERATION_PROMPT.format(title=title)
 
+
+class StoryInstructionProvider(InstructionProvider):
+    """
+    Dynamic instruction provider that reads the title from state
+    and formats the story generation prompt.
+    """
+
+    async def __call__(self, ctx: ReadonlyContext) -> str:
+        """
+        Generate the instruction by reading title from state.
+
+        Args:
+            ctx: Readonly context with access to state
+
+        Returns:
+            Formatted prompt string
+        """
+        title = ctx.state.get(TITLE, "")
+        if not title:
+            logger.warning("No title found in state, using empty title")
+
+        return format_story_prompt(title)

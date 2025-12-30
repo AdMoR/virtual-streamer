@@ -9,103 +9,17 @@ This is a standard BaseLlmAgent with:
 
 import logging
 from functools import lru_cache
-from typing import Optional
 
-from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.readonly_context import ReadonlyContext
-from google.adk.models import LlmResponse
 
-from virtual_streamer.lib.agents import BaseLlmAgent, AfterModelCallback
-from virtual_streamer.lib.providers.instruction import InstructionProvider
-from virtual_streamer.agents.common.state_keys import TITLE, STORY_OUTPUT, SENTENCES
-from virtual_streamer.agents.common.utils import separation_fn
+from virtual_streamer.agents.common.state_keys import TITLE
+from virtual_streamer.agents.story_generator.callback import SplitStoryCallback
+from virtual_streamer.agents.story_generator.prompt import format_story_prompt, StoryInstructionProvider
 from virtual_streamer.agents.story_generator.schema import StoryOutput
-from virtual_streamer.agents.story_generator.prompt import format_story_prompt
+from virtual_streamer.lib.agents import BaseLlmAgent
+
 
 logger = logging.getLogger(__name__)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Instruction Provider
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class StoryInstructionProvider(InstructionProvider):
-    """
-    Dynamic instruction provider that reads the title from state
-    and formats the story generation prompt.
-    """
-    
-    async def __call__(self, ctx: ReadonlyContext) -> str:
-        """
-        Generate the instruction by reading title from state.
-        
-        Args:
-            ctx: Readonly context with access to state
-        
-        Returns:
-            Formatted prompt string
-        """
-        title = ctx.state.get(TITLE, "")
-        if not title:
-            logger.warning("No title found in state, using empty title")
-        
-        return format_story_prompt(title)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Callbacks
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class SplitStoryCallback(AfterModelCallback):
-    """
-    Callback that parses the LLM response and splits the dialog into sentences.
-    
-    This callback:
-    1. Extracts the structured StoryOutput from the LLM response
-    2. Splits the dialog into individual sentences using separation_fn
-    3. Stores both in the state
-    """
-    
-    async def __call__(
-        self,
-        callback_context: CallbackContext,
-        llm_response: LlmResponse,
-    ) -> None:
-        """
-        Parse story and split into sentences.
-        
-        Args:
-            callback_context: Context with access to mutable state
-            llm_response: Response from the LLM
-        """
-        from virtual_streamer.lib.agents.callbacks import extract_llm_response_json
-        
-        # Parse the structured output into StoryOutput model
-        story = extract_llm_response_json(llm_response, StoryOutput)
-        
-        if not story:
-            logger.error("Failed to parse story output from LLM response")
-            callback_context.state[STORY_OUTPUT] = {}
-            callback_context.state[SENTENCES] = []
-            return
-        
-        # Store the full story output (as dict for state serialization)
-        callback_context.state[STORY_OUTPUT] = story.model_dump()
-        
-        # Split dialog into sentences
-        sentences = separation_fn(story.dialog)
-        callback_context.state[SENTENCES] = sentences
-        
-        logger.info(
-            f"Generated story '{story.title}' with {len(sentences)} sentences"
-        )
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Agent
-# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class StoryGeneratorAgent(BaseLlmAgent):
@@ -117,7 +31,7 @@ class StoryGeneratorAgent(BaseLlmAgent):
     - StoryOutput schema for structured output
     - SplitStoryCallback to parse response and split into sentences
     """
-    
+
     def __init__(self):
         super().__init__(
             name="story_generator",
@@ -127,7 +41,6 @@ class StoryGeneratorAgent(BaseLlmAgent):
         )
 
 
-@lru_cache
 def get_story_generator() -> StoryGeneratorAgent:
     """
     Factory function to get the StoryGeneratorAgent singleton.
@@ -137,3 +50,5 @@ def get_story_generator() -> StoryGeneratorAgent:
     """
     return StoryGeneratorAgent()
 
+
+root_agent = get_story_generator()

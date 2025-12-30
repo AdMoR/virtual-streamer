@@ -5,6 +5,15 @@ Pydantic schema for StoryGeneratorAgent output.
 from pydantic import BaseModel, Field
 
 
+class DialogLine(BaseModel):
+    character: str
+    dialog: str
+
+
+class DialogLines(BaseModel):
+    lines: list[DialogLine]
+
+
 class StoryOutput(BaseModel):
     """
     Structured output from story generation.
@@ -22,12 +31,7 @@ class StoryOutput(BaseModel):
         description="Overall plan and reasoning used to create the dialog. "
                     "Explains the creative choices and comedic arc."
     )
-    dialog: str = Field(
+    dialog: DialogLines = Field(
         description="The actual dialog lines produced by Fred and other characters. "
                     "Only spoken lines, no stage directions or descriptions."
     )
-
-    def get_full_text(self) -> str:
-        """Get the dialog text for backwards compatibility."""
-        return self.dialog
-
