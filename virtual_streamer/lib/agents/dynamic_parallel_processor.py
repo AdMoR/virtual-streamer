@@ -42,7 +42,7 @@ from google.genai import types
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.INFO)
 
 class StatefulWorker(Protocol):
     """Protocol for workers that expose input/output keys and schemas."""
@@ -169,6 +169,7 @@ class MapperAgent(ParallelAgent, ABC):
         for i, item in enumerate(items):
             worker_run_id = f"{run_id}:w{i}"
             worker = self._worker_factory(worker_run_id)
+            logger.info(worker, worker_run_id)
             
             # Get the input key and schema from the worker (type-safe!)
             input_key = worker.get_input_key()
@@ -181,7 +182,7 @@ class MapperAgent(ParallelAgent, ABC):
             state_delta[input_key] = validated_item.model_dump_json()
             self._workers.append(worker)
             
-            logger.debug(
+            logger.info(
                 f"Validated item {i} for worker {worker_run_id}: "
                 f"{input_schema.__name__}"
             )

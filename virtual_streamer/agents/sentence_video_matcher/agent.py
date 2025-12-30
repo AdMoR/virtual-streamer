@@ -9,11 +9,12 @@ for each sentence using:
 
 The agent uses the MapReduceAgent pattern for clean orchestration.
 """
-
+import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from google.adk.agents.invocation_context import InvocationContext
+from google.genai.types import Content, Part
 
 from virtual_streamer.lib.agents import (
     MapperAgent,
@@ -27,6 +28,10 @@ from virtual_streamer.agents.video_matcher import (
 )
 from virtual_streamer.agents.sentence_video_matcher.schema import (
     SentenceVideoMatcherOutput,
+)
+from virtual_streamer.video_generation import (
+    VideoGenerationConfig,
+    create_video_retriever,
 )
 from virtual_streamer.video_generation.interfaces import VideoRetrieverInterface
 
@@ -80,9 +85,15 @@ class SentenceVideoMapper(MapperAgent):
             List of {"sentence": str, "video_path": str} dicts
         """
         sentences = ctx.session.state.get(SENTENCES_KEY, [])
+
+        if len(sentences) == 0:
+            part: Part = ctx.user_content.parts[0]
+            sentences = json.loads(part.text)
+
         
         if not sentences:
             logger.warning("No sentences found in state")
+            raise Exception("No sentences found in state")
             return []
         
         logger.info(f"Building items for {len(sentences)} sentences")
@@ -200,50 +211,16 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
 
 
 def create_sentence_video_matcher(
-    video_retriever: VideoRetrieverInterface,
-    max_candidates: int = 5,
-    name: str = "sentence_video_matcher",
+    config: Optional[VideoGenerationConfig] = None
 ) -> MapReduceAgent:
     """
     Factory function to create a SentenceVideoMatcher agent.
-    
-    This wires together the mapper and aggregator using MapReduceAgent.
-    
-    Args:
-        video_retriever: Interface for searching video clips
-        max_candidates: Maximum candidates per sentence
-        name: Agent name
-    
-    Returns:
-        Configured MapReduceAgent
-    
-    Usage:
-        agent = create_sentence_video_matcher(retriever, max_candidates=5)
-        
-        # Set sentences in state
-        ctx.session.state["sentences"] = ["Hello world", "Goodbye"]
-        
-        # Run agent
-        async for event in agent.run_async(ctx):
-            pass
-        
-        # Get results
-        matches = ctx.session.state["video_matches"]
     """
-    mapper = SentenceVideoMapper(
+    if config is None:
+        config = VideoGenerationConfig()
+    video_retriever = create_video_retriever(config.video_retrieval)
+    return SentenceVideoMatcherAgent(
         video_retriever=video_retriever,
-        max_candidates=max_candidates,
-        name=f"{name}_mapper",
-    )
-    
-    return MapReduceAgent(
-        mapper=mapper,
-        aggregator_factory=lambda keys: SentenceVideoAggregator(
-            input_keys=keys,
-            output_key=MATCHES_KEY,
-            name=f"{name}_aggregator",
-        ),
-        name=name,
     )
 
 
@@ -273,7 +250,6 @@ class SentenceVideoMatcherAgent(MapReduceAgent):
     def __init__(
         self,
         video_retriever: VideoRetrieverInterface,
-        max_candidates: int = 5,
         name: str = "sentence_video_matcher",
     ):
         """
@@ -286,7 +262,6 @@ class SentenceVideoMatcherAgent(MapReduceAgent):
         """
         mapper = SentenceVideoMapper(
             video_retriever=video_retriever,
-            max_candidates=max_candidates,
             name=f"{name}_mapper",
         )
         
@@ -302,4 +277,7 @@ class SentenceVideoMatcherAgent(MapReduceAgent):
         
         # Store for backward compatibility with tests
         self._video_retriever = video_retriever
-        self._max_candidates = max_candidates
+        self._max_candidates = 5
+
+
+root_agent = get_video_matcher()

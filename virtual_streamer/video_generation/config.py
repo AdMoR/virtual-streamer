@@ -88,7 +88,7 @@ class VideoRetrievalConfig(BaseModel):
         default="lightonai/modernbert-embed-large",
         description="Embedding model for vector search",
     )
-    top_k: int = Field(default=10, gt=0, description="Number of videos to retrieve")
+    top_k: int = Field(default=5, gt=0, description="Number of videos to retrieve")
     character_filter: str = Field(
         default="fred", description="Filter by character name"
     )
