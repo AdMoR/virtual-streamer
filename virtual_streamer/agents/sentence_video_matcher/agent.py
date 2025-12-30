@@ -280,4 +280,4 @@ class SentenceVideoMatcherAgent(MapReduceAgent):
         self._max_candidates = 5
 
 
-root_agent = get_video_matcher()
+root_agent = create_sentence_video_matcher()

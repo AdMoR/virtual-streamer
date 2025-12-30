@@ -107,20 +107,13 @@ class InjectVisionFrameCallback(StateInputCallback):
         if frame is None:
             raise Exception(f"Failed to extract frame from {video_path}")
         
-        # Append sentence and frame to user content
-        callback_context.user_content.parts.append(
-            types.Part.from_text(text=f"Sentence : {sentence}")
-        )
-        callback_context.user_content.parts.append(
-            types.Part.from_bytes(data=frame, mime_type="image/jpeg")
-        )
-        
         # Also append to request contents
         llm_request.contents[0].parts.append(
             types.Part.from_bytes(data=frame, mime_type="image/jpeg")
         )
         
-        logger.info(f"Injected vision frame for: {sentence[:50]}...")
+        logger.info(f"Injected vision frame : {[p.text for p in llm_request.contents[0].parts]}...")
+        logger.info(f"Current message : {llm_request.contents}")
         
         # Return None to continue with LLM call
         return None
@@ -166,6 +159,7 @@ class StoreJudgementCallback(StateOutputCallback):
             or None if video data not found.
         """
         # Parse the LLM output into VideoJudgementOutput
+        logger.info(f"LLM response : {llm_response.content}")
         llm_output: VideoJudgementOutput = extract_llm_response_json(
             llm_response, VideoJudgementOutput
         )
@@ -199,22 +193,6 @@ class StoreJudgementCallback(StateOutputCallback):
             f"Stored match result at '{output_key}': "
             f"video={result.video_path}, rating={result.rating}, grade={result.grade}"
         )
-        
-        # Optional: Append the video frame for better display
-        try:
-            frame = extract_middle_frame(input_data.video_path)
-            if frame:
-                llm_response.content.parts.append(
-                    types.Part(
-                        inline_data=types.Blob(
-                            data=frame,
-                            display_name="video_frame",
-                            mime_type="image/jpeg"
-                        )
-                    )
-                )
-                return llm_response
-        except Exception as e:
-            logger.debug(f"Could not append frame to response: {e}")
+
         
         return None

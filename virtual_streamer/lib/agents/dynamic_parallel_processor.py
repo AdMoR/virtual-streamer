@@ -35,7 +35,7 @@ import secrets
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
-from google.adk.agents import BaseAgent, ParallelAgent
+from google.adk.agents import BaseAgent, SequentialAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from google.genai import types
@@ -68,7 +68,7 @@ class StatefulWorker(Protocol):
 WorkerFactory = Callable[[str], StatefulWorker]
 
 
-class MapperAgent(ParallelAgent, ABC):
+class MapperAgent(SequentialAgent, ABC):
     """
     Abstract base for parallel task distribution.
     
@@ -198,9 +198,10 @@ class MapperAgent(ParallelAgent, ABC):
         )
         
         # Create parallel agent with workers and run
-        parallel = ParallelAgent(
+        parallel = SequentialAgent(
             name=f"parallel_{run_id}",
-            sub_agents=self._workers  # type: ignore (workers are agents)
+            sub_agents=self._workers  # type: ignore (workers are agents),
+
         )
         
         async for event in parallel.run_async(ctx):
@@ -373,7 +374,6 @@ class AggregatorAgent(BaseAgent, Generic[T], ABC):
             ),
             actions=EventActions(
                 state_delta=state_delta if state_delta else None,
-                escalate=True
             )
         )
 

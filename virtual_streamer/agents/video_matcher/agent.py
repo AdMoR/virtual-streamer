@@ -34,6 +34,7 @@ from virtual_streamer.agents.video_matcher.callback import (
     InjectVisionFrameCallback,
     StoreJudgementCallback,
 )
+from virtual_streamer.agents.video_matcher.schema import VideoJudgementOutput
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,11 @@ def get_video_matcher(run_id: Optional[str] = None) -> StatefulLlmAgent:
         matcher = get_video_matcher(run_id="s0_w1")
         print(matcher.get_input_key())   # "task:s0_w1:video_sentence"
         print(matcher.get_output_key())  # "result:s0_w1:judgement"
+
+    Test sentence :
+    ["coucou Jamy"]
+
+
     """
     input_callback = InjectVisionFrameCallback(run_id)
     output_callback = StoreJudgementCallback(run_id)
@@ -70,6 +76,7 @@ def get_video_matcher(run_id: Optional[str] = None) -> StatefulLlmAgent:
     return StatefulLlmAgent(
         name="video_matcher",
         instruction=JUDGE_PROMPT,
+        output_schema=VideoJudgementOutput,
         input_callback=input_callback,
         output_callback=output_callback,
     )
