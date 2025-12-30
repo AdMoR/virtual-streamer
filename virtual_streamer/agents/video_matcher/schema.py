@@ -20,7 +20,8 @@ class ContextualRating(str, Enum):
 
 
 class VideoSentenceInput(BaseModel):
-    """Input for video matching: sentence and video path."""
+    """Input for video matching: character, sentence and video path."""
+    character: str = Field(description="The character speaking this line")
     sentence: str = Field(description="The dialogue sentence to match")
     video_path: str = Field(description="Path to the video file to evaluate")
 
@@ -57,6 +58,7 @@ class VideoMatchResult(BaseModel):
     Includes the video_path so we know which video was judged.
     """
     
+    character: str = Field(description="The character speaking this line")
     sentence: str = Field(description="The original sentence being matched")
     video_path: str = Field(description="Path to the video that was evaluated")
     rating: ContextualRating = Field(description="Match quality rating")
@@ -71,6 +73,7 @@ class VideoMatchResult(BaseModel):
     ) -> "VideoMatchResult":
         """Create VideoMatchResult by combining input and output."""
         return cls(
+            character=input_data.character,
             sentence=input_data.sentence,
             video_path=input_data.video_path,
             rating=output_data.rating,

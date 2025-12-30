@@ -1,20 +1,18 @@
 """
 Sentence Video Matcher Agent.
 
-This agent takes a list of sentences and finds the best matching video
-for each sentence using:
+This agent takes DialogLines from the story generator and finds the best 
+matching video for each dialog line using:
 1. Vector store search to find candidate videos
 2. Parallel video matching using MapperAgent + VideoMatcher workers
-3. AggregatorAgent to select the best match per sentence
+3. AggregatorAgent to select the best match per dialog line
 
 The agent uses the MapReduceAgent pattern for clean orchestration.
 """
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from google.adk.agents.invocation_context import InvocationContext
-from google.genai.types import Content, Part
 
 from virtual_streamer.lib.agents import (
     MapperAgent,
@@ -26,8 +24,10 @@ from virtual_streamer.agents.video_matcher import (
     VideoMatchResult,
     ContextualRating,
 )
+from virtual_streamer.agents.story_generator.schema import DialogLine, DialogLines
 from virtual_streamer.agents.sentence_video_matcher.schema import (
     SentenceVideoMatcherOutput,
+    DialogLineMatch,
 )
 from virtual_streamer.video_generation import (
     VideoGenerationConfig,
@@ -44,11 +44,11 @@ MATCHES_KEY = "video_matches"
 
 class SentenceVideoMapper(MapperAgent):
     """
-    Mapper that expands sentences into (sentence, video_path) pairs.
+    Mapper that expands DialogLines into (dialog_line, video_path) pairs.
     
-    For each sentence in state:
-    1. Searches video retriever for candidates
-    2. Creates one item per (sentence, candidate) pair
+    For each dialog line in state:
+    1. Searches video retriever for candidates using dialog text
+    2. Creates one item per (dialog_line, candidate) pair
     
     Each item is processed by a VideoMatcher worker.
     """
@@ -64,7 +64,7 @@ class SentenceVideoMapper(MapperAgent):
         
         Args:
             video_retriever: Interface for searching video clips by text
-            max_candidates: Maximum number of candidate videos per sentence
+            max_candidates: Maximum number of candidate videos per dialog line
             name: Agent name
         """
         super().__init__(
@@ -76,42 +76,42 @@ class SentenceVideoMapper(MapperAgent):
     
     def build_items_from_state(self, ctx: InvocationContext) -> List[Dict[str, Any]]:
         """
-        Build (sentence, video_path) items from sentences in state.
+        Build (character, sentence, video_path) items from DialogLines in state.
         
-        Reads sentences from state, searches for candidate videos,
-        and creates items matching VideoSentenceInput schema.
+        Reads DialogLines from state, parses into DialogLine objects,
+        searches for candidate videos, and creates items matching 
+        VideoSentenceInput schema.
         
         Returns:
-            List of {"sentence": str, "video_path": str} dicts
+            List of {"character": str, "sentence": str, "video_path": str} dicts
         """
-        sentences = ctx.session.state.get(SENTENCES_KEY, [])
-
-        if len(sentences) == 0:
-            part: Part = ctx.user_content.parts[0]
-            sentences = json.loads(part.text)
-
+        sentences_data = ctx.session.state.get(SENTENCES_KEY, {})
         
-        if not sentences:
-            logger.warning("No sentences found in state")
-            raise Exception("No sentences found in state")
-            return []
+        # Parse DialogLines from state
+        dialog_lines = DialogLines.model_validate(sentences_data)
         
-        logger.info(f"Building items for {len(sentences)} sentences")
+        if not dialog_lines.lines:
+            logger.warning("No dialog lines found in state")
+            raise Exception("No dialog lines found in state")
+        
+        logger.info(f"Building items for {len(dialog_lines.lines)} dialog lines")
         
         items = []
-        for sentence in sentences:
+        for dialog_line in dialog_lines.lines:
+            # Search using the dialog text
             candidates = self._video_retriever.search(
-                sentence, 
+                dialog_line.dialog, 
                 top_k=self._max_candidates
             )
             
             if not candidates:
-                logger.warning(f"No candidates found for: {sentence[:50]}...")
+                logger.warning(f"No candidates found for: {dialog_line.dialog[:50]}...")
                 continue
             
             for video_path in candidates:
                 items.append({
-                    "sentence": sentence,
+                    "character": dialog_line.character,
+                    "sentence": dialog_line.dialog,
                     "video_path": video_path,
                 })
         
@@ -121,11 +121,13 @@ class SentenceVideoMapper(MapperAgent):
 
 class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
     """
-    Aggregator that selects the best video match for each sentence.
+    Aggregator that selects the best video match for each dialog line.
     
     Groups results by sentence, then selects the best match per group
     based on rating priority (CONTEXTUAL > NEUTRAL > NOT_CONTEXTUAL)
     and grade within each rating level.
+    
+    Returns DialogLineMatch objects with full character info.
     """
     
     def __init__(
@@ -153,29 +155,38 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
         self, results: List[VideoMatchResult]
     ) -> SentenceVideoMatcherOutput:
         """
-        Group results by sentence and select best match per sentence.
+        Group results by sentence and select best match per dialog line.
         
         Args:
             results: All VideoMatchResult from parallel workers
         
         Returns:
-            SentenceVideoMatcherOutput with one best match per sentence
+            SentenceVideoMatcherOutput with DialogLineMatch per dialog line
         """
-        # Group by sentence
-        by_sentence: Dict[str, List[VideoMatchResult]] = {}
+        # Group by (character, sentence) tuple to handle same sentence from different characters
+        by_dialog: Dict[tuple, List[VideoMatchResult]] = {}
         for result in results:
-            by_sentence.setdefault(result.sentence, []).append(result)
+            key = (result.character, result.sentence)
+            by_dialog.setdefault(key, []).append(result)
         
-        logger.info(f"Aggregating results for {len(by_sentence)} sentences")
+        logger.info(f"Aggregating results for {len(by_dialog)} dialog lines")
         
-        # Select best from each group
+        # Select best from each group and convert to DialogLineMatch
         matches = []
-        for sentence, group in by_sentence.items():
+        for (character, sentence), group in by_dialog.items():
             best = self._select_best(group)
             if best:
-                matches.append(best)
+                # Convert VideoMatchResult to DialogLineMatch
+                dialog_line_match = DialogLineMatch(
+                    dialog_line=DialogLine(character=character, dialog=sentence),
+                    video_path=best.video_path,
+                    rating=best.rating,
+                    grade=best.grade,
+                    reasoning=best.reasoning,
+                )
+                matches.append(dialog_line_match)
                 logger.debug(
-                    f"Best for '{sentence[:30]}...': "
+                    f"Best for '{character}: {sentence[:30]}...': "
                     f"{best.video_path} (rating={best.rating}, grade={best.grade})"
                 )
         
@@ -211,73 +222,31 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
 
 
 def create_sentence_video_matcher(
-    config: Optional[VideoGenerationConfig] = None
+    video_retriever: VideoRetrieverInterface,
+    max_candidates: int = 5,
 ) -> MapReduceAgent:
     """
     Factory function to create a SentenceVideoMatcher agent.
+    
+    Args:
+        video_retriever: Interface for searching video clips
+        max_candidates: Maximum candidate videos per dialog line
+    
+    Returns:
+        Configured MapReduceAgent for sentence-video matching
     """
-    if config is None:
-        config = VideoGenerationConfig()
-    video_retriever = create_video_retriever(config.video_retrieval)
-    return SentenceVideoMatcherAgent(
+    mapper = SentenceVideoMapper(
         video_retriever=video_retriever,
+        max_candidates=max_candidates,
+        name="sentence_video_mapper",
     )
-
-
-# Backward compatibility: keep the class-based interface
-class SentenceVideoMatcherAgent(MapReduceAgent):
-    """
-    Agent that finds the best matching video for each sentence.
     
-    This is a convenience wrapper around create_sentence_video_matcher
-    that provides the same interface as before refactoring.
-    
-    Example:
-        retriever = MyVideoRetriever()
-        agent = SentenceVideoMatcherAgent(video_retriever=retriever)
-        
-        # Set sentences in state
-        ctx.session.state["sentences"] = ["Hello world", "Goodbye"]
-        
-        # Run agent
-        async for event in agent.run_async(ctx):
-            yield event
-        
-        # Get results
-        matches = ctx.session.state["video_matches"]
-    """
-    
-    def __init__(
-        self,
-        video_retriever: VideoRetrieverInterface,
-        name: str = "sentence_video_matcher",
-    ):
-        """
-        Initialize the agent.
-        
-        Args:
-            video_retriever: Interface for searching video clips by text
-            max_candidates: Maximum number of candidate videos per sentence
-            name: Agent name
-        """
-        mapper = SentenceVideoMapper(
-            video_retriever=video_retriever,
-            name=f"{name}_mapper",
-        )
-        
-        super().__init__(
-            mapper=mapper,
-            aggregator_factory=lambda keys: SentenceVideoAggregator(
-                input_keys=keys,
-                output_key=MATCHES_KEY,
-                name=f"{name}_aggregator",
-            ),
-            name=name,
-        )
-        
-        # Store for backward compatibility with tests
-        self._video_retriever = video_retriever
-        self._max_candidates = 5
-
-
-root_agent = create_sentence_video_matcher()
+    return MapReduceAgent(
+        mapper=mapper,
+        aggregator_factory=lambda keys: SentenceVideoAggregator(
+            input_keys=keys,
+            output_key=MATCHES_KEY,
+            name="sentence_video_aggregator",
+        ),
+        name="sentence_video_matcher",
+    )

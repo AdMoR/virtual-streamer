@@ -1,21 +1,21 @@
 """
 Sentence Video Matcher Agent.
 
-Finds the best matching video for each sentence from a video database
+Finds the best matching video for each dialog line from a video database
 using parallel video matching and aggregation.
 """
 
 from virtual_streamer.agents.sentence_video_matcher.agent import (
-    SentenceVideoMatcherAgent,
+    create_sentence_video_matcher,
 )
 from virtual_streamer.agents.sentence_video_matcher.schema import (
-    SentenceVideoMatcherInput,
+    DialogLineMatch,
     SentenceVideoMatcherOutput,
 )
 
 __all__ = [
-    "SentenceVideoMatcherAgent",
-    "SentenceVideoMatcherInput",
+    "create_sentence_video_matcher",
+    "DialogLineMatch",
     "SentenceVideoMatcherOutput",
 ]
 
