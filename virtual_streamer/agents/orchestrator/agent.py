@@ -150,3 +150,8 @@ def create_root_agent() -> SequentialAgent:
         video_retriever=video_retriever,
         max_video_candidates=5,
     )
+
+
+# Expose root_agent at module level for ADK discovery
+# ADK auto-discovers agents that have `root_agent` defined at module level
+root_agent = create_root_agent()

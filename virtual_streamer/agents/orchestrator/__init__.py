@@ -11,10 +11,12 @@ Output: List[DialogLineMatch] with (character, dialog, video) pairs.
 from virtual_streamer.agents.orchestrator.agent import (
     get_video_generation_orchestrator,
     create_root_agent,
+    root_agent,
 )
 
 __all__ = [
     "get_video_generation_orchestrator",
     "create_root_agent",
+    "root_agent",
 ]
 

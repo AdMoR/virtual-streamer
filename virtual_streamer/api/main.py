@@ -5,14 +5,18 @@ This is the main FastAPI application that combines all service layers:
 - Low-level: Entity management (characters, clips)
 - Medium-level: Core services (TTS, STT, Wav2lip)
 - High-level: Application workflows (video generation)
+- ADK Agents: Google ADK agents mounted at /adk
 
 The server provides a complete API for the Virtual Streamer system with
 proper separation of concerns and dependency injection.
 """
 
+from contextlib import asynccontextmanager
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 # Import routers from all layers
 from virtual_streamer.api.low_level.characters import router as characters_router
@@ -25,7 +29,43 @@ from virtual_streamer.api.high_level.video_generation import (
 )
 from virtual_streamer.api.high_level.legacy_qa import router as legacy_qa_router
 
-# Create FastAPI app
+# Import ADK app factory and mounting utilities
+from virtual_streamer.api.adk_app import create_adk_app
+from virtual_streamer.api.utils.mount_app import MountableApp, mount_app
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan context manager.
+    
+    Handles startup and shutdown events for the main app.
+    Mounted apps' lifespans are merged into this via mount_app().
+    """
+    # Startup
+    print("=" * 70)
+    print("Virtual Streamer API Starting (Fully Unified)")
+    print("=" * 70)
+    print(f"Data directory: {os.environ.get('DATA_DIR', '/data')}")
+    print(f"Temp directory: {os.environ.get('TEMP_DIR', './temp')}")
+    print(
+        f"TTS service: {os.environ.get('FISH_TTS_HOST', 'localhost')}:{os.environ.get('FISH_TTS_PORT', '8003')}"
+    )
+    print("=" * 70)
+
+    # Ensure temp directory exists
+    temp_dir = os.environ.get("TEMP_DIR", "./temp")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    yield  # App is running
+
+    # Shutdown
+    print("Virtual Streamer API shutting down...")
+
+
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="Virtual Streamer API",
     description="""
@@ -46,12 +86,18 @@ app = FastAPI(
     **High-level (Applications)**:
     - Video Generation: Complete story-to-video workflow
     
+    **ADK Agents** (mounted at /adk):
+    - story_generator: Generate stories from titles
+    - video_matcher: Match videos to dialogue
+    - orchestrator: Full video generation pipeline
+    
     **Legacy Endpoints**:
     - /process: Backward-compatible Q&A video generation (deprecated)
     """,
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -80,17 +126,36 @@ app.include_router(video_generation_router, prefix="/api/v1")
 app.include_router(legacy_qa_router)  # No prefix for backward compatibility
 
 
+# Mount ADK agents app
+try:
+    adk_app = create_adk_app()
+    adk_mountable = MountableApp(
+        name="adk_agents",
+        app=adk_app,
+        path="/adk",
+        merge_lifespan=True,
+        merge_docs=True,
+        protected=False,
+    )
+    mount_app(app, adk_mountable)
+    logger.info("ADK agents mounted at /adk")
+except Exception as e:
+    logger.warning(f"Failed to mount ADK agents: {e}")
+    logger.warning("ADK agents will not be available. Continuing without them.")
+
+
 @app.get("/", tags=["Root"])
 async def root():
     """Root endpoint with API information."""
     return {
         "name": "Virtual Streamer API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "docs": "/docs",
         "layers": {
             "low_level": ["characters", "clips"],
             "medium_level": ["tts", "stt", "wav2lip"],
             "high_level": ["video_generation"],
+            "adk_agents": "/adk",
         },
     }
 
@@ -111,31 +176,6 @@ async def health_check():
         "data_dir": os.environ.get("DATA_DIR", "/data"),
         "temp_dir": os.environ.get("TEMP_DIR", "./temp"),
     }
-
-
-# Startup and shutdown events
-@app.on_event("startup")
-async def startup_event():
-    """Initialize on startup."""
-    print("=" * 70)
-    print("Virtual Streamer API Starting (Fully Unified)")
-    print("=" * 70)
-    print(f"Data directory: {os.environ.get('DATA_DIR', '/data')}")
-    print(f"Temp directory: {os.environ.get('TEMP_DIR', './temp')}")
-    print(
-        f"TTS service: {os.environ.get('FISH_TTS_HOST', 'localhost')}:{os.environ.get('FISH_TTS_PORT', '8003')}"
-    )
-    print("=" * 70)
-
-    # Ensure temp directory exists
-    temp_dir = os.environ.get("TEMP_DIR", "./temp")
-    os.makedirs(temp_dir, exist_ok=True)
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    print("Virtual Streamer API shutting down...")
 
 
 if __name__ == "__main__":
