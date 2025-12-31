@@ -189,8 +189,9 @@ class TestInjectVisionFrameCallback:
         cb = InjectVisionFrameCallback()
         schema = cb.get_input_schema()
         
-        # Valid input
-        valid = schema(sentence="Hello", video_path="/test.mp4")
+        # Valid input (now requires character field)
+        valid = schema(character="narrator", sentence="Hello", video_path="/test.mp4")
+        assert valid.character == "narrator"
         assert valid.sentence == "Hello"
         assert valid.video_path == "/test.mp4"
         
@@ -223,8 +224,9 @@ class TestStoreJudgementCallback:
         cb = StoreJudgementCallback()
         schema = cb.get_output_schema()
         
-        # VideoMatchResult requires sentence and video_path too
+        # VideoMatchResult requires character, sentence and video_path
         valid = schema(
+            character="narrator",
             sentence="Hello world",
             video_path="/path/to/video.mp4",
             rating=ContextualRating.CONTEXTUAL,
@@ -233,6 +235,7 @@ class TestStoreJudgementCallback:
         )
         assert valid.rating == ContextualRating.CONTEXTUAL
         assert valid.grade == 8
+        assert valid.character == "narrator"
         assert valid.sentence == "Hello world"
 
 
@@ -317,9 +320,10 @@ class TestStatefulWorkerProtocol:
         input_cb = InjectVisionFrameCallback(run_id="vm_test")
         schema = input_cb.get_input_schema()
         
-        # Valid data
-        valid_data = {"sentence": "Hello world", "video_path": "/path/to/video.mp4"}
+        # Valid data (now requires character field)
+        valid_data = {"character": "narrator", "sentence": "Hello world", "video_path": "/path/to/video.mp4"}
         validated = schema.model_validate(valid_data)
+        assert validated.character == "narrator"
         assert validated.sentence == "Hello world"
         assert validated.video_path == "/path/to/video.mp4"
     
@@ -438,12 +442,14 @@ class TestSchemaSerialization:
     def test_video_sentence_input_roundtrip(self):
         """Test VideoSentenceInput serialization."""
         original = VideoSentenceInput(
+            character="narrator",
             sentence="Test sentence",
             video_path="/path/to/video.mp4"
         )
         json_str = original.model_dump_json()
         restored = VideoSentenceInput.model_validate_json(json_str)
         
+        assert restored.character == original.character
         assert restored.sentence == original.sentence
         assert restored.video_path == original.video_path
     
@@ -563,19 +569,24 @@ class TestMapperAgentSchemaValidation:
         cb = InjectVisionFrameCallback(run_id="vm_validation")
         schema = cb.get_input_schema()
         
-        # Valid video sentence input
-        valid = {"sentence": "Hello Jamy!", "video_path": "/videos/scene.mp4"}
+        # Valid video sentence input (now requires character field)
+        valid = {"character": "narrator", "sentence": "Hello Jamy!", "video_path": "/videos/scene.mp4"}
         validated = schema.model_validate(valid)
+        assert validated.character == "narrator"
         assert validated.sentence == "Hello Jamy!"
         assert validated.video_path == "/videos/scene.mp4"
         
+        # Missing character
+        with pytest.raises(ValidationError):
+            schema.model_validate({"sentence": "Hello", "video_path": "/videos/scene.mp4"})
+        
         # Missing sentence
         with pytest.raises(ValidationError):
-            schema.model_validate({"video_path": "/videos/scene.mp4"})
+            schema.model_validate({"character": "narrator", "video_path": "/videos/scene.mp4"})
         
         # Missing video_path
         with pytest.raises(ValidationError):
-            schema.model_validate({"sentence": "Hello"})
+            schema.model_validate({"character": "narrator", "sentence": "Hello"})
 
 
 # ============================================================================
@@ -824,6 +835,7 @@ class TestVideoMatchResultSchema:
         )
         
         input_data = VideoSentenceInput(
+            character="narrator",
             sentence="Hello world",
             video_path="/path/to/video.mp4"
         )
@@ -835,6 +847,7 @@ class TestVideoMatchResultSchema:
         
         result = VideoMatchResult.from_input_and_output(input_data, output_data)
         
+        assert result.character == "narrator"
         assert result.sentence == "Hello world"
         assert result.video_path == "/path/to/video.mp4"
         assert result.rating == ContextualRating.CONTEXTUAL
@@ -846,6 +859,7 @@ class TestVideoMatchResultSchema:
         from virtual_streamer.agents.video_matcher.schema import VideoMatchResult
         
         result = VideoMatchResult(
+            character="narrator",
             sentence="Test sentence",
             video_path="/test/video.mp4",
             rating=ContextualRating.NEUTRAL,
@@ -856,6 +870,7 @@ class TestVideoMatchResultSchema:
         json_str = result.model_dump_json()
         restored = VideoMatchResult.model_validate_json(json_str)
         
+        assert restored.character == result.character
         assert restored.sentence == result.sentence
         assert restored.video_path == result.video_path
         assert restored.rating == result.rating
@@ -878,6 +893,7 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
@@ -885,6 +901,7 @@ class TestBestMatchAggregator:
                 reasoning="High grade but bad rating"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -913,6 +930,7 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
@@ -920,6 +938,7 @@ class TestBestMatchAggregator:
                 reasoning="High grade"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video2.mp4",
                 rating=ContextualRating.NEUTRAL,
@@ -942,6 +961,7 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -949,6 +969,7 @@ class TestBestMatchAggregator:
                 reasoning="Lower grade"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -972,6 +993,7 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
@@ -979,6 +1001,7 @@ class TestBestMatchAggregator:
                 reasoning="Low grade"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/video2.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
@@ -1010,38 +1033,26 @@ class TestBestMatchAggregator:
 
 
 class TestSentenceVideoMatcherSchemas:
-    """Test SentenceVideoMatcher input/output schemas."""
-    
-    def test_input_schema(self):
-        """Test SentenceVideoMatcherInput schema."""
-        from virtual_streamer.agents.sentence_video_matcher.schema import (
-            SentenceVideoMatcherInput,
-        )
-        
-        input_data = SentenceVideoMatcherInput(
-            sentences=["Hello world", "Goodbye"]
-        )
-        
-        assert len(input_data.sentences) == 2
-        assert input_data.sentences[0] == "Hello world"
+    """Test SentenceVideoMatcher output schemas."""
     
     def test_output_schema(self):
-        """Test SentenceVideoMatcherOutput schema."""
+        """Test SentenceVideoMatcherOutput schema with DialogLineMatch."""
         from virtual_streamer.agents.sentence_video_matcher.schema import (
             SentenceVideoMatcherOutput,
+            DialogLineMatch,
         )
-        from virtual_streamer.agents.video_matcher.schema import VideoMatchResult
+        from virtual_streamer.agents.story_generator.schema import DialogLine
         
         matches = [
-            VideoMatchResult(
-                sentence="Hello",
+            DialogLineMatch(
+                dialog_line=DialogLine(character="narrator", dialog="Hello"),
                 video_path="/video1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Good"
             ),
-            VideoMatchResult(
-                sentence="World",
+            DialogLineMatch(
+                dialog_line=DialogLine(character="narrator", dialog="World"),
                 video_path="/video2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1053,14 +1064,14 @@ class TestSentenceVideoMatcherSchemas:
         
         assert len(output.matches) == 2
         
-        # Test to_dict_by_sentence
-        by_sentence = output.to_dict_by_sentence()
-        assert "Hello" in by_sentence
-        assert by_sentence["Hello"].video_path == "/video1.mp4"
+        # Test to_dict_by_dialog
+        by_dialog = output.to_dict_by_dialog()
+        assert "Hello" in by_dialog
+        assert by_dialog["Hello"].video_path == "/video1.mp4"
 
 
 # ============================================================================
-# SentenceVideoMatcherAgent Integration Tests (Mocked)
+# Mock Classes for Testing
 # ============================================================================
 
 
@@ -1132,60 +1143,13 @@ class MockInvocationContext:
         self.session = MockSession(initial_state)
 
 
-class TestSentenceVideoMatcherAgentBehavior:
-    """Test SentenceVideoMatcherAgent behavior with mocks."""
-    
-    def test_agent_initialization(self):
-        """Test agent initializes correctly."""
-        from virtual_streamer.agents.sentence_video_matcher.agent import (
-            SentenceVideoMatcherAgent,
-        )
-        
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(
-            video_retriever=retriever,
-            max_candidates=5,
-        )
-        
-        assert agent.name == "sentence_video_matcher"
-        assert agent._max_candidates == 5
-        assert agent._video_retriever is retriever
-    
-    def test_agent_custom_name(self):
-        """Test agent with custom name."""
-        from virtual_streamer.agents.sentence_video_matcher.agent import (
-            SentenceVideoMatcherAgent,
-        )
-        
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(
-            video_retriever=retriever,
-            name="custom_matcher",
-        )
-        
-        assert agent.name == "custom_matcher"
-    
-    def test_retriever_called_for_each_sentence(self):
-        """Test that retriever.search is called for each sentence."""
-        from virtual_streamer.agents.sentence_video_matcher.agent import (
-            SentenceVideoMatcherAgent,
-            SENTENCES_KEY,
-        )
-        
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(
-            video_retriever=retriever,
-            max_candidates=3,
-        )
-        
-        # Simulate the search calls that would happen
-        sentences = ["Hello world", "Goodbye everyone"]
-        for sentence in sentences:
-            retriever.search(sentence, top_k=6)  # max_candidates * 2
-        
-        assert len(retriever.search_calls) == 2
-        assert retriever.search_calls[0][0] == "Hello world"
-        assert retriever.search_calls[1][0] == "Goodbye everyone"
+# ============================================================================
+# Retriever Tests
+# ============================================================================
+
+
+class TestMockVideoRetriever:
+    """Test MockVideoRetriever behavior."""
     
     def test_retriever_returns_correct_candidates(self):
         """Test that retriever returns configured videos."""
@@ -1206,25 +1170,13 @@ class TestSentenceVideoMatcherAgentBehavior:
         assert len(results) == 3
 
 
-class TestSentenceVideoMatcherAgentWithMockedState:
-    """Test agent behavior with mocked state management."""
-    
-    def test_builds_correct_items_for_mapper(self):
-        """Test that correct items are built for MapperAgent."""
-        sentence = "Hello world"
-        candidates = ["/videos/v1.mp4", "/videos/v2.mp4", "/videos/v3.mp4"]
-        
-        # This is what the agent builds internally
-        items = [
-            {"sentence": sentence, "video_path": video_path}
-            for video_path in candidates
-        ]
-        
-        assert len(items) == 3
-        assert all(item["sentence"] == "Hello world" for item in items)
-        assert items[0]["video_path"] == "/videos/v1.mp4"
-        assert items[1]["video_path"] == "/videos/v2.mp4"
-        assert items[2]["video_path"] == "/videos/v3.mp4"
+# ============================================================================
+# SentenceVideoMapper Tests
+# ============================================================================
+
+
+class TestSentenceVideoMapperIntegration:
+    """Test SentenceVideoMapper with mocked state management."""
     
     def test_result_key_pattern(self):
         """Test that result keys follow expected pattern."""
@@ -1247,9 +1199,10 @@ class TestSentenceVideoMatcherAgentWithMockedState:
         from virtual_streamer.agents.video_matcher.schema import VideoMatchResult
         from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
         
-        # Simulate state with worker results
+        # Simulate state with worker results (with character field)
         state = {
             "result:abc:w0:judgement": VideoMatchResult(
+                character="narrator",
                 sentence="Hello",
                 video_path="/videos/v1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
@@ -1257,6 +1210,7 @@ class TestSentenceVideoMatcherAgentWithMockedState:
                 reasoning="Poor match"
             ).model_dump_json(),
             "result:abc:w1:judgement": VideoMatchResult(
+                character="narrator",
                 sentence="Hello",
                 video_path="/videos/v2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -1264,6 +1218,7 @@ class TestSentenceVideoMatcherAgentWithMockedState:
                 reasoning="Great match"
             ).model_dump_json(),
             "result:abc:w2:judgement": VideoMatchResult(
+                character="narrator",
                 sentence="Hello",
                 video_path="/videos/v3.mp4",
                 rating=ContextualRating.NEUTRAL,
@@ -1318,9 +1273,10 @@ class TestSentenceVideoMatcherEndToEndMock:
             "Je suis dans un datacenter": ["/videos/datacenter1.mp4", "/videos/datacenter2.mp4"],
         })
         
-        # Simulate what the agent would produce
+        # Simulate what the agent would produce (with character field)
         expected_matches = [
             VideoMatchResult(
+                character="narrator",
                 sentence="Hello Jamy!",
                 video_path="/videos/scene1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -1328,6 +1284,7 @@ class TestSentenceVideoMatcherEndToEndMock:
                 reasoning="Jamy is visible in the scene"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="Je suis dans un datacenter",
                 video_path="/videos/datacenter1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -1351,19 +1308,20 @@ class TestSentenceVideoMatcherEndToEndMock:
         """Test that output matches SentenceVideoMatcherOutput schema."""
         from virtual_streamer.agents.sentence_video_matcher.schema import (
             SentenceVideoMatcherOutput,
+            DialogLineMatch,
         )
-        from virtual_streamer.agents.video_matcher.schema import VideoMatchResult
+        from virtual_streamer.agents.story_generator.schema import DialogLine
         
         matches = [
-            VideoMatchResult(
-                sentence="Test 1",
+            DialogLineMatch(
+                dialog_line=DialogLine(character="narrator", dialog="Test 1"),
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Good"
             ),
-            VideoMatchResult(
-                sentence="Test 2",
+            DialogLineMatch(
+                dialog_line=DialogLine(character="narrator", dialog="Test 2"),
                 video_path="/v2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1378,12 +1336,12 @@ class TestSentenceVideoMatcherEndToEndMock:
         restored = SentenceVideoMatcherOutput.model_validate_json(json_str)
         
         assert len(restored.matches) == 2
-        assert restored.matches[0].sentence == "Test 1"
+        assert restored.matches[0].dialog_line.dialog == "Test 1"
         
-        # Test to_dict_by_sentence
-        by_sentence = output.to_dict_by_sentence()
-        assert "Test 1" in by_sentence
-        assert by_sentence["Test 1"].video_path == "/v1.mp4"
+        # Test to_dict_by_dialog
+        by_dialog = output.to_dict_by_dialog()
+        assert "Test 1" in by_dialog
+        assert by_dialog["Test 1"].video_path == "/v1.mp4"
     
     def test_state_delta_format(self):
         """Test that state delta has correct format for MATCHES_KEY."""
@@ -1392,6 +1350,7 @@ class TestSentenceVideoMatcherEndToEndMock:
         
         matches = [
             VideoMatchResult(
+                character="narrator",
                 sentence="Hello",
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,

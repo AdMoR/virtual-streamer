@@ -5,8 +5,7 @@ Tests cover:
 - MapperAgent abstract base class
 - AggregatorAgent abstract base class
 - MapReduceAgent orchestration
-- SentenceVideoMapper concrete implementation
-- SentenceVideoAggregator concrete implementation
+- BestMatchAggregator concrete implementation
 """
 
 import pytest
@@ -19,21 +18,6 @@ from virtual_streamer.lib.agents import (
     AggregatorAgent,
     MapReduceAgent,
     StatefulWorker,
-)
-from virtual_streamer.agents.sentence_video_matcher.agent import (
-    SentenceVideoMapper,
-    SentenceVideoAggregator,
-    SentenceVideoMatcherAgent,
-    create_sentence_video_matcher,
-    SENTENCES_KEY,
-    MATCHES_KEY,
-)
-from virtual_streamer.agents.video_matcher.schema import (
-    VideoMatchResult,
-    ContextualRating,
-)
-from virtual_streamer.agents.sentence_video_matcher.schema import (
-    SentenceVideoMatcherOutput,
 )
 
 
@@ -51,19 +35,6 @@ class SimpleOutput(BaseModel):
     """Simple output schema for testing."""
     result: str = Field(description="A simple result")
     score: int = Field(description="A score", ge=0, le=10)
-
-
-class MockVideoRetriever:
-    """Mock video retriever for testing."""
-    
-    def __init__(self, video_map: Optional[Dict[str, List[str]]] = None):
-        self.video_map = video_map or {}
-        self.default_videos = ["/videos/default1.mp4", "/videos/default2.mp4"]
-        self.search_calls: List[tuple] = []
-    
-    def search(self, query: str, top_k: int = 10) -> List[str]:
-        self.search_calls.append((query, top_k))
-        return self.video_map.get(query, self.default_videos)[:top_k]
 
 
 class MockStatefulWorker:
@@ -529,204 +500,45 @@ class TestMapReduceAgentConstruction:
 
 
 # ============================================================================
-# SentenceVideoMapper Tests
+# BestMatchAggregator Tests
 # ============================================================================
 
 
-class TestSentenceVideoMapper:
-    """Test SentenceVideoMapper concrete implementation."""
-    
-    def test_mapper_creation(self):
-        """Test SentenceVideoMapper can be created."""
-        retriever = MockVideoRetriever()
-        mapper = SentenceVideoMapper(
-            video_retriever=retriever,
-            max_candidates=5,
-        )
-        
-        assert mapper._video_retriever is retriever
-        assert mapper._max_candidates == 5
-    
-    def test_mapper_default_values(self):
-        """Test SentenceVideoMapper default values."""
-        retriever = MockVideoRetriever()
-        mapper = SentenceVideoMapper(video_retriever=retriever)
-        
-        assert mapper._max_candidates == 5  # Default
-        assert mapper.name == "sentence_video_mapper"  # Default
-    
-    def test_mapper_custom_name(self):
-        """Test SentenceVideoMapper with custom name."""
-        retriever = MockVideoRetriever()
-        mapper = SentenceVideoMapper(
-            video_retriever=retriever,
-            name="custom_mapper",
-        )
-        
-        assert mapper.name == "custom_mapper"
-    
-    def test_build_items_from_state_with_sentences(self):
-        """Test build_items_from_state generates correct items."""
-        video_map = {
-            "Hello": ["/v1.mp4", "/v2.mp4"],
-            "World": ["/v3.mp4"],
-        }
-        retriever = MockVideoRetriever(video_map)
-        mapper = SentenceVideoMapper(
-            video_retriever=retriever,
-            max_candidates=10,
-        )
-        
-        ctx = MockInvocationContext({
-            SENTENCES_KEY: ["Hello", "World"],
-        })
-        
-        items = mapper.build_items_from_state(ctx)
-        
-        # Should have 3 items total (2 for Hello, 1 for World)
-        assert len(items) == 3
-        
-        # Check structure
-        hello_items = [i for i in items if i["sentence"] == "Hello"]
-        world_items = [i for i in items if i["sentence"] == "World"]
-        
-        assert len(hello_items) == 2
-        assert len(world_items) == 1
-        
-        assert hello_items[0]["video_path"] == "/v1.mp4"
-        assert hello_items[1]["video_path"] == "/v2.mp4"
-    
-    def test_build_items_respects_max_candidates(self):
-        """Test that max_candidates limits videos per sentence."""
-        retriever = MockVideoRetriever({
-            "test": ["/v1.mp4", "/v2.mp4", "/v3.mp4", "/v4.mp4", "/v5.mp4"]
-        })
-        mapper = SentenceVideoMapper(
-            video_retriever=retriever,
-            max_candidates=2,
-        )
-        
-        ctx = MockInvocationContext({SENTENCES_KEY: ["test"]})
-        items = mapper.build_items_from_state(ctx)
-        
-        assert len(items) == 2
-    
-    def test_build_items_empty_sentences(self):
-        """Test build_items with no sentences."""
-        retriever = MockVideoRetriever()
-        mapper = SentenceVideoMapper(video_retriever=retriever)
-        
-        ctx = MockInvocationContext({SENTENCES_KEY: []})
-        items = mapper.build_items_from_state(ctx)
-        
-        assert items == []
-    
-    def test_build_items_missing_sentences_key(self):
-        """Test build_items when sentences key is missing."""
-        retriever = MockVideoRetriever()
-        mapper = SentenceVideoMapper(video_retriever=retriever)
-        
-        ctx = MockInvocationContext({})
-        items = mapper.build_items_from_state(ctx)
-        
-        assert items == []
-    
-    def test_build_items_handles_no_candidates(self):
-        """Test build_items when retriever returns no candidates."""
-        retriever = MockVideoRetriever({"no_results": []})
-        mapper = SentenceVideoMapper(video_retriever=retriever)
-        
-        ctx = MockInvocationContext({SENTENCES_KEY: ["no_results"]})
-        items = mapper.build_items_from_state(ctx)
-        
-        # Should skip sentences with no candidates
-        assert items == []
-    
-    def test_build_items_calls_retriever(self):
-        """Test that build_items calls the video retriever."""
-        retriever = MockVideoRetriever()
-        mapper = SentenceVideoMapper(
-            video_retriever=retriever,
-            max_candidates=3,
-        )
-        
-        ctx = MockInvocationContext({SENTENCES_KEY: ["query1", "query2"]})
-        mapper.build_items_from_state(ctx)
-        
-        assert len(retriever.search_calls) == 2
-        assert retriever.search_calls[0] == ("query1", 3)
-        assert retriever.search_calls[1] == ("query2", 3)
-
-
-# ============================================================================
-# SentenceVideoAggregator Tests
-# ============================================================================
-
-
-class TestSentenceVideoAggregator:
-    """Test SentenceVideoAggregator concrete implementation."""
+class TestBestMatchAggregator:
+    """Test BestMatchAggregator concrete implementation."""
     
     def test_aggregator_creation(self):
-        """Test SentenceVideoAggregator can be created."""
-        agg = SentenceVideoAggregator(
+        """Test BestMatchAggregator can be created."""
+        from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
+        
+        agg = BestMatchAggregator(
             input_keys=["key1", "key2"],
-            output_key="matches",
+            output_key="best",
         )
         
         assert agg._input_keys == ["key1", "key2"]
-        assert agg._output_key == "matches"
+        assert agg._output_key == "best"
     
     def test_aggregator_default_output_key(self):
-        """Test SentenceVideoAggregator default output key."""
-        agg = SentenceVideoAggregator(input_keys=[])
+        """Test BestMatchAggregator default output key."""
+        from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
         
-        assert agg._output_key == MATCHES_KEY
+        agg = BestMatchAggregator(input_keys=[])
+        
+        assert agg._output_key == "best_video_match"
     
     @pytest.mark.asyncio
-    async def test_aggregation_groups_by_sentence(self):
-        """Test that aggregation groups results by sentence."""
-        results = [
-            VideoMatchResult(
-                sentence="Hello",
-                video_path="/v1.mp4",
-                rating=ContextualRating.CONTEXTUAL,
-                grade=8,
-                reasoning="Good"
-            ),
-            VideoMatchResult(
-                sentence="Hello",
-                video_path="/v2.mp4",
-                rating=ContextualRating.NEUTRAL,
-                grade=5,
-                reasoning="OK"
-            ),
-            VideoMatchResult(
-                sentence="World",
-                video_path="/v3.mp4",
-                rating=ContextualRating.CONTEXTUAL,
-                grade=7,
-                reasoning="Good"
-            ),
-        ]
-        
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn(results)
-        
-        assert isinstance(output, SentenceVideoMatcherOutput)
-        assert len(output.matches) == 2  # One per sentence
-        
-        # Check correct best was selected per sentence
-        hello_match = next(m for m in output.matches if m.sentence == "Hello")
-        world_match = next(m for m in output.matches if m.sentence == "World")
-        
-        assert hello_match.video_path == "/v1.mp4"  # CONTEXTUAL wins
-        assert world_match.video_path == "/v3.mp4"
-    
-    @pytest.mark.asyncio
-    async def test_aggregation_selects_best_by_rating_priority(self):
+    async def test_aggregation_selects_contextual_over_neutral(self):
         """Test that CONTEXTUAL > NEUTRAL > NOT_CONTEXTUAL."""
+        from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
+        from virtual_streamer.agents.video_matcher.schema import (
+            VideoMatchResult,
+            ContextualRating,
+        )
+        
         results = [
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/v1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
@@ -734,6 +546,7 @@ class TestSentenceVideoAggregator:
                 reasoning="Bad"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/v2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -742,44 +555,25 @@ class TestSentenceVideoAggregator:
             ),
         ]
         
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn(results)
+        agg = BestMatchAggregator(input_keys=[], output_key="out")
+        best = await agg.aggregation_fn(results)
         
         # Should select CONTEXTUAL despite lower grade
-        assert output.matches[0].video_path == "/v2.mp4"
-        assert output.matches[0].rating == ContextualRating.CONTEXTUAL
-    
-    @pytest.mark.asyncio
-    async def test_aggregation_neutral_over_not_contextual(self):
-        """Test that NEUTRAL beats NOT_CONTEXTUAL."""
-        results = [
-            VideoMatchResult(
-                sentence="test",
-                video_path="/v1.mp4",
-                rating=ContextualRating.NOT_CONTEXTUAL,
-                grade=10,
-                reasoning="High grade but bad rating"
-            ),
-            VideoMatchResult(
-                sentence="test",
-                video_path="/v2.mp4",
-                rating=ContextualRating.NEUTRAL,
-                grade=4,
-                reasoning="Lower grade but better rating"
-            ),
-        ]
-        
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn(results)
-        
-        assert output.matches[0].rating == ContextualRating.NEUTRAL
-        assert output.matches[0].video_path == "/v2.mp4"
+        assert best.video_path == "/v2.mp4"
+        assert best.rating == ContextualRating.CONTEXTUAL
     
     @pytest.mark.asyncio
     async def test_aggregation_selects_highest_grade_within_rating(self):
         """Test that highest grade is selected within same rating."""
+        from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
+        from virtual_streamer.agents.video_matcher.schema import (
+            VideoMatchResult,
+            ContextualRating,
+        )
+        
         results = [
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -787,6 +581,7 @@ class TestSentenceVideoAggregator:
                 reasoning="Lower"
             ),
             VideoMatchResult(
+                character="narrator",
                 sentence="test",
                 video_path="/v2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
@@ -795,139 +590,21 @@ class TestSentenceVideoAggregator:
             ),
         ]
         
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn(results)
+        agg = BestMatchAggregator(input_keys=[], output_key="out")
+        best = await agg.aggregation_fn(results)
         
-        assert output.matches[0].grade == 9
-        assert output.matches[0].video_path == "/v2.mp4"
-    
-    @pytest.mark.asyncio
-    async def test_aggregation_fallback_to_highest_grade(self):
-        """Test fallback to highest grade when only NOT_CONTEXTUAL."""
-        results = [
-            VideoMatchResult(
-                sentence="test",
-                video_path="/v1.mp4",
-                rating=ContextualRating.NOT_CONTEXTUAL,
-                grade=3,
-                reasoning="Low"
-            ),
-            VideoMatchResult(
-                sentence="test",
-                video_path="/v2.mp4",
-                rating=ContextualRating.NOT_CONTEXTUAL,
-                grade=8,
-                reasoning="High"
-            ),
-        ]
-        
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn(results)
-        
-        assert output.matches[0].grade == 8
-        assert output.matches[0].video_path == "/v2.mp4"
+        assert best.grade == 9
+        assert best.video_path == "/v2.mp4"
     
     @pytest.mark.asyncio
     async def test_aggregation_empty_results(self):
         """Test aggregation with empty results."""
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn([])
+        from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
         
-        assert isinstance(output, SentenceVideoMatcherOutput)
-        assert output.matches == []
-    
-    @pytest.mark.asyncio
-    async def test_aggregation_multiple_sentences(self):
-        """Test aggregation with many sentences."""
-        results = []
-        for i in range(5):
-            for j in range(3):  # 3 videos per sentence
-                results.append(VideoMatchResult(
-                    sentence=f"Sentence {i}",
-                    video_path=f"/video_{i}_{j}.mp4",
-                    rating=ContextualRating.CONTEXTUAL if j == 0 else ContextualRating.NEUTRAL,
-                    grade=10 - j,
-                    reasoning=f"Result {j}"
-                ))
+        agg = BestMatchAggregator(input_keys=[], output_key="out")
+        result = await agg.aggregation_fn([])
         
-        agg = SentenceVideoAggregator(input_keys=[], output_key="out")
-        output = await agg.aggregation_fn(results)
-        
-        assert len(output.matches) == 5  # One per sentence
-        
-        # Each should have the first video (j=0, CONTEXTUAL, grade=10)
-        for i, match in enumerate(output.matches):
-            assert match.rating == ContextualRating.CONTEXTUAL
-            assert match.grade == 10
-
-
-# ============================================================================
-# SentenceVideoMatcherAgent Integration Tests
-# ============================================================================
-
-
-class TestSentenceVideoMatcherAgentIntegration:
-    """Integration tests for SentenceVideoMatcherAgent."""
-    
-    def test_agent_creation_via_class(self):
-        """Test creating agent via class constructor."""
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(
-            video_retriever=retriever,
-            max_candidates=5,
-        )
-        
-        assert agent._video_retriever is retriever
-        assert agent._max_candidates == 5
-        assert agent.name == "sentence_video_matcher"
-    
-    def test_agent_creation_via_factory(self):
-        """Test creating agent via factory function."""
-        retriever = MockVideoRetriever()
-        agent = create_sentence_video_matcher(
-            video_retriever=retriever,
-            max_candidates=3,
-            name="custom_name",
-        )
-        
-        assert agent.name == "custom_name"
-        assert isinstance(agent, MapReduceAgent)
-    
-    def test_agent_is_map_reduce_agent(self):
-        """Test that SentenceVideoMatcherAgent is a MapReduceAgent."""
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(video_retriever=retriever)
-        
-        assert isinstance(agent, MapReduceAgent)
-    
-    def test_agent_custom_name(self):
-        """Test agent with custom name."""
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(
-            video_retriever=retriever,
-            name="my_matcher",
-        )
-        
-        assert agent.name == "my_matcher"
-    
-    def test_agent_has_mapper(self):
-        """Test that agent has internal mapper."""
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(video_retriever=retriever)
-        
-        assert hasattr(agent, "_mapper")
-        assert isinstance(agent._mapper, SentenceVideoMapper)
-    
-    def test_agent_mapper_has_retriever(self):
-        """Test that agent's mapper has the video retriever."""
-        retriever = MockVideoRetriever()
-        agent = SentenceVideoMatcherAgent(
-            video_retriever=retriever,
-            max_candidates=7,
-        )
-        
-        assert agent._mapper._video_retriever is retriever
-        assert agent._mapper._max_candidates == 7
+        assert result is None
 
 
 # ============================================================================
@@ -943,18 +620,6 @@ class TestBackwardCompatibility:
         from virtual_streamer.lib.agents import AbstractAggregator
         
         assert AbstractAggregator is AggregatorAgent
-    
-    def test_best_match_aggregator_uses_new_interface(self):
-        """Test that BestMatchAggregator works with new interface."""
-        from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
-        
-        agg = BestMatchAggregator(
-            input_keys=["key1", "key2"],
-            output_key="best",
-        )
-        
-        assert agg._input_keys == ["key1", "key2"]
-        assert agg._output_key == "best"
     
     def test_aggregator_agent_exported(self):
         """Test that AggregatorAgent is exported from lib.agents."""
