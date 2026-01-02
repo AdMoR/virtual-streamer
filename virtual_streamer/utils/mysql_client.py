@@ -35,6 +35,10 @@ class MySQLClient:
     async def _get_pool(self) -> aiomysql.Pool:
         """Get or create connection pool."""
         if self._pool is None:
+            # First, ensure database exists (connect without db)
+            await self._ensure_database()
+
+            # Then create pool with the database
             self._pool = await aiomysql.create_pool(
                 host=self.host,
                 port=self.port,
@@ -45,6 +49,24 @@ class MySQLClient:
             )
             await self._ensure_table()
         return self._pool
+
+    async def _ensure_database(self):
+        """Create database if it doesn't exist."""
+        conn = await aiomysql.connect(
+            host=self.host,
+            port=self.port,
+            user=self.user,
+            password=self.password,
+            autocommit=True,
+        )
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"CREATE DATABASE IF NOT EXISTS `{self.database}`"
+                )
+            print(f"Ensured database '{self.database}' exists")
+        finally:
+            conn.close()
 
     async def _ensure_table(self):
         """Create storage table if it doesn't exist."""
