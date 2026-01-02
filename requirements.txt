@@ -28,3 +28,4 @@ requests
 httpx
 boto3
 python-multipart
+aiomysql

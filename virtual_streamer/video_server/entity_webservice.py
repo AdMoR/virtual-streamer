@@ -36,13 +36,28 @@ from virtual_streamer.video_server.models import (
 )
 from virtual_streamer.utils.s3_client import AsyncS3Client
 from virtual_streamer.utils.local_fs_client import LocalFSClient
+from virtual_streamer.utils.mysql_client import MySQLClient
+
 
 # --- Configuration ---
+def get_storage_client():
+    """Factory function to create storage client based on configuration."""
+    backend = os.environ.get("ENTITY_STORAGE_BACKEND", "local").lower()
+
+    if backend == "mysql":
+        return MySQLClient()
+    elif backend == "s3":
+        bucket = os.environ.get("ENTITY_S3_BUCKET", "your-entity-bucket-name")
+        return AsyncS3Client(bucket)
+    else:  # default to local
+        data_dir = os.environ.get("DATA_DIR", "/data")
+        return LocalFSClient(data_dir)
+
+
 S3_BUCKET_NAME = os.environ.get(
     "ENTITY_S3_BUCKET", "your-entity-bucket-name"
 )  # Use a dedicated bucket or prefix
-# s3_cli = AsyncS3Client(S3_BUCKET_NAME)
-s3_cli = LocalFSClient("/data")
+s3_cli = get_storage_client()
 
 S3_PREFIX_CLIPS = "clips/"
 S3_PREFIX_AUDIO = "audios/"
