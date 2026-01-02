@@ -21,6 +21,7 @@ services:
       - /dev/nvidia0:/dev/nvidia0
     depends_on:
       - tts
+      - mysql
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -40,6 +41,15 @@ services:
       # API configuration
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      # MySQL configuration
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=virtual_streamer
+      - MYSQL_PASSWORD=streamerpass
+      - MYSQL_DATABASE=virtual_streamer
+      # Enable MySQL backends
+      - ENTITY_STORAGE_BACKEND=mysql
+      - JOB_STORAGE_BACKEND=mysql
     networks:
       - tts
     volumes:
@@ -75,6 +85,25 @@ services:
     networks:
       - tts
 
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: virtual_streamer
+      MYSQL_USER: virtual_streamer
+      MYSQL_PASSWORD: streamerpass
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - tts
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   videos:
     driver: local # Define the driver and options under the volume name
@@ -94,6 +123,7 @@ volumes:
       type: none
       device: /media/amor/data1/virtual_streamer_folder/entities
       o: bind
+  mysql_data:
 
 
 networks:
