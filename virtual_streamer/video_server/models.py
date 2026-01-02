@@ -123,7 +123,6 @@ class CharacterBase(BaseModel):
     voice_samples: List[VoiceSample] = Field(
         ..., min_items=0, description="Samples used to define/clone the voice"
     )
-    tts_model_config: Optional[Dict[str, Any]] = None  # Optional: Specific TTS config
 
 
 class Character(CharacterBase):

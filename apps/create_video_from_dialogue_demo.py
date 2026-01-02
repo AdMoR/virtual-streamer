@@ -164,7 +164,6 @@ with tab2:
         "",
         key="new_char_transcripts",
     )
-    tts_config = st.text_area("TTS Model Config (JSON)", "", key="new_char_tts")
     video_file = st.file_uploader(
         "Representative Video", type=["mp4", "mov", "avi"], key="new_char_video"
     )
@@ -180,7 +179,6 @@ with tab2:
                     "name": name,
                     "description": description,
                     "transcripts": transcripts_list,
-                    "tts_model_config": tts_config,
                 }
                 files = []
                 for vf in voice_files:

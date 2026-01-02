@@ -5,7 +5,7 @@ Handles CRUD operations for character entities with voice samples and video clip
 """
 
 from fastapi import APIRouter, HTTPException, status, Form, File, UploadFile
-from typing import List, Optional
+from typing import List
 import uuid
 import os
 from datetime import datetime
@@ -34,7 +34,6 @@ async def create_character(
     description: str = Form(None),
     voice_files: List[UploadFile] = File(...),
     transcripts: List[str] = Form(...),
-    tts_model_config: Optional[str] = Form(None),
     video_file: UploadFile = File(...),
 ):
     """Creates a new Character definition with voice samples and representative video."""
@@ -71,7 +70,6 @@ async def create_character(
         name=name,
         description=description,
         voice_samples=voice_samples_list,
-        tts_model_config=None,
         video_clip_path=video_path,
         created_at=now,
         updated_at=now,

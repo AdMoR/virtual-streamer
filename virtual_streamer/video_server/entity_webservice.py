@@ -172,7 +172,6 @@ async def create_character(
     description: str = Form(None),
     voice_files: List[UploadFile] = File(...),
     transcripts: List[str] = Form(...),
-    tts_model_config: Optional[str] = Form(None),
     video_file: UploadFile = File(...),
 ):
     """Creates a new Character definition with optional representative video upload."""
@@ -204,7 +203,6 @@ async def create_character(
         name=name,
         description=description,
         voice_samples=voice_samples_list,
-        tts_model_config=None,
         video_clip_path=video_path,
         created_at=now,
         updated_at=now,

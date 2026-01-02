@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""
+Character Registration Script with Auto-Transcription.
+
+Registers a new character with voice samples, automatically transcribing
+audio files using Whisper large-v3, and uploads via the API.
+
+Usage:
+    python scripts/register_character.py \
+        --name "fred" \
+        --description "Host of C'est pas Sorcier" \
+        --audio-dir ./samples/fred_voice/ \
+        --video ./videos/fred_talking.mp4
+
+    python scripts/register_character.py \
+        --name "jamy" \
+        --audio-files sample1.wav sample2.wav sample3.wav \
+        --video ./videos/jamy.mp4 \
+        --whisper-model large-v3
+"""
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Optional
+
+import requests
+
+
+def load_whisper_model(model_name: str = "large-v3"):
+    """
+    Load stable-whisper with faster-whisper backend for high-quality transcription.
+    
+    Args:
+        model_name: Whisper model size (tiny, base, small, medium, large, large-v3)
+        
+    Returns:
+        Loaded whisper model
+    """
+    import stable_whisper
+    
+    print(f"Loading Whisper model '{model_name}'...")
+    model = stable_whisper.load_faster_whisper(model_name)
+    print(f"✓ Model loaded successfully")
+    return model
+
+
+def transcribe_audio(model, audio_path: str) -> str:
+    """
+    Transcribe a single audio file to text.
+    
+    Args:
+        model: Loaded whisper model
+        audio_path: Path to audio file
+        
+    Returns:
+        Transcribed text
+    """
+    result = model.transcribe(audio_path)
+    return result.text.strip()
+
+
+def get_audio_files(audio_dir: Optional[str], audio_files: Optional[list[str]]) -> list[Path]:
+    """
+    Get list of audio files from directory or explicit file list.
+    
+    Args:
+        audio_dir: Directory containing audio files
+        audio_files: List of specific audio file paths
+        
+    Returns:
+        List of Path objects to audio files
+    """
+    if audio_dir:
+        audio_path = Path(audio_dir)
+        if not audio_path.exists():
+            raise FileNotFoundError(f"Audio directory not found: {audio_dir}")
+        
+        # Get all wav/mp3 files
+        files = list(audio_path.glob("*.wav")) + list(audio_path.glob("*.mp3"))
+        if not files:
+            raise ValueError(f"No audio files (*.wav, *.mp3) found in {audio_dir}")
+        
+        return sorted(files)
+    
+    elif audio_files:
+        paths = [Path(f) for f in audio_files]
+        for p in paths:
+            if not p.exists():
+                raise FileNotFoundError(f"Audio file not found: {p}")
+        return paths
+    
+    else:
+        raise ValueError("Either --audio-dir or --audio-files must be provided")
+
+
+def register_via_api(
+    api_url: str,
+    name: str,
+    description: Optional[str],
+    audio_paths: list[Path],
+    transcripts: list[str],
+    video_path: Path,
+) -> dict:
+    """
+    Register character via POST /characters API.
+    
+    Args:
+        api_url: Base API URL
+        name: Character name
+        description: Character description
+        audio_paths: List of paths to audio files
+        transcripts: List of transcripts (one per audio file)
+        video_path: Path to representative video file
+        
+    Returns:
+        API response as dict
+    """
+    url = f"{api_url.rstrip('/')}/characters"
+    
+    # Prepare form data
+    data = {
+        "name": name,
+    }
+    if description:
+        data["description"] = description
+    
+    # Prepare files
+    files = []
+    
+    # Add voice files
+    for audio_path in audio_paths:
+        files.append(
+            ("voice_files", (audio_path.name, open(audio_path, "rb"), "audio/wav"))
+        )
+    
+    # Add transcripts
+    for transcript in transcripts:
+        files.append(("transcripts", (None, transcript)))
+    
+    # Add video file
+    files.append(
+        ("video_file", (video_path.name, open(video_path, "rb"), "video/mp4"))
+    )
+    
+    print(f"\nRegistering character '{name}' via API...")
+    print(f"  URL: {url}")
+    print(f"  Voice samples: {len(audio_paths)}")
+    print(f"  Video: {video_path.name}")
+    
+    response = requests.post(url, data=data, files=files)
+    
+    # Close file handles
+    for _, file_tuple in files:
+        if hasattr(file_tuple[1], "close"):
+            file_tuple[1].close()
+    
+    if response.ok:
+        print(f"✓ Character '{name}' registered successfully!")
+        return response.json()
+    else:
+        print(f"✗ Failed to register character: {response.status_code}")
+        print(f"  Response: {response.text}")
+        response.raise_for_status()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Register a character with voice samples (auto-transcribed with Whisper)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Register with audio directory
+  python scripts/register_character.py \\
+      --name "fred" \\
+      --audio-dir ./samples/fred_voice/ \\
+      --video ./videos/fred_talking.mp4
+
+  # Register with specific audio files
+  python scripts/register_character.py \\
+      --name "jamy" \\
+      --audio-files sample1.wav sample2.wav \\
+      --video ./videos/jamy.mp4 \\
+      --whisper-model large-v3
+        """,
+    )
+    
+    # Identity
+    parser.add_argument(
+        "--name",
+        required=True,
+        help="Character name (will also be used as character_id)",
+    )
+    parser.add_argument(
+        "--description",
+        help="Character description",
+    )
+    
+    # Audio sources (mutually exclusive)
+    audio_group = parser.add_mutually_exclusive_group(required=True)
+    audio_group.add_argument(
+        "--audio-dir",
+        help="Directory containing voice sample audio files (*.wav, *.mp3)",
+    )
+    audio_group.add_argument(
+        "--audio-files",
+        nargs="+",
+        help="Specific audio file paths",
+    )
+    
+    # Video
+    parser.add_argument(
+        "--video",
+        required=True,
+        help="Path to representative video file for Wav2Lip",
+    )
+    
+    # Transcription settings
+    parser.add_argument(
+        "--whisper-model",
+        default="large-v3",
+        choices=["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"],
+        help="Whisper model to use for transcription (default: large-v3)",
+    )
+    
+    # API settings
+    parser.add_argument(
+        "--api-url",
+        default="http://localhost:8000",
+        help="API base URL (default: http://localhost:8000)",
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate video file exists
+    video_path = Path(args.video)
+    if not video_path.exists():
+        print(f"Error: Video file not found: {args.video}")
+        sys.exit(1)
+    
+    # Get audio files
+    try:
+        audio_paths = get_audio_files(args.audio_dir, args.audio_files)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    
+    print(f"\n{'='*60}")
+    print(f"Character Registration: {args.name}")
+    print(f"{'='*60}")
+    print(f"\nFound {len(audio_paths)} audio file(s):")
+    for p in audio_paths:
+        print(f"  - {p}")
+    
+    # Load Whisper model
+    print()
+    model = load_whisper_model(args.whisper_model)
+    
+    # Transcribe all audio files
+    print(f"\nTranscribing {len(audio_paths)} audio file(s)...")
+    transcripts = []
+    for i, audio_path in enumerate(audio_paths, 1):
+        print(f"\n[{i}/{len(audio_paths)}] Transcribing: {audio_path.name}")
+        transcript = transcribe_audio(model, str(audio_path))
+        transcripts.append(transcript)
+        print(f"  → \"{transcript[:80]}{'...' if len(transcript) > 80 else ''}\"")
+    
+    print(f"\n✓ All {len(audio_paths)} file(s) transcribed")
+    
+    # Register via API
+    try:
+        result = register_via_api(
+            api_url=args.api_url,
+            name=args.name,
+            description=args.description,
+            audio_paths=audio_paths,
+            transcripts=transcripts,
+            video_path=video_path,
+        )
+        
+        print(f"\n{'='*60}")
+        print("Registration Complete!")
+        print(f"{'='*60}")
+        print(f"  Character ID: {result.get('character_id')}")
+        print(f"  Name: {result.get('name')}")
+        print(f"  Voice samples: {len(result.get('voice_samples', []))}")
+        print(f"  Video: {result.get('video_clip_path')}")
+        
+    except requests.exceptions.ConnectionError:
+        print(f"\n✗ Error: Could not connect to API at {args.api_url}")
+        print("  Make sure the API server is running.")
+        sys.exit(1)
+    except requests.exceptions.HTTPError as e:
+        print(f"\n✗ Error: API request failed: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
