@@ -9,6 +9,7 @@ This folder contains the design documentation for refactoring the Virtual Stream
 | [Architecture](./architecture.md) | High-level system architecture and principles |
 | [Package Structure](./package-structure.md) | Detailed folder and package organization |
 | [Data Models](./data-models.md) | Core entity models: Character, VideoClip, Collection |
+| [Remote Services](./remote-services.md) | External services: Video Search, MinIO, Qdrant |
 | [API Services](./api-services.md) | ML service APIs: Wav2Lip, Face Detection, TTS, STT |
 | [Agents](./agents.md) | Google ADK agent architecture and patterns |
 | [Migration Plan](./migration-plan.md) | Step-by-step migration roadmap |
@@ -17,9 +18,10 @@ This folder contains the design documentation for refactoring the Virtual Stream
 
 1. **All ML processing via HTTP APIs** - Agents communicate with ML services through standardized REST APIs
 2. **Shared agents, not per-app** - Agents are reusable across projects; apps are configurations
-3. **Clean data models** - Single `Character` model, no redundant `CharacterReference`
-4. **ADK structure** - Agents follow Google ADK conventions: `agent.py`, `prompt.py`, `callback.py`
-5. **Docker for services only** - ML services run in Docker; agents run via ADK server
+3. **Clean data models** - Single `Character` model with `video_search_tag` and `identity_images` for remote integration
+4. **Remote-first storage** - All files stored in MinIO; video search via external Video Search Server
+5. **ADK structure** - Agents follow Google ADK conventions: `agent.py`, `prompt.py`, `callback.py`
+6. **Docker for services only** - ML services run in Docker; agents run via ADK server
 
 ## Quick Architecture Overview
 
@@ -44,14 +46,18 @@ This folder contains the design documentation for refactoring the Virtual Stream
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                   API CLIENTS (@vs/core)                        │
-│    TTSClient | STTClient | Wav2LipClient | FaceDetectionClient │
+│  TTSClient | Wav2LipClient | VideoSearchClient | StorageClient │
 └────────────────────────────┬────────────────────────────────────┘
                              │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                 DOCKER COMPOSE (ML Services)                    │
-│   Fish TTS:8003 | Whisper:8004 | Wav2Lip:8001 | FaceDet:8005   │
-└─────────────────────────────────────────────────────────────────┘
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│  ML SERVICES  │   │REMOTE STORAGE │   │ VIDEO SEARCH  │
+│  (Docker)     │   │   (MinIO)     │   │   (Qdrant)    │
+│               │   │               │   │               │
+│ TTS:8003      │   │ S3 API:9000   │   │ Search:8003   │
+│ Wav2Lip:8001  │   │               │   │ Vectors:6333  │
+└───────────────┘   └───────────────┘   └───────────────┘
 ```
 
 ## Current State Issues
