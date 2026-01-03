@@ -78,9 +78,21 @@ class EntityRepository:
                         name VARCHAR(255) NOT NULL,
                         description TEXT,
                         video_clip_path VARCHAR(512),
+                        video_search_tag VARCHAR(255),
+                        identity_images JSON,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                
+                # Add columns if they don't exist (for existing databases)
+                try:
+                    await cur.execute("""
+                        ALTER TABLE characters 
+                        ADD COLUMN IF NOT EXISTS video_search_tag VARCHAR(255),
+                        ADD COLUMN IF NOT EXISTS identity_images JSON
+                    """)
+                except Exception:
+                    pass  # Columns may already exist
 
                 # Voice samples table
                 await cur.execute("""
@@ -162,20 +174,27 @@ class EntityRepository:
         description: Optional[str] = None,
         video_clip_path: Optional[str] = None,
         voice_samples: Optional[List[Dict[str, str]]] = None,
+        video_search_tag: Optional[str] = None,
+        identity_images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Create a new character with optional voice samples."""
+        """Create a new character with optional voice samples, search tag, and identity images."""
+        import json as json_module
+        
         pool = await self._get_pool()
         now = datetime.utcnow()
+        
+        # Convert identity_images list to JSON string
+        identity_images_json = json_module.dumps(identity_images) if identity_images else None
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 # Insert character
                 await cur.execute(
                     """
-                    INSERT INTO characters (id, name, description, video_clip_path, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO characters (id, name, description, video_clip_path, video_search_tag, identity_images, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (character_id, name, description, video_clip_path, now),
+                    (character_id, name, description, video_clip_path, video_search_tag, identity_images_json, now),
                 )
 
                 # Insert voice samples if provided
@@ -193,26 +212,38 @@ class EntityRepository:
 
     async def get_character(self, character_id: str) -> Optional[Dict[str, Any]]:
         """Get a character by ID with its voice samples."""
+        import json as json_module
+        
         pool = await self._get_pool()
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 # Get character
                 await cur.execute(
-                    "SELECT id, name, description, video_clip_path, created_at FROM characters WHERE id = %s",
+                    "SELECT id, name, description, video_clip_path, video_search_tag, identity_images, created_at FROM characters WHERE id = %s",
                     (character_id,),
                 )
                 row = await cur.fetchone()
                 if row is None:
                     return None
 
+                # Parse identity_images JSON
+                identity_images = []
+                if row[5]:
+                    try:
+                        identity_images = json_module.loads(row[5]) if isinstance(row[5], str) else row[5]
+                    except (json_module.JSONDecodeError, TypeError):
+                        identity_images = []
+
                 character = {
                     "character_id": row[0],
                     "name": row[1],
                     "description": row[2],
                     "video_clip_path": row[3] or "",
-                    "created_at": row[4].isoformat() if row[4] else None,
-                    "updated_at": row[4].isoformat() if row[4] else None,  # Use created_at as updated_at
+                    "video_search_tag": row[4],
+                    "identity_images": identity_images or [],
+                    "created_at": row[6].isoformat() if row[6] else None,
+                    "updated_at": row[6].isoformat() if row[6] else None,  # Use created_at as updated_at
                 }
 
                 # Get voice samples
