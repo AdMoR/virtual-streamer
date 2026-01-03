@@ -2,7 +2,12 @@
 High-level API: Video Generation Application
 
 Provides complete video generation workflow from story/title to final video.
-This is a high-level application that orchestrates multiple services.
+This is a high-level application that orchestrates ADK agents and webservices.
+
+Architecture:
+    1. StoryGeneratorAgent (ADK) - generates story with DialogLines from title
+    2. SentenceVideoMatcher (ADK) - matches each dialog line to a video
+    3. script_to_video - TTS/Wav2Lip/STT via webservice + local video combination
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -11,25 +16,386 @@ from typing import Optional, Dict, Any, List
 import asyncio
 import uuid
 import os
+import logging
 from datetime import datetime
+from dataclasses import dataclass
 
+import httpx
+
+# ADK imports
+from google.adk.sessions import Session
+from google.adk.agents.invocation_context import InvocationContext
+
+# Agent imports
+from virtual_streamer.agents.story_generator import get_story_generator
+from virtual_streamer.agents.story_generator.schema import StoryOutput
+from virtual_streamer.agents.sentence_video_matcher import (
+    create_sentence_video_matcher,
+    SentenceVideoMatcherOutput,
+    DialogLineMatch,
+)
+from virtual_streamer.agents.common.state_keys import (
+    TITLE,
+    STORY_OUTPUT,
+    SENTENCES,
+    VIDEO_MATCHES,
+)
+
+# Video generation imports
 from virtual_streamer.video_generation import (
     VideoGenerationConfig,
-    create_llm,
-    create_tts,
-    create_stt,
     create_video_retriever,
-    create_prompt_provider,
-    generate_story,
-    generate_video_from_story,
-    recreate_from_config_dump,
     GenerationResult,
-    StoryOutput,
+)
+
+# Local video processing utilities
+from virtual_streamer.utils.utils import (
+    combine_video_and_short_audio,
+    add_subtitle_from_srt,
+    combine_part_in_concat_file,
+    get_length,
 )
 from virtual_streamer.utils.job_store import get_global_job_store
+from virtual_streamer.utils.minio_client import get_storage_client
+
+logger = logging.getLogger(__name__)
 
 # Router setup
 router = APIRouter(prefix="/video-generation", tags=["Video Generation"])
+
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+
+@dataclass
+class APIConfig:
+    """Configuration for webservice API calls."""
+
+    base_url: str = os.environ.get("API_BASE_URL", "http://localhost:8000")
+    timeout: float = 120.0
+
+
+# ============================================================================
+# Webservice Client
+# ============================================================================
+
+
+class WebserviceClient:
+    """
+    Async HTTP client for calling the Virtual Streamer webservice API.
+
+    Handles TTS, Wav2Lip, and STT API calls with proper error handling.
+    """
+
+    def __init__(self, config: APIConfig, character_id: str = "fred"):
+        self.config = config
+        self.character_id = character_id
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def __aenter__(self):
+        self._client = httpx.AsyncClient(
+            base_url=self.config.base_url,
+            timeout=self.config.timeout,
+        )
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._client:
+            await self._client.aclose()
+
+    async def generate_tts(self, text: str, entry_id: str = "") -> str:
+        """
+        Call TTS API to generate audio from text.
+
+        Args:
+            text: Dialog text to synthesize
+            entry_id: Optional entry ID for tracking
+
+        Returns:
+            Path to generated audio file
+        """
+        response = await self._client.post(
+            "/api/v1/tts/generate",
+            json={
+                "entry_id": entry_id or f"tts_{datetime.now().timestamp()}",
+                "character_id": self.character_id,
+                "text": text,
+                "timestamp": 0,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["audio_path"]
+
+    async def generate_wav2lip(
+        self,
+        audio_path: str,
+        video_path: str,
+        output_dir: Optional[str] = None,
+    ) -> str:
+        """
+        Call Wav2Lip API to generate lip-synced video.
+
+        Args:
+            audio_path: Path to audio file
+            video_path: Path to source video
+            output_dir: Optional output directory
+
+        Returns:
+            Path to generated lip-synced video
+        """
+        response = await self._client.post(
+            "/api/v1/wav2lip/generate",
+            json={
+                "audio_path": audio_path,
+                "video": {
+                    "storage_path": video_path,
+                    "collection_ids": [],
+                },
+                "options": {
+                    "subtitles_enabled": False,
+                    "subtitle_style": None,
+                },
+                "character_id": self.character_id,
+                "output_dir": output_dir,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["raw_video_path"]
+
+    async def transcribe_to_srt(self, audio_path: str) -> str:
+        """
+        Call STT API to generate SRT subtitles from audio.
+
+        Args:
+            audio_path: Path to audio file
+
+        Returns:
+            Path to generated SRT file
+        """
+        with open(audio_path, "rb") as f:
+            files = {"audio_file": (os.path.basename(audio_path), f, "audio/wav")}
+            response = await self._client.post(
+                "/api/v1/stt/transcribe-to-srt",
+                files=files,
+            )
+        response.raise_for_status()
+        data = response.json()
+        return data["srt_path"]
+
+
+# ============================================================================
+# ADK Agent Runners
+# ============================================================================
+
+
+async def run_story_generator(title: str, session: Session) -> StoryOutput:
+    """
+    Run the StoryGeneratorAgent to generate a story from a title.
+
+    Args:
+        title: The title/topic for story generation
+        session: ADK Session with state (will be populated with TITLE)
+
+    Returns:
+        StoryOutput with title, story_plan, and dialog
+    """
+    # Set title in session state
+    session.state[TITLE] = title
+
+    # Get the story generator agent
+    story_generator = get_story_generator()
+
+    # Create invocation context
+    ctx = InvocationContext(
+        invocation_id=f"story_{uuid.uuid4().hex[:8]}",
+        session=session,
+        agent=story_generator,
+    )
+
+    logger.info(f"Running StoryGeneratorAgent for title: {title}")
+
+    # Run agent and collect state updates
+    async for event in story_generator.run_async(ctx):
+        if event.actions and event.actions.state_delta:
+            for key, value in event.actions.state_delta.items():
+                session.state[key] = value
+                logger.debug(f"State updated: {key}")
+
+    # Extract story output from state
+    story_output_data = session.state.get(STORY_OUTPUT)
+    if not story_output_data:
+        raise RuntimeError("StoryGeneratorAgent completed but no story output in state")
+
+    # Parse story output
+    if isinstance(story_output_data, StoryOutput):
+        return story_output_data
+    elif isinstance(story_output_data, dict):
+        return StoryOutput.model_validate(story_output_data)
+    else:
+        raise RuntimeError(f"Unexpected story_output type: {type(story_output_data)}")
+
+
+async def run_sentence_video_matcher(
+    session: Session,
+    config: VideoGenerationConfig,
+) -> SentenceVideoMatcherOutput:
+    """
+    Run the SentenceVideoMatcher to match dialog lines to videos.
+
+    Args:
+        session: ADK Session with SENTENCES already in state
+        config: Video generation configuration
+
+    Returns:
+        SentenceVideoMatcherOutput with matches for each dialog line
+    """
+    # Create video retriever
+    video_retriever = create_video_retriever(config.video_retrieval)
+
+    # Create the sentence video matcher agent
+    video_matcher = create_sentence_video_matcher(
+        video_retriever=video_retriever,
+        max_candidates=config.max_video_judgement_attempts,
+    )
+
+    # Create invocation context
+    ctx = InvocationContext(
+        invocation_id=f"matcher_{uuid.uuid4().hex[:8]}",
+        session=session,
+        agent=video_matcher,
+    )
+
+    logger.info("Running SentenceVideoMatcher agent")
+
+    # Run agent and collect state updates
+    async for event in video_matcher.run_async(ctx):
+        if event.actions and event.actions.state_delta:
+            for key, value in event.actions.state_delta.items():
+                session.state[key] = value
+                logger.debug(f"State updated: {key}")
+
+    # Extract video matches from state
+    video_matches_data = session.state.get(VIDEO_MATCHES)
+    if not video_matches_data:
+        raise RuntimeError("SentenceVideoMatcher completed but no matches in state")
+
+    # Parse video matches
+    if isinstance(video_matches_data, SentenceVideoMatcherOutput):
+        return video_matches_data
+    elif isinstance(video_matches_data, str):
+        return SentenceVideoMatcherOutput.model_validate_json(video_matches_data)
+    elif isinstance(video_matches_data, dict):
+        return SentenceVideoMatcherOutput.model_validate(video_matches_data)
+    else:
+        raise RuntimeError(f"Unexpected video_matches type: {type(video_matches_data)}")
+
+
+# ============================================================================
+# Script to Video Function
+# ============================================================================
+
+
+async def script_to_video(
+    matches: List[DialogLineMatch],
+    client: WebserviceClient,
+    config: VideoGenerationConfig,
+    progress_callback: Optional[callable] = None,
+) -> str:
+    """
+    Convert matched dialog lines to final video using webservices.
+
+    For each match:
+    1. Generate audio via TTS API
+    2. Generate lip-synced video via Wav2Lip API
+    3. Generate subtitles via STT API
+    4. Combine video + audio + subtitles locally
+
+    Then concatenate all segments into final video.
+
+    Args:
+        matches: List of DialogLineMatch from SentenceVideoMatcher
+        client: WebserviceClient for API calls
+        config: Video generation configuration
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Path to final concatenated video
+    """
+    os.makedirs(config.output_dir, exist_ok=True)
+    os.makedirs(config.temp_dir, exist_ok=True)
+
+    video_segments = []
+
+    for i, match in enumerate(matches):
+        dialog = match.dialog_line.dialog
+        video_path = match.video_path
+
+        if progress_callback:
+            progress_callback(f"Processing segment {i+1}/{len(matches)}: {dialog[:50]}...")
+
+        logger.info(f"Processing segment {i+1}/{len(matches)}: {dialog[:50]}...")
+
+        try:
+            # Step 1: Generate audio via TTS API
+            logger.info(f"  [1/4] Generating TTS audio...")
+            audio_path = await client.generate_tts(
+                text=dialog,
+                entry_id=f"segment_{i}",
+            )
+            logger.info(f"  Audio generated: {audio_path}")
+
+            # Step 2: Generate lip-synced video via Wav2Lip API
+            logger.info(f"  [2/4] Generating Wav2Lip video...")
+            wav2lip_output_dir = os.path.join(config.temp_dir, f"wav2lip_{i}")
+            lip_synced_video = await client.generate_wav2lip(
+                audio_path=audio_path,
+                video_path=video_path,
+                output_dir=wav2lip_output_dir,
+            )
+            logger.info(f"  Lip-synced video: {lip_synced_video}")
+
+            # Step 3: Combine video and audio
+            logger.info(f"  [3/4] Combining video and audio...")
+            combined_path = os.path.join(config.temp_dir, f"combined_{i}.mp4")
+            combine_video_and_short_audio(lip_synced_video, audio_path, combined_path)
+
+            # Step 4: Generate subtitles and add to video
+            logger.info(f"  [4/4] Adding subtitles...")
+            srt_path = await client.transcribe_to_srt(audio_path)
+            segment_path = os.path.join(config.temp_dir, f"segment_{i}.mp4")
+            add_subtitle_from_srt(
+                combined_path,
+                srt_path,
+                segment_path,
+                fontsize=config.video_processing.fontsize,
+            )
+
+            video_segments.append(segment_path)
+            logger.info(f"  Segment {i+1} complete: {segment_path}")
+
+        except Exception as e:
+            logger.error(f"  Error processing segment {i+1}: {e}")
+            raise
+
+    # Concatenate all segments
+    logger.info(f"Concatenating {len(video_segments)} segments...")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    final_video_path = os.path.join(config.output_dir, f"video_{timestamp}.mp4")
+    concat_file = os.path.join(config.temp_dir, "concat_list.txt")
+
+    combine_part_in_concat_file(video_segments, concat_file, final_video_path)
+
+    logger.info(f"Final video created: {final_video_path}")
+    return final_video_path
+
+
+# ============================================================================
+# Request/Response Models
+# ============================================================================
 
 
 class VideoGenerationRequest(BaseModel):
@@ -40,16 +406,14 @@ class VideoGenerationRequest(BaseModel):
     story_text: Optional[str] = None
     from_config_dump: Optional[str] = None
 
-    # Configuration overrides
-    character_name: Optional[str] = None
+    # Character configuration
+    character_name: Optional[str] = "fred"
+
+    # LLM configuration (for ADK agents)
     llm_provider: Optional[str] = "anthropic"
     llm_model: Optional[str] = "claude-sonnet-4-5-20250929"
-    tts_provider: Optional[str] = "fish"
-    tts_host: Optional[str] = "127.0.0.1"
-    tts_port: int = 8003
-    stt_provider: Optional[str] = "whisper"
-    stt_model: Optional[str] = "base"
 
+    # Output configuration
     output_dir: Optional[str] = None
     max_parallel_llm_calls: int = 5
     verbose: bool = False
@@ -73,8 +437,13 @@ class VideoGenerationResponse(BaseModel):
     message: str
 
 
+# ============================================================================
+# Background Task
+# ============================================================================
+
+
 async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
-    """Background task to run video generation."""
+    """Background task to run video generation using ADK agents."""
     job_store = await get_global_job_store()
     try:
         # Update job status to running
@@ -83,22 +452,13 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         # Build configuration
         config = VideoGenerationConfig(
             title=request.title,
-            story_file=None,  # We'll use story_text directly
+            story_file=None,
             from_config_dump=request.from_config_dump,
             character_name=request.character_name,
             output_dir=request.output_dir or "./output",
             verbose=request.verbose,
             max_parallel_llm_calls=request.max_parallel_llm_calls,
         )
-
-        # Override config with request parameters
-        config.llm.provider = request.llm_provider
-        config.llm.model = request.llm_model
-        config.tts.provider = request.tts_provider
-        config.tts.host = request.tts_host
-        config.tts.port = request.tts_port
-        config.stt.provider = request.stt_provider
-        config.stt.model = request.stt_model
 
         # Validate inputs
         inputs = [request.title, request.story_text, request.from_config_dump]
@@ -107,64 +467,98 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 "Exactly one of title, story_text, or from_config_dump must be provided"
             )
 
-        # Simple progress callback (logs to console only)
-        class ProgressCallback:
-            def __init__(self):
-                self.current_step = 0
-                self.total_steps = 0
+        # API configuration
+        api_config = APIConfig()
+        character_id = request.character_name or "fred"
 
-            def update(self, message: str):
-                print(f"[Job {job_id}] {message}")
-
-            def set_total_steps(self, total: int):
-                self.total_steps = total
-
-            def increment_step(self, message: str):
-                self.current_step += 1
-                print(f"[Job {job_id}] [{self.current_step}/{self.total_steps}] {message}")
-
-        progress = ProgressCallback()
-
-        # Handle config dump recreation
+        # Handle config dump recreation (legacy path)
         if request.from_config_dump:
+            # For now, keep the legacy recreation logic
+            from virtual_streamer.video_generation import (
+                create_tts,
+                create_stt,
+                recreate_from_config_dump,
+            )
+
             tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
 
             result = await recreate_from_config_dump(
-                request.from_config_dump, tts, stt, config, progress
+                request.from_config_dump, tts, stt, config, None
             )
 
         else:
-            # Initialize components
-            llm = create_llm(config.llm)
-            tts = create_tts(config.tts, character_name=config.character_name)
-            stt = create_stt(config.stt)
-            video_retriever = create_video_retriever(config.video_retrieval)
-            prompt_provider = create_prompt_provider(config.prompt)
+            # Create ADK session
+            session = Session(
+                id=f"video_gen_{job_id}",
+                app_name="virtual_streamer",
+                user_id="api_user",
+                state={},
+            )
 
-            # Create semaphore for LLM concurrency
-            llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
-
-            # Generate or use provided story
             story_output = None
-            if request.title:
-                story_output = await generate_story(
-                    request.title, llm, prompt_provider, config, progress, llm_semaphore
-                )
-                story = story_output.dialog
-            else:
-                story = request.story_text
 
-            # Generate video
-            result = await generate_video_from_story(
-                story,
-                llm,
-                tts,
-                stt,
-                video_retriever,
-                config,
-                progress,
+            if request.title:
+                # Step 1: Run StoryGeneratorAgent
+                logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
+                story_output = await run_story_generator(request.title, session)
+                logger.info(
+                    f"[Job {job_id}] Story generated: {story_output.title} "
+                    f"with {len(story_output.dialog.lines)} dialog lines"
+                )
+
+            elif request.story_text:
+                # Parse story_text as DialogLines and set in session state
+                # For now, treat story_text as simple text to be split
+                from virtual_streamer.agents.story_generator.schema import (
+                    DialogLine,
+                    DialogLines,
+                )
+
+                # Simple split by newlines - each line is a dialog from "Fred"
+                lines = [
+                    DialogLine(character="Fred", dialog=line.strip())
+                    for line in request.story_text.split("\n")
+                    if line.strip()
+                ]
+                dialog_lines = DialogLines(lines=lines)
+                session.state[SENTENCES] = dialog_lines.model_dump()
+
+            # Step 2: Run SentenceVideoMatcher
+            logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
+            video_matches = await run_sentence_video_matcher(session, config)
+            logger.info(
+                f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
+            )
+
+            # Step 3: Script to Video (TTS, Wav2Lip, STT via webservices)
+            logger.info(f"[Job {job_id}] Running script_to_video...")
+
+            async with WebserviceClient(api_config, character_id) as client:
+                final_video_path = await script_to_video(
+                    matches=video_matches.matches,
+                    client=client,
+                    config=config,
+                    progress_callback=lambda msg: logger.info(f"[Job {job_id}] {msg}"),
+                )
+
+            # Upload to MinIO storage
+            logger.info(f"[Job {job_id}] Uploading to storage...")
+            storage = get_storage_client()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            minio_video_key = f"videos/{timestamp}/video_{timestamp}.mp4"
+            await storage.upload_file(final_video_path, minio_video_key)
+
+            result = GenerationResult(
+                video_path=final_video_path,
+                config_dump_path=None,
                 story_output=story_output,
+                metadata={
+                    "sentence_count": len(video_matches.matches),
+                    "total_duration": get_length(final_video_path),
+                    "timestamp": datetime.now().isoformat(),
+                    "minio_video_key": minio_video_key,
+                },
             )
 
         # Job completed successfully
@@ -184,8 +578,13 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
 
         import traceback
 
-        print(f"Video generation job {job_id} failed:")
+        logger.error(f"Video generation job {job_id} failed:")
         traceback.print_exc()
+
+
+# ============================================================================
+# API Endpoints
+# ============================================================================
 
 
 @router.post("/submit", response_model=VideoGenerationResponse)
@@ -286,4 +685,5 @@ async def health():
         "active_jobs": active_count,
         "total_jobs": len(jobs),
         "storage_backend": os.environ.get("JOB_STORAGE_BACKEND", "memory"),
+        "api_base_url": os.environ.get("API_BASE_URL", "http://localhost:8000"),
     }
