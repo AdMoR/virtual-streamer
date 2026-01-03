@@ -10,7 +10,8 @@ from typing import Optional, List
 from fastapi import HTTPException
 
 from virtual_streamer.video_server.models import Character
-from virtual_streamer.utils.local_fs_client import LocalFSClient
+from virtual_streamer.utils.minio_client import get_storage_client, MinIOClient
+from virtual_streamer.utils.storage_interface import StorageInterface
 
 
 class PathResolver:
@@ -128,28 +129,11 @@ def resolve_path(path: str) -> str:
 
 # Storage configuration
 _CHARACTER_PREFIX = "characters/"
-_storage_client: Optional[LocalFSClient] = None
-
-
-def get_storage_client() -> LocalFSClient:
-    """
-    Get or create the global storage client instance.
-
-    Returns:
-        LocalFSClient instance
-    """
-    global _storage_client
-
-    if _storage_client is None:
-        data_dir = os.environ.get("DATA_DIR", "/data")
-        _storage_client = LocalFSClient(data_dir)
-
-    return _storage_client
 
 
 async def get_character_data(character_id: str) -> Character:
     """
-    Fetch character data from local storage.
+    Fetch character data from MinIO storage.
 
     This replaces the old HTTP call to entity_api service.
 
@@ -163,10 +147,10 @@ async def get_character_data(character_id: str) -> Character:
         HTTPException: If character not found
     """
     storage = get_storage_client()
-    s3_key = f"{_CHARACTER_PREFIX}{character_id}.json"
+    key = f"{_CHARACTER_PREFIX}{character_id}.json"
 
     try:
-        data = await storage.s3_get_json(s3_key)
+        data = await storage.get_json(key)
         if data is None:
             raise HTTPException(
                 status_code=404, detail=f"Character '{character_id}' not found"
@@ -188,7 +172,7 @@ async def get_character_data(character_id: str) -> Character:
 
 async def list_characters(limit: int = 100) -> List[Character]:
     """
-    List all characters from local storage.
+    List all characters from MinIO storage.
 
     Args:
         limit: Maximum number of characters to return
@@ -197,14 +181,14 @@ async def list_characters(limit: int = 100) -> List[Character]:
         List of Character objects
     """
     storage = get_storage_client()
-    keys = await storage.s3_list_keys(_CHARACTER_PREFIX)
+    keys = await storage.list_objects(_CHARACTER_PREFIX)
 
     characters = []
     count = 0
     for key in keys:
         if key.endswith(".json"):
             try:
-                data = await storage.s3_get_json(key)
+                data = await storage.get_json(key)
                 if data:
                     # Ensure backward compatibility
                     data["video_clip_path"] = data.get("video_clip_path", "")

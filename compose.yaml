@@ -21,7 +21,7 @@ services:
       - /dev/nvidia0:/dev/nvidia0
     depends_on:
       - tts
-      - mysql
+      - minio
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -32,32 +32,21 @@ services:
       - DATA_DIR=/data
       - TEMP_DIR=/tmp/virtual_streamer
       - OUT_VIDEO_FOLDER=/src/generations
-      # AWS S3 for video storage
-      - S3_BUCKET_URL=virtual-streamer-output
-      - AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
-      - AWS_CONFIG_FILE=/root/.aws/config
+      # MinIO Storage Configuration
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=virtual-streamer
       # Model checkpoint
       - CHECKPOINT_PATH=/app/checkpoints/Wav2Lip.pth
       # API configuration
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      # MySQL configuration
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=virtual_streamer
-      - MYSQL_PASSWORD=streamerpass
-      - MYSQL_DATABASE=virtual_streamer
-      # Enable MySQL backends
-      - ENTITY_STORAGE_BACKEND=mysql
-      - JOB_STORAGE_BACKEND=mysql
     networks:
       - tts
     volumes:
-      - $HOME/.aws/credentials:/root/.aws/credentials
-      - $HOME/.aws/config:/root/.aws/config
       - videos:/src/generations
       - traces:/src/prompts
-      - entities:/data
     env_file:
       - .env
     restart: always
@@ -85,24 +74,24 @@ services:
     networks:
       - tts
 
-  mysql:
-    image: mysql:8.0
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: virtual_streamer
-      MYSQL_USER: virtual_streamer
-      MYSQL_PASSWORD: streamerpass
-    volumes:
-      - mysql_data:/var/lib/mysql
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "3306:3306"
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
     networks:
       - tts
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
 volumes:
   videos:
@@ -117,13 +106,7 @@ volumes:
       type: none
       device: /media/amor/data1/virtual_streamer_folder/prompts
       o: bind
-  entities:
-    driver: local # Define the driver and options under the volume name
-    driver_opts:
-      type: none
-      device: /media/amor/data1/virtual_streamer_folder/entities
-      o: bind
-  mysql_data:
+  minio_data:
 
 
 networks:

@@ -11,21 +11,15 @@ import os
 from datetime import datetime
 
 from virtual_streamer.video_server.models import Character, VoiceSample
-from virtual_streamer.utils.local_fs_client import LocalFSClient
+from virtual_streamer.utils.minio_client import get_storage_client
 
 # Router setup
 router = APIRouter(prefix="/characters", tags=["Characters"])
 
 # Storage configuration
-S3_PREFIX_AUDIO = "audios/"
-S3_PREFIX_CLIPS = "clips/"
-S3_PREFIX_CHARACTERS = "characters/"
-
-
-def get_storage_client() -> LocalFSClient:
-    """Dependency to get storage client."""
-    data_dir = os.environ.get("DATA_DIR", "/data")
-    return LocalFSClient(data_dir)
+PREFIX_AUDIO = "audios/"
+PREFIX_CLIPS = "clips/"
+PREFIX_CHARACTERS = "characters/"
 
 
 @router.post("", response_model=Character, status_code=status.HTTP_201_CREATED)
@@ -45,24 +39,20 @@ async def create_character(
     # Save uploaded voice sample files
     voice_samples_list = []
     for vf, tr in zip(voice_files, transcripts):
-        if not os.path.exists(vf.filename):
-            with open(vf.filename, "wb") as file:
-                file.write(await vf.read())
-
-        s3_path = await storage.s3_put_file(vf.filename, s3_prefix=S3_PREFIX_AUDIO)
+        file_content = await vf.read()
+        storage_key = f"{PREFIX_AUDIO}{vf.filename}"
+        await storage.put_object(storage_key, file_content, content_type="audio/wav")
         voice_samples_list.append(
-            VoiceSample(sample_storage_path=s3_path, transcript=tr)
+            VoiceSample(sample_storage_path=storage_key, transcript=tr)
         )
 
     # Save video file
     video_path = None
     if video_file:
-        if not os.path.exists(video_file.filename):
-            with open(video_file.filename, "wb") as file:
-                file.write(await video_file.read())
-        video_path = await storage.s3_put_file(
-            video_file.filename, s3_prefix=S3_PREFIX_CLIPS
-        )
+        file_content = await video_file.read()
+        storage_key = f"{PREFIX_CLIPS}{video_file.filename}"
+        await storage.put_object(storage_key, file_content, content_type="video/mp4")
+        video_path = storage_key
 
     # Create character entity
     character = Character(
@@ -76,8 +66,8 @@ async def create_character(
     )
 
     # Save to storage
-    s3_key = os.path.join(S3_PREFIX_CHARACTERS, f"{character_id}.json")
-    await storage.s3_put_json(s3_key, character.model_dump())
+    key = f"{PREFIX_CHARACTERS}{character_id}.json"
+    await storage.put_json(key, character.model_dump())
 
     return character
 
@@ -86,8 +76,8 @@ async def create_character(
 async def get_character(character_id: str):
     """Retrieves a specific Character by ID."""
     storage = get_storage_client()
-    s3_key = f"{S3_PREFIX_CHARACTERS}/{character_id}.json"
-    data = await storage.s3_get_json(s3_key)
+    key = f"{PREFIX_CHARACTERS}{character_id}.json"
+    data = await storage.get_json(key)
 
     if data is None:
         raise HTTPException(
@@ -101,13 +91,13 @@ async def get_character(character_id: str):
 async def list_characters(limit: int = 100):
     """Lists all Characters with optional limit."""
     storage = get_storage_client()
-    keys = await storage.s3_list_keys(S3_PREFIX_CHARACTERS)
+    keys = await storage.list_objects(PREFIX_CHARACTERS)
 
     characters = []
     count = 0
     for key in keys:
         if key.endswith(".json"):
-            data = await storage.s3_get_json(key)
+            data = await storage.get_json(key)
             if data:
                 # Ensure backward compatibility
                 data["video_clip_path"] = data.get("video_clip_path", "")
@@ -123,6 +113,6 @@ async def list_characters(limit: int = 100):
 async def delete_character(character_id: str):
     """Deletes a Character definition."""
     storage = get_storage_client()
-    s3_key = f"{S3_PREFIX_CHARACTERS}/{character_id}.json"
-    await storage.s3_delete_object(s3_key)
+    key = f"{PREFIX_CHARACTERS}{character_id}.json"
+    await storage.delete_object(key)
     return None

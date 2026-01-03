@@ -39,6 +39,7 @@ from virtual_streamer.utils.utils import (
     combine_part_in_concat_file,
     get_length,
 )
+from virtual_streamer.utils.minio_client import get_storage_client
 
 
 # ============================================================================
@@ -615,6 +616,16 @@ async def generate_video_from_story(
 
     combine_part_in_concat_file(video_segments, concat_file, final_video_path)
     timing["final_concatenation"] = time.time() - phase5_start
+
+    # Phase 6: Upload final video to MinIO storage
+    if progress:
+        progress.update("Phase 6: Uploading to storage...")
+
+    phase6_start = time.time()
+    storage = get_storage_client()
+    minio_video_key = f"videos/{timestamp}/video_{timestamp}.mp4"
+    await storage.upload_file(final_video_path, minio_video_key)
+    timing["storage_upload"] = time.time() - phase6_start
     timing["total"] = time.time() - start_time
 
     # Create comprehensive config dump
@@ -631,11 +642,15 @@ async def generate_video_from_story(
         story_output=story_output,
     )
 
-    # Save config dump if enabled
+    # Save config dump if enabled and upload to MinIO
     config_dump_path = None
+    minio_config_key = None
     if config.enable_config_dump:
         config_dump_path = config.get_output_path(f"config_{timestamp}.json")
         config_dump.save(config_dump_path)
+        # Upload config dump to MinIO
+        minio_config_key = f"videos/{timestamp}/config_{timestamp}.json"
+        await storage.upload_file(config_dump_path, minio_config_key)
 
     if progress:
         progress.update(f"Video generated successfully in {timing['total']:.2f}s")
@@ -649,6 +664,8 @@ async def generate_video_from_story(
             "total_duration": get_length(final_video_path),
             "timestamp": datetime.now().isoformat(),
             "timing": timing,
+            "minio_video_key": minio_video_key,
+            "minio_config_key": minio_config_key,
         },
     )
 
