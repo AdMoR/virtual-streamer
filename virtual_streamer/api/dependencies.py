@@ -125,6 +125,104 @@ def resolve_path(path: str) -> str:
     return resolver.resolve(path)
 
 
+class StoragePathResolver:
+    """
+    Resolves MinIO storage keys to local file paths by downloading files.
+    
+    This enables services running in containers to access files stored in MinIO
+    by downloading them to a local cache directory.
+    """
+
+    def __init__(
+        self,
+        storage: Optional[MinIOClient] = None,
+        cache_dir: Optional[str] = None,
+    ):
+        """
+        Initialize storage path resolver.
+
+        Args:
+            storage: MinIO client instance (defaults to global client)
+            cache_dir: Local cache directory (defaults to STORAGE_CACHE_DIR env var or /tmp/storage_cache)
+        """
+        self.storage = storage or get_storage_client()
+        self.cache_dir = Path(
+            cache_dir or os.environ.get("STORAGE_CACHE_DIR", "/tmp/storage_cache")
+        )
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    async def resolve_file(self, storage_key: str) -> str:
+        """
+        Download file from MinIO and return local path.
+        
+        Works for any file type (video, audio, etc.). Files are cached locally
+        to avoid repeated downloads.
+
+        Args:
+            storage_key: MinIO key like "clips/fred.mp4" or "audios/sample.wav"
+
+        Returns:
+            Local path like "/tmp/storage_cache/clips/fred.mp4"
+            
+        Raises:
+            FileNotFoundError: If the file doesn't exist in storage
+        """
+        if not storage_key:
+            raise ValueError("storage_key cannot be empty")
+
+        local_path = self.cache_dir / storage_key
+
+        # Check if already cached
+        if local_path.exists():
+            return str(local_path)
+
+        # Check if file exists in storage
+        if not await self.storage.object_exists(storage_key):
+            raise FileNotFoundError(f"File not found in storage: {storage_key}")
+
+        # Download from MinIO
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        await self.storage.download_file(storage_key, str(local_path))
+
+        return str(local_path)
+
+    def clear_cache(self, storage_key: Optional[str] = None) -> None:
+        """
+        Clear cached files.
+
+        Args:
+            storage_key: Specific key to clear, or None to clear all
+        """
+        if storage_key:
+            local_path = self.cache_dir / storage_key
+            if local_path.exists():
+                local_path.unlink()
+        else:
+            import shutil
+            if self.cache_dir.exists():
+                shutil.rmtree(self.cache_dir)
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+
+# Global storage resolver instance
+_storage_resolver: Optional[StoragePathResolver] = None
+
+
+def get_storage_resolver() -> StoragePathResolver:
+    """
+    Get or create the global storage path resolver instance.
+
+    Returns:
+        StoragePathResolver instance
+    """
+    global _storage_resolver
+
+    if _storage_resolver is None:
+        _storage_resolver = StoragePathResolver()
+
+    return _storage_resolver
+
+
 # Character storage functions
 
 # Storage configuration
