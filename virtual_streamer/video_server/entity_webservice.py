@@ -1,4 +1,3 @@
-import boto3
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -34,27 +33,23 @@ from virtual_streamer.video_server.models import (
     ProjectValidationResult,
     CharacterPresence,  # Ensure all needed models are imported
 )
-from virtual_streamer.utils.s3_client import AsyncS3Client
-from virtual_streamer.utils.local_fs_client import LocalFSClient
+from virtual_streamer.utils.minio_client import get_storage_client, MinIOClient
+
 
 # --- Configuration ---
-S3_BUCKET_NAME = os.environ.get(
-    "ENTITY_S3_BUCKET", "your-entity-bucket-name"
-)  # Use a dedicated bucket or prefix
-# s3_cli = AsyncS3Client(S3_BUCKET_NAME)
-s3_cli = LocalFSClient("/data")
+storage_client = get_storage_client()
 
-S3_PREFIX_CLIPS = "clips/"
-S3_PREFIX_AUDIO = "audios/"
-S3_PREFIX_CHARACTERS = "characters/"
-S3_PREFIX_PROJECTS = "projects/"
+PREFIX_CLIPS = "clips/"
+PREFIX_AUDIO = "audios/"
+PREFIX_CHARACTERS = "characters/"
+PREFIX_PROJECTS = "projects/"
 
 
 # --- FastAPI App ---
 app = FastAPI(
     title="Entity Management Service",
-    description="API for managing Video Clips, Collections, Characters, and Projects using S3 backend.",
-    version="0.1.0",
+    description="API for managing Video Clips, Collections, Characters, and Projects using MinIO storage.",
+    version="0.2.0",
 )
 
 
@@ -62,8 +57,7 @@ app = FastAPI(
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Basic health check."""
-    # Could add S3 connectivity check here if needed
-    return {"status": "healthy", "s3_bucket": S3_BUCKET_NAME}
+    return {"status": "healthy", "storage": "minio"}
 
 
 # --- Video Clip Endpoints ---
@@ -87,8 +81,8 @@ async def create_video_clip(clip_data: VideoClipCreate):
         created_at=now,
         updated_at=now,
     )
-    s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    await s3_cli.s3_put_json(s3_key, clip.dict())
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    await storage_client.put_json(key, clip.dict())
     # Potential: Update collections if clip_data.collection_ids is not empty
     return clip
 
@@ -96,8 +90,8 @@ async def create_video_clip(clip_data: VideoClipCreate):
 @app.get("/clips/{clip_id}", response_model=VideoClip, tags=["Video Clips"])
 async def get_video_clip(clip_id: int):
     """Retrieves a specific Video Clip by its ID."""
-    s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    data = await s3_cli.s3_get_json(s3_key)
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    data = await storage_client.get_json(key)
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Video Clip not found"
@@ -108,8 +102,8 @@ async def get_video_clip(clip_id: int):
 @app.put("/clips/{clip_id}/metadata", response_model=VideoClip, tags=["Video Clips"])
 async def update_video_clip_metadata(clip_id: str, metadata: VideoClipMetadataInput):
     """Adds or replaces the metadata for a specific Video Clip."""
-    s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    data = await s3_cli.s3_get_json(s3_key)
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    data = await storage_client.get_json(key)
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Video Clip not found"
@@ -119,7 +113,7 @@ async def update_video_clip_metadata(clip_id: str, metadata: VideoClipMetadataIn
     clip.metadata = metadata
     clip.updated_at = datetime.utcnow()
 
-    await s3_cli.s3_put_json(s3_key, clip.dict())
+    await storage_client.put_json(key, clip.dict())
     return clip
 
 
@@ -130,14 +124,14 @@ async def list_video_clips(
     """Lists Video Clips (metadata only). Limited results."""
     # Note: This lists keys and fetches each JSON individually. Can be slow/costly.
     # Consider alternative listing/indexing for large scale.
-    target_prefix = f"{S3_PREFIX_CLIPS}{prefix if prefix else ''}"
-    keys = await s3_cli.s3_list_keys(target_prefix)
+    target_prefix = f"{PREFIX_CLIPS}{prefix if prefix else ''}"
+    keys = await storage_client.list_objects(target_prefix)
     clips = []
     count = 0
     for key in keys:
         if key.endswith(".json"):  # Basic check
             # Optimization: Could use list_objects_v2 metadata if sufficient
-            data = await s3_cli.s3_get_json(key)
+            data = await storage_client.get_json(key)
             if data:
                 clips.append(VideoClip(**data))
                 count += 1
@@ -151,9 +145,9 @@ async def list_video_clips(
 )
 async def delete_video_clip(clip_id: str):
     """Deletes the metadata record of a Video Clip. Does NOT delete the video file."""
-    s3_key = f"{S3_PREFIX_CLIPS}/{clip_id}.json"
+    key = f"{PREFIX_CLIPS}/{clip_id}.json"
     # Check if exists first? Optional, delete is idempotent.
-    await s3_cli.s3_delete_object(s3_key)
+    await storage_client.delete_object(key)
     # Potential: Remove clip_id from associated collections
     return None
 
@@ -172,7 +166,6 @@ async def create_character(
     description: str = Form(None),
     voice_files: List[UploadFile] = File(...),
     transcripts: List[str] = Form(...),
-    tts_model_config: Optional[str] = Form(None),
     video_file: UploadFile = File(...),
 ):
     """Creates a new Character definition with optional representative video upload."""
@@ -181,44 +174,41 @@ async def create_character(
     # Save uploaded voice sample files and build VoiceSample objects
     voice_samples_list = []
     for vf, tr in zip(voice_files, transcripts):
-        if not os.path.exists(vf.filename):
-            with open(vf.filename, "wb") as file:
-                file.write(await vf.read())
-        print(">>>>> ", len(vf.file.read()), vf.filename, os.listdir())
-        s3_path = await s3_cli.s3_put_file(vf.filename, s3_prefix=S3_PREFIX_AUDIO)
+        # Read file content and upload to storage
+        file_content = await vf.read()
+        storage_key = f"{PREFIX_AUDIO}{vf.filename}"
+        await storage_client.put_object(storage_key, file_content, content_type="audio/wav")
         voice_samples_list.append(
-            VoiceSample(sample_storage_path=s3_path, transcript=tr)
+            VoiceSample(sample_storage_path=storage_key, transcript=tr)
         )
 
     video_path = None
     if video_file:
-        if not os.path.exists(video_file.filename):
-            with open(video_file.filename, "wb") as file:
-                file.write(await video_file.read())
-        video_path = await s3_cli.s3_put_file(
-            video_file.filename, s3_prefix=S3_PREFIX_CLIPS
-        )
+        # Read file content and upload to storage
+        file_content = await video_file.read()
+        storage_key = f"{PREFIX_CLIPS}{video_file.filename}"
+        await storage_client.put_object(storage_key, file_content, content_type="video/mp4")
+        video_path = storage_key
 
     character = Character(
         character_id=character_id,
         name=name,
         description=description,
         voice_samples=voice_samples_list,
-        tts_model_config=None,
         video_clip_path=video_path,
         created_at=now,
         updated_at=now,
     )
-    s3_key = os.path.join(S3_PREFIX_CHARACTERS, f"{character_id}.json")
-    await s3_cli.s3_put_json(s3_key, character.model_dump())
+    key = f"{PREFIX_CHARACTERS}{character_id}.json"
+    await storage_client.put_json(key, character.model_dump())
     return character
 
 
 @app.get("/characters/{character_id}", response_model=Character, tags=["Characters"])
 async def get_character(character_id: str):
     """Retrieves a specific Character by ID."""
-    s3_key = f"{S3_PREFIX_CHARACTERS}/{character_id}.json"
-    data = await s3_cli.s3_get_json(s3_key)
+    key = f"{PREFIX_CHARACTERS}{character_id}.json"
+    data = await storage_client.get_json(key)
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Character not found"
@@ -229,12 +219,12 @@ async def get_character(character_id: str):
 @app.get("/characters", response_model=List[Character], tags=["Characters"])
 async def list_characters(limit: int = Query(100, ge=1, le=1000)):
     """Lists Characters. Limited results."""
-    keys = await s3_cli.s3_list_keys(S3_PREFIX_CHARACTERS)
+    keys = await storage_client.list_objects(PREFIX_CHARACTERS)
     characters = []
     count = 0
     for key in keys:
         if key.endswith(".json"):
-            data = await s3_cli.s3_get_json(key)
+            data = await storage_client.get_json(key)
             if data:
                 print(data)
                 data["video_clip_path"] = data.get("video_clip_path", "")
@@ -252,6 +242,6 @@ async def list_characters(limit: int = Query(100, ge=1, le=1000)):
 )
 async def delete_character(character_id: str):
     """Deletes a Character definition."""
-    s3_key = f"{S3_PREFIX_CHARACTERS}/{character_id}.json"
-    await s3_cli.s3_delete_object(s3_key)
+    key = f"{PREFIX_CHARACTERS}{character_id}.json"
+    await storage_client.delete_object(key)
     return None

@@ -26,12 +26,10 @@ from virtual_streamer.video_generation import (
     GenerationResult,
     StoryOutput,
 )
+from virtual_streamer.utils.job_store import get_global_job_store
 
 # Router setup
 router = APIRouter(prefix="/video-generation", tags=["Video Generation"])
-
-# Job tracking
-_jobs: Dict[str, Dict[str, Any]] = {}
 
 
 class VideoGenerationRequest(BaseModel):
@@ -62,11 +60,9 @@ class JobStatusResponse(BaseModel):
 
     job_id: str
     status: str  # pending, running, completed, failed
-    progress: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     created_at: str
-    updated_at: str
 
 
 class VideoGenerationResponse(BaseModel):
@@ -79,11 +75,10 @@ class VideoGenerationResponse(BaseModel):
 
 async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
     """Background task to run video generation."""
+    job_store = await get_global_job_store()
     try:
-        # Update job status
-        _jobs[job_id]["status"] = "running"
-        _jobs[job_id]["progress"] = "Initializing..."
-        _jobs[job_id]["updated_at"] = datetime.utcnow().isoformat()
+        # Update job status to running
+        await job_store.update_job(job_id, status="running")
 
         # Build configuration
         config = VideoGenerationConfig(
@@ -112,31 +107,26 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 "Exactly one of title, story_text, or from_config_dump must be provided"
             )
 
-        # Progress callback
-        class JobProgressCallback:
-            def __init__(self, job_id):
-                self.job_id = job_id
+        # Simple progress callback (logs to console only)
+        class ProgressCallback:
+            def __init__(self):
                 self.current_step = 0
                 self.total_steps = 0
 
             def update(self, message: str):
-                _jobs[self.job_id]["progress"] = message
-                _jobs[self.job_id]["updated_at"] = datetime.utcnow().isoformat()
+                print(f"[Job {job_id}] {message}")
 
             def set_total_steps(self, total: int):
                 self.total_steps = total
 
             def increment_step(self, message: str):
                 self.current_step += 1
-                progress_msg = f"[{self.current_step}/{self.total_steps}] {message}"
-                self.update(progress_msg)
+                print(f"[Job {job_id}] [{self.current_step}/{self.total_steps}] {message}")
 
-        progress = JobProgressCallback(job_id)
+        progress = ProgressCallback()
 
         # Handle config dump recreation
         if request.from_config_dump:
-            progress.update("Recreating from config dump...")
-
             tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
 
@@ -146,8 +136,6 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
 
         else:
             # Initialize components
-            progress.update("Initializing components...")
-
             llm = create_llm(config.llm)
             tts = create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
@@ -160,8 +148,6 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             # Generate or use provided story
             story_output = None
             if request.title:
-                progress.update(f"Generating story from title: {request.title}")
-
                 story_output = await generate_story(
                     request.title, llm, prompt_provider, config, progress, llm_semaphore
                 )
@@ -170,8 +156,6 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 story = request.story_text
 
             # Generate video
-            progress.update("Starting video generation...")
-
             result = await generate_video_from_story(
                 story,
                 llm,
@@ -184,9 +168,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             )
 
         # Job completed successfully
-        _jobs[job_id]["status"] = "completed"
-        _jobs[job_id]["progress"] = "Video generation completed!"
-        _jobs[job_id]["result"] = {
+        result_data = {
             "video_path": result.video_path,
             "config_dump_path": result.config_dump_path,
             "metadata": result.metadata,
@@ -194,13 +176,11 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             if result.story_output
             else None,
         }
-        _jobs[job_id]["updated_at"] = datetime.utcnow().isoformat()
+        await job_store.update_job(job_id, status="completed", result=result_data)
 
     except Exception as e:
         # Job failed
-        _jobs[job_id]["status"] = "failed"
-        _jobs[job_id]["error"] = str(e)
-        _jobs[job_id]["updated_at"] = datetime.utcnow().isoformat()
+        await job_store.update_job(job_id, status="failed", error=str(e))
 
         import traceback
 
@@ -224,18 +204,11 @@ async def submit_video_generation(
     Returns:
         VideoGenerationResponse with job_id for tracking
     """
+    job_store = await get_global_job_store()
+
     # Create job
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {
-        "job_id": job_id,
-        "status": "pending",
-        "progress": None,
-        "result": None,
-        "error": None,
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
-        "request": request.model_dump(),
-    }
+    await job_store.create_job(job_id, request.model_dump())
 
     # Start background task
     background_tasks.add_task(_run_video_generation, job_id, request)
@@ -258,10 +231,12 @@ async def get_job_status(job_id: str):
     Returns:
         JobStatusResponse with current status and results
     """
-    if job_id not in _jobs:
+    job_store = await get_global_job_store()
+    job = await job_store.get_job(job_id)
+
+    if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job = _jobs[job_id]
     return JobStatusResponse(**job)
 
 
@@ -276,10 +251,8 @@ async def list_jobs(limit: int = 20):
     Returns:
         List of JobStatusResponse
     """
-    jobs = list(_jobs.values())
-    # Sort by created_at descending
-    jobs.sort(key=lambda x: x["created_at"], reverse=True)
-    jobs = jobs[:limit]
+    job_store = await get_global_job_store()
+    jobs = await job_store.list_jobs(limit)
 
     return [JobStatusResponse(**job) for job in jobs]
 
@@ -291,20 +264,26 @@ async def delete_job(job_id: str):
 
     Note: This only removes the job metadata, not the generated files.
     """
-    if job_id not in _jobs:
+    job_store = await get_global_job_store()
+    deleted = await job_store.delete_job(job_id)
+
+    if not deleted:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    del _jobs[job_id]
     return {"message": "Job deleted successfully"}
 
 
 @router.get("/health")
 async def health():
     """Health check for video generation service."""
+    job_store = await get_global_job_store()
+    jobs = await job_store.list_jobs(limit=1000)  # Get recent jobs for stats
+
+    active_count = sum(1 for j in jobs if j["status"] in ["pending", "running"])
+
     return {
         "status": "healthy",
-        "active_jobs": sum(
-            1 for j in _jobs.values() if j["status"] in ["pending", "running"]
-        ),
-        "total_jobs": len(_jobs),
+        "active_jobs": active_count,
+        "total_jobs": len(jobs),
+        "storage_backend": os.environ.get("JOB_STORAGE_BACKEND", "memory"),
     }

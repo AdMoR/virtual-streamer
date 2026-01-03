@@ -17,6 +17,7 @@ import os
 import json
 from pathlib import Path
 from typing import Optional, List, Any
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # Mock implementations for testing
 from virtual_streamer.video_generation.interfaces import (
@@ -42,6 +43,32 @@ from virtual_streamer.video_generation.core import (
     create_config_dump,
     recreate_from_config_dump,
 )
+
+
+# ============================================================================
+# Mock Storage Client
+# ============================================================================
+
+
+class MockStorageClient:
+    """Mock storage client for testing."""
+    
+    async def upload_file(self, local_path: str, key: str) -> str:
+        return key
+    
+    async def put_json(self, key: str, data: dict) -> str:
+        return key
+    
+    async def get_json(self, key: str):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def mock_storage():
+    """Mock the storage client for all tests."""
+    with patch('virtual_streamer.video_generation.core.get_storage_client') as mock:
+        mock.return_value = MockStorageClient()
+        yield mock
 
 
 # ============================================================================

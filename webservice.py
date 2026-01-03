@@ -170,10 +170,6 @@ async def generate_tts(payload: DialogueEntry):
             format="wav",
             host=os.environ.get("FISH_TTS_HOST", "0.0.0.0"),
             port=os.environ.get("FISH_TTS_PORT", "8003"),
-            # Add character-specific reference audio/text if available
-            # reference_audio=character.tts_model_config,
-            # reference_text=character.reference_text,
-            # reference_id=character.character_id,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fish TTS call failed: {str(e)}")

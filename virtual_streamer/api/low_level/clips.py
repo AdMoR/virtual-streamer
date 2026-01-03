@@ -15,19 +15,13 @@ from virtual_streamer.video_server.models import (
     VideoClipCreate,
     VideoClipMetadataInput,
 )
-from virtual_streamer.utils.local_fs_client import LocalFSClient
+from virtual_streamer.utils.minio_client import get_storage_client
 
 # Router setup
 router = APIRouter(prefix="/clips", tags=["Video Clips"])
 
 # Storage configuration
-S3_PREFIX_CLIPS = "clips/"
-
-
-def get_storage_client() -> LocalFSClient:
-    """Dependency to get storage client."""
-    data_dir = os.environ.get("DATA_DIR", "/data")
-    return LocalFSClient(data_dir)
+PREFIX_CLIPS = "clips/"
 
 
 @router.post("", response_model=VideoClip, status_code=status.HTTP_201_CREATED)
@@ -47,8 +41,8 @@ async def create_video_clip(clip_data: VideoClipCreate):
         updated_at=now,
     )
 
-    s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    await storage.s3_put_json(s3_key, clip.dict())
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    await storage.put_json(key, clip.dict())
 
     return clip
 
@@ -57,8 +51,8 @@ async def create_video_clip(clip_data: VideoClipCreate):
 async def get_video_clip(clip_id: str):
     """Retrieves a specific Video Clip by its ID."""
     storage = get_storage_client()
-    s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    data = await storage.s3_get_json(s3_key)
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    data = await storage.get_json(key)
 
     if data is None:
         raise HTTPException(
@@ -72,8 +66,8 @@ async def get_video_clip(clip_id: str):
 async def update_video_clip_metadata(clip_id: str, metadata: VideoClipMetadataInput):
     """Adds or replaces the metadata for a specific Video Clip."""
     storage = get_storage_client()
-    s3_key = f"{S3_PREFIX_CLIPS}{clip_id}.json"
-    data = await storage.s3_get_json(s3_key)
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    data = await storage.get_json(key)
 
     if data is None:
         raise HTTPException(
@@ -84,7 +78,7 @@ async def update_video_clip_metadata(clip_id: str, metadata: VideoClipMetadataIn
     clip.metadata = metadata
     clip.updated_at = datetime.utcnow()
 
-    await storage.s3_put_json(s3_key, clip.dict())
+    await storage.put_json(key, clip.dict())
     return clip
 
 
@@ -94,14 +88,14 @@ async def list_video_clips(
 ):
     """Lists Video Clips (metadata only). Limited results."""
     storage = get_storage_client()
-    target_prefix = f"{S3_PREFIX_CLIPS}{prefix if prefix else ''}"
-    keys = await storage.s3_list_keys(target_prefix)
+    target_prefix = f"{PREFIX_CLIPS}{prefix if prefix else ''}"
+    keys = await storage.list_objects(target_prefix)
 
     clips = []
     count = 0
     for key in keys:
         if key.endswith(".json"):
-            data = await storage.s3_get_json(key)
+            data = await storage.get_json(key)
             if data:
                 clips.append(VideoClip(**data))
                 count += 1
@@ -115,6 +109,6 @@ async def list_video_clips(
 async def delete_video_clip(clip_id: str):
     """Deletes the metadata record of a Video Clip."""
     storage = get_storage_client()
-    s3_key = f"{S3_PREFIX_CLIPS}/{clip_id}.json"
-    await storage.s3_delete_object(s3_key)
+    key = f"{PREFIX_CLIPS}{clip_id}.json"
+    await storage.delete_object(key)
     return None
