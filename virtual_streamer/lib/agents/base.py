@@ -149,6 +149,8 @@ class BaseLlmAgent(LlmAgent):
             before_model_callback=before_model_callback if before_model_callback else None,
             after_model_callback=after_model_callback if after_model_callback else None,
             tools=tools or [],
+            disallow_transfer_to_parent=True,
+            disallow_transfer_to_peers=True,
             **kwargs,
         )
 

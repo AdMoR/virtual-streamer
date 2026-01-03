@@ -212,6 +212,7 @@ async def run_story_generator(title: str, session: Session) -> StoryOutput:
     # Create invocation context
     ctx = InvocationContext(
         invocation_id=f"story_{uuid.uuid4().hex[:8]}",
+        #session_service=SessionService, #missing session service here
         session=session,
         agent=story_generator,
     )

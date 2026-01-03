@@ -266,8 +266,6 @@ with tab2:
                         col1, col2 = st.columns(2)
                         with col1:
                             st.text(f"Created: {status['created_at']}")
-                        with col2:
-                            st.text(f"Updated: {status['updated_at']}")
 
                         # Results or error
                         if status["status"] == "completed" and status.get("result"):
@@ -320,8 +318,6 @@ with tab2:
                 col1, col2 = st.columns(2)
                 with col1:
                     st.text(f"Created: {status['created_at']}")
-                with col2:
-                    st.text(f"Updated: {status['updated_at']}")
 
                 if status["status"] == "completed" and status.get("result"):
                     st.success("✓ Video generation completed!")

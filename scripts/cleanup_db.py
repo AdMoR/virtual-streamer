@@ -24,13 +24,16 @@ Usage:
         --user virtual_streamer --password secret \
         --database virtual_streamer
 """
-
+from dotenv import load_dotenv
 import argparse
 import asyncio
 import os
 import sys
 
 import aiomysql
+
+
+load_dotenv()
 
 
 # Tables in dependency order (children first for proper deletion)

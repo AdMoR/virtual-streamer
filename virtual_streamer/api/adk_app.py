@@ -60,7 +60,7 @@ def create_adk_app(
     # Use Google ADK's built-in FastAPI app factory
     # This auto-discovers agents that expose `root_agent` at module level
     adk_app = get_fast_api_app(
-        agent_dir=str(agents_path),
+        agents_dir=str(agents_path),
         web=web,
     )
 

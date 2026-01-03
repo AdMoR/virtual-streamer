@@ -65,20 +65,20 @@ class StatefulLlmAgent(BaseLlmAgent):
         print(worker.get_input_key())   # "task:s0_w1:video_sentence"
         print(worker.get_output_key())  # "result:s0_w1:judgement"
     """
-    
+
     # Store callbacks as regular attributes (not Pydantic fields)
     _input_callback: StateInputCallback
     _output_callback: StateOutputCallback
-    
+
     def __init__(
-        self,
-        name: str,
-        input_callback: StateInputCallback,
-        output_callback: StateOutputCallback,
-        instruction: Optional[Union[str, InstructionProvider]] = None,
-        output_schema: Optional[Type[BaseModel]] = None,
-        tools: Optional[List[Any]] = None,
-        **kwargs: Any,
+            self,
+            name: str,
+            input_callback: StateInputCallback,
+            output_callback: StateOutputCallback,
+            instruction: Optional[Union[str, InstructionProvider]] = None,
+            output_schema: Optional[Type[BaseModel]] = None,
+            tools: Optional[List[Any]] = None,
+            **kwargs: Any,
     ):
         """
         Initialize the stateful LLM agent.
@@ -103,18 +103,18 @@ class StatefulLlmAgent(BaseLlmAgent):
             tools=tools,
             **kwargs,
         )
-        
+
         # Store callbacks for our delegation methods
         # (underscore prefix bypasses Pydantic's field validation)
         self._input_callback = input_callback
         self._output_callback = output_callback
-        
+
         logger.debug(
             f"StatefulLlmAgent '{name}' initialized with "
             f"input_key='{self.get_input_key()}', "
             f"output_key='{self.get_output_key()}'"
         )
-    
+
     def get_input_key(self) -> str:
         """
         Get the state key where input should be written.
@@ -125,7 +125,7 @@ class StatefulLlmAgent(BaseLlmAgent):
             The full namespaced input key (e.g., "task:s0_w1:video_sentence")
         """
         return self._input_callback.get_input_key()
-    
+
     def get_input_schema(self) -> Type[BaseModel]:
         """
         Get the Pydantic model for input validation.
@@ -138,7 +138,7 @@ class StatefulLlmAgent(BaseLlmAgent):
             The Pydantic model class for input validation
         """
         return self._input_callback.get_input_schema()
-    
+
     def get_output_key(self) -> str:
         """
         Get the state key where output will be written.
@@ -149,7 +149,7 @@ class StatefulLlmAgent(BaseLlmAgent):
             The full namespaced output key (e.g., "result:s0_w1:judgement")
         """
         return self._output_callback.get_output_key()
-    
+
     def get_output_schema(self) -> Type[BaseModel]:
         """
         Get the Pydantic model for output validation.
@@ -162,4 +162,3 @@ class StatefulLlmAgent(BaseLlmAgent):
             The Pydantic model class for output validation
         """
         return self._output_callback.get_output_schema()
-
