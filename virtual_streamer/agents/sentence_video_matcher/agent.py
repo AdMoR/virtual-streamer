@@ -29,10 +29,7 @@ from virtual_streamer.agents.sentence_video_matcher.schema import (
     SentenceVideoMatcherOutput,
     DialogLineMatch,
 )
-from virtual_streamer.video_generation import (
-    VideoGenerationConfig,
-    create_video_retriever,
-)
+from virtual_streamer.agents.sentence_video_matcher.utils import _select_best
 from virtual_streamer.video_generation.interfaces import VideoRetrieverInterface
 
 logger = logging.getLogger(__name__)
@@ -152,14 +149,15 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
         )
     
     async def aggregation_fn(
-        self, results: List[VideoMatchResult]
+            self,
+            results: List[VideoMatchResult]
     ) -> SentenceVideoMatcherOutput:
         """
         Group results by sentence and select best match per dialog line.
-        
+
         Args:
             results: All VideoMatchResult from parallel workers
-        
+
         Returns:
             SentenceVideoMatcherOutput with DialogLineMatch per dialog line
         """
@@ -168,13 +166,13 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
         for result in results:
             key = (result.character, result.sentence)
             by_dialog.setdefault(key, []).append(result)
-        
+
         logger.info(f"Aggregating results for {len(by_dialog)} dialog lines")
-        
+
         # Select best from each group and convert to DialogLineMatch
         matches = []
         for (character, sentence), group in by_dialog.items():
-            best = self._select_best(group)
+            best = _select_best(group)
             if best:
                 # Convert VideoMatchResult to DialogLineMatch
                 dialog_line_match = DialogLineMatch(
@@ -189,36 +187,8 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
                     f"Best for '{character}: {sentence[:30]}...': "
                     f"{best.video_path} (rating={best.rating}, grade={best.grade})"
                 )
-        
+
         return SentenceVideoMatcherOutput(matches=matches)
-    
-    def _select_best(
-        self, results: List[VideoMatchResult]
-    ) -> VideoMatchResult | None:
-        """
-        Select the best match from a list of results.
-        
-        Priority:
-        1. CONTEXTUAL with highest grade
-        2. NEUTRAL with highest grade
-        3. NOT_CONTEXTUAL with highest grade
-        """
-        if not results:
-            return None
-        
-        rating_priority = [
-            ContextualRating.CONTEXTUAL,
-            ContextualRating.NEUTRAL,
-            ContextualRating.NOT_CONTEXTUAL,
-        ]
-        
-        for target_rating in rating_priority:
-            matches = [r for r in results if r.rating == target_rating]
-            if matches:
-                return max(matches, key=lambda x: x.grade)
-        
-        # Fallback to highest grade overall
-        return max(results, key=lambda x: x.grade)
 
 
 def create_sentence_video_matcher(
