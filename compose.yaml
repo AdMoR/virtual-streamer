@@ -107,6 +107,11 @@ volumes:
       device: /media/amor/data1/virtual_streamer_folder/prompts
       o: bind
   minio_data:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /media/amor/data1/virtual_streamer_folder/storage
+      o: bind
 
 
 networks:

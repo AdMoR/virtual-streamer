@@ -116,7 +116,7 @@ def register_via_api(
     Returns:
         API response as dict
     """
-    url = f"{api_url.rstrip('/')}/characters"
+    url = f"{api_url.rstrip('/')}/api/v1/characters"
     
     # Prepare form data
     data = {
