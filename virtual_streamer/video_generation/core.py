@@ -547,19 +547,22 @@ async def generate_video_from_story(
     video_matches = await asyncio.gather(*video_match_tasks)
     timing["video_search"] = time.time() - phase1_start
 
-    # Phase 2: Generate audio for all sentences (SERIAL, local processing)
+    # Phase 2: Generate audio for all sentences (PARALLEL with async TTS)
     if progress:
-        progress.update("Phase 2: Generating audio (serial)...")
+        progress.update(f"Phase 2: Generating audio (parallel async, {len(sentences)} sentences)...")
 
     phase2_start = time.time()
-    audio_files = []
-    for i, sentence in enumerate(sentences):
-        if progress:
-            progress.increment_step(f"Generating audio {i + 1}/{len(sentences)}")
-
-        audio_path = config.get_temp_path(f"audio_{i}_{hash(sentence)}.wav")
-        audio_path = tts.generate_speech(sentence, audio_path)
-        audio_files.append(audio_path)
+    audio_tasks = [
+        tts.generate_speech_async(
+            sentence,
+            config.get_temp_path(f"audio_{i}_{hash(sentence)}.wav")
+        )
+        for i, sentence in enumerate(sentences)
+    ]
+    audio_files = await asyncio.gather(*audio_tasks)
+    
+    if progress:
+        progress.update(f"Phase 2 complete: Generated {len(audio_files)} audio files")
     timing["audio_generation"] = time.time() - phase2_start
 
     # Phase 3: Generate subtitles (SERIAL, local processing)

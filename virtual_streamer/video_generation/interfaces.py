@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Type
 from pydantic import BaseModel
 import stable_whisper
+import asyncio
 
 from virtual_streamer.video_search.client import VideoSearchResult
 
@@ -76,7 +77,7 @@ class TTSInterface(ABC):
         self, text: str, output_path: Optional[str] = None, **kwargs
     ) -> str:
         """
-        Generate speech from text.
+        Generate speech from text (synchronous version).
 
         Args:
             text: Text to synthesize
@@ -87,6 +88,25 @@ class TTSInterface(ABC):
             Path to generated audio file
         """
         pass
+
+    async def generate_speech_async(
+        self, text: str, output_path: Optional[str] = None, **kwargs
+    ) -> str:
+        """
+        Generate speech from text (asynchronous version).
+
+        Default implementation runs the sync version in a thread pool.
+        Subclasses can override this to provide native async implementations.
+
+        Args:
+            text: Text to synthesize
+            output_path: Path for output audio file (auto-generated if None)
+            **kwargs: Additional provider-specific parameters
+
+        Returns:
+            Path to generated audio file
+        """
+        return await asyncio.to_thread(self.generate_speech, text, output_path, **kwargs)
 
     @abstractmethod
     def get_audio_duration(self, audio_path: str) -> float:

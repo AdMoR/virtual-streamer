@@ -26,6 +26,7 @@ fastapi[standard]
 uvicorn[standard]
 requests
 httpx
+aiofiles
 boto3
 python-multipart
 aiomysql

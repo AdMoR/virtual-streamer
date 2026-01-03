@@ -33,7 +33,7 @@ from virtual_streamer.video_generation.config import (
     VideoRetrievalConfig,
     PromptConfig,
 )
-from virtual_streamer.utils.utils import txt_to_speech_call_fish, get_length
+from virtual_streamer.utils.utils import txt_to_speech_call_fish, txt_to_speech_call_fish_async, get_length
 from virtual_streamer.video_server.utils import get_character_data_sync
 from virtual_streamer.video_server.models import Character
 from virtual_streamer.api.dependencies import get_path_resolver
@@ -291,8 +291,32 @@ class FishSpeechTTS(TTSInterface):
     def generate_speech(
         self, text: str, output_path: Optional[str] = None, **kwargs
     ) -> str:
-        """Generate speech using Fish-Speech API."""
+        """Generate speech using Fish-Speech API (synchronous)."""
         return txt_to_speech_call_fish(
+            speech_lines=text,
+            reference_audio=self.config.reference_audio,
+            reference_text=self.config.reference_text,
+            outpath=output_path,
+            max_new_tokens=kwargs.get("max_new_tokens", self.config.max_new_tokens),
+            chunk_length=kwargs.get("chunk_length", self.config.chunk_length),
+            top_p=kwargs.get("top_p", self.config.top_p),
+            repetition_penalty=kwargs.get(
+                "repetition_penalty", self.config.repetition_penalty
+            ),
+            temperature=kwargs.get("temperature", self.config.temperature),
+            host=self.config.host,
+            port=self.config.port,
+        )
+
+    async def generate_speech_async(
+        self, text: str, output_path: Optional[str] = None, **kwargs
+    ) -> str:
+        """
+        Generate speech using Fish-Speech API (asynchronous).
+        
+        Native async implementation using httpx for non-blocking HTTP requests.
+        """
+        return await txt_to_speech_call_fish_async(
             speech_lines=text,
             reference_audio=self.config.reference_audio,
             reference_text=self.config.reference_text,

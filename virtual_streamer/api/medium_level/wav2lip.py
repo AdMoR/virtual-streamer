@@ -29,6 +29,7 @@ from virtual_streamer.wav2lip.main_logic import (
     FaceDetectionGroup,
 )
 from virtual_streamer.utils.utils import sanitize_str
+from virtual_streamer.api.utils.gpu_semaphore import run_on_gpu, get_gpu_queue_status
 
 # Router setup
 router = APIRouter(prefix="/wav2lip", tags=["Wav2Lip"])
@@ -241,11 +242,13 @@ async def generate_wav2lip(payload: Wav2LipRequest):
             status_code=500, detail=f"Failed to download video from storage: {e}"
         )
 
-    # Get or preprocess face detection data
+    # Get or preprocess face detection data (GPU-protected operation)
     if character.name not in _face_detection_groups:
         print(f"Preprocessing face detection for character '{character.name}'...")
         try:
-            preprocess(
+            # Run face preprocessing on GPU with semaphore protection
+            await run_on_gpu(
+                preprocess,
                 _args, video_path, character.name, _detector, _face_detection_groups
             )
         except Exception as e:
@@ -256,11 +259,13 @@ async def generate_wav2lip(payload: Wav2LipRequest):
 
     face_det_group = _face_detection_groups[character.name]
 
-    # Run Wav2Lip generation
+    # Run Wav2Lip generation (GPU-protected, non-blocking operation)
     start_time = time.time()
 
     try:
-        raw_video_path = wav2lip_exec(run_dirname, audio_path, face_det_group)
+        # Run Wav2Lip inference on GPU with semaphore protection
+        # Uses asyncio.to_thread to avoid blocking the event loop
+        raw_video_path = await run_on_gpu(wav2lip_exec, run_dirname, audio_path, face_det_group)
     except Exception as e:
         shutil.rmtree(run_dirname, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Wav2Lip generation failed: {e}")
@@ -283,4 +288,5 @@ async def wav2lip_health():
         if _device
         else ("cuda" if torch.cuda.is_available() else "cpu"),
         "cached_characters": len(_face_detection_groups),
+        "gpu_queue": get_gpu_queue_status(),
     }
