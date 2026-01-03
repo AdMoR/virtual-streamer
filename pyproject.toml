@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "aiomysql>=0.3.2",
     "anthropic>=0.72.0",
     "batch-face>=1.5.2",
     "boto3>=1.40.6",
