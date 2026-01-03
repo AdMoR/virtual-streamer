@@ -323,36 +323,43 @@ async def run_video_generation(
     )
     
     # Create session and run orchestrator
-    from google.adk.agents.invocation_context import InvocationContext
-    from google.adk.sessions import Session, InMemorySessionService
+    from google.adk.runners import Runner
+    from google.adk.sessions import InMemorySessionService
+    from google.genai import types
     
-    session = Session(
-        id="video_gen_session",
-        app_name="virtual_streamer",
-        user_id="user",
-        state={
-            TITLE: title,
-        },
-    )
+    APP_NAME = "virtual_streamer"
+    user_id = "user"
+    session_id = "video_gen_session"
     
+    # Create session service and runner
     session_service = InMemorySessionService()
-    ctx = InvocationContext(
-        invocation_id="video_gen_invocation",
-        session_service=session_service,
-        session=session,
+    runner = Runner(
         agent=orchestrator,
+        app_name=APP_NAME,
+        session_service=session_service,
     )
     
-    # Run the orchestrator and collect state updates
-    # Note: ADK Runner normally applies state_delta automatically, but since we're
-    # running manually without Runner, we must apply state_delta from events ourselves
+    # Create session with initial state
+    session = await session_service.create_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+        state={TITLE: title},
+    )
+    
+    # Create message content
+    content = types.Content(role="user", parts=[types.Part(text=title)])
+    
+    # Run the orchestrator via runner (state_delta is applied automatically)
     logger.info(f"Running orchestrator for title: {title}")
-    async for event in orchestrator.run_async(ctx):
-        # Apply state_delta to session state
-        if event.actions and event.actions.state_delta:
-            for key, value in event.actions.state_delta.items():
-                session.state[key] = value
-                logger.debug(f"State updated: {key}")
+    async for event in runner.run_async(
+        user_id=user_id,
+        session_id=session.id,
+        new_message=content,
+    ):
+        if event.is_final_response():
+            if event.content and event.content.parts:
+                logger.debug(f"Final response from {event.author}")
         
         # Log progress events
         if event.content and event.content.parts:
@@ -360,7 +367,14 @@ async def run_video_generation(
                 if hasattr(part, 'text') and part.text:
                     logger.info(f"[{event.author}] {part.text}")
     
-    # Get video matches from state (now populated via state_delta)
+    # Get updated session state
+    session = await session_service.get_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+    )
+    
+    # Get video matches from state
     video_matches_data = session.state.get(VIDEO_MATCHES)
     if not video_matches_data:
         raise RuntimeError("Orchestrator completed but no video matches found in state")

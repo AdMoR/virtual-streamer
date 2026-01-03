@@ -23,8 +23,9 @@ from dataclasses import dataclass
 import httpx
 
 # ADK imports
-from google.adk.sessions import Session, InMemorySessionService
-from google.adk.agents.invocation_context import InvocationContext
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
 
 # Agent imports
 from virtual_streamer.agents.story_generator import get_story_generator
@@ -192,40 +193,61 @@ class WebserviceClient:
 # ============================================================================
 
 
-async def run_story_generator(title: str, session: Session) -> StoryOutput:
+APP_NAME = "virtual_streamer"
+
+
+async def run_story_generator(title: str) -> StoryOutput:
     """
     Run the StoryGeneratorAgent to generate a story from a title.
 
     Args:
         title: The title/topic for story generation
-        session: ADK Session with state (will be populated with TITLE)
 
     Returns:
         StoryOutput with title, story_plan, and dialog
     """
-    # Set title in session state
-    session.state[TITLE] = title
-
     # Get the story generator agent
     story_generator = get_story_generator()
 
-    # Create invocation context
+    # Create session service and runner
     session_service = InMemorySessionService()
-    ctx = InvocationContext(
-        invocation_id=f"story_{uuid.uuid4().hex[:8]}",
-        session_service=session_service,
-        session=session,
+    runner = Runner(
         agent=story_generator,
+        app_name=APP_NAME,
+        session_service=session_service,
+    )
+
+    # Create session with initial state
+    user_id = f"user_{uuid.uuid4().hex[:8]}"
+    session_id = f"story_{uuid.uuid4().hex[:8]}"
+    session = await session_service.create_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+        state={TITLE: title},
     )
 
     logger.info(f"Running StoryGeneratorAgent for title: {title}")
 
-    # Run agent and collect state updates
-    async for event in story_generator.run_async(ctx):
-        if event.actions and event.actions.state_delta:
-            for key, value in event.actions.state_delta.items():
-                session.state[key] = value
-                logger.debug(f"State updated: {key}")
+    # Create message content
+    content = types.Content(role="user", parts=[types.Part(text=title)])
+
+    # Run agent via runner (state_delta is applied automatically)
+    async for event in runner.run_async(
+        user_id=user_id,
+        session_id=session.id,
+        new_message=content,
+    ):
+        if event.is_final_response():
+            if event.content and event.content.parts:
+                logger.debug(f"Final response from {event.author}")
+
+    # Get updated session state
+    session = await session_service.get_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+    )
 
     # Extract story output from state
     story_output_data = session.state.get(STORY_OUTPUT)
@@ -242,14 +264,14 @@ async def run_story_generator(title: str, session: Session) -> StoryOutput:
 
 
 async def run_sentence_video_matcher(
-    session: Session,
+    sentences: List[Any],
     config: VideoGenerationConfig,
 ) -> SentenceVideoMatcherOutput:
     """
     Run the SentenceVideoMatcher to match dialog lines to videos.
 
     Args:
-        session: ADK Session with SENTENCES already in state
+        sentences: List of sentences/dialog lines to match
         config: Video generation configuration
 
     Returns:
@@ -264,23 +286,45 @@ async def run_sentence_video_matcher(
         max_candidates=config.max_video_judgement_attempts,
     )
 
-    # Create invocation context
+    # Create session service and runner
     session_service = InMemorySessionService()
-    ctx = InvocationContext(
-        invocation_id=f"matcher_{uuid.uuid4().hex[:8]}",
-        session_service=session_service,
-        session=session,
+    runner = Runner(
         agent=video_matcher,
+        app_name=APP_NAME,
+        session_service=session_service,
+    )
+
+    # Create session with initial state
+    user_id = f"user_{uuid.uuid4().hex[:8]}"
+    session_id = f"matcher_{uuid.uuid4().hex[:8]}"
+    session = await session_service.create_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+        state={SENTENCES: sentences},
     )
 
     logger.info("Running SentenceVideoMatcher agent")
 
-    # Run agent and collect state updates
-    async for event in video_matcher.run_async(ctx):
-        if event.actions and event.actions.state_delta:
-            for key, value in event.actions.state_delta.items():
-                session.state[key] = value
-                logger.debug(f"State updated: {key}")
+    # Create message content
+    content = types.Content(role="user", parts=[types.Part(text="Match videos to sentences")])
+
+    # Run agent via runner (state_delta is applied automatically)
+    async for event in runner.run_async(
+        user_id=user_id,
+        session_id=session.id,
+        new_message=content,
+    ):
+        if event.is_final_response():
+            if event.content and event.content.parts:
+                logger.debug(f"Final response from {event.author}")
+
+    # Get updated session state
+    session = await session_service.get_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+    )
 
     # Extract video matches from state
     video_matches_data = session.state.get(VIDEO_MATCHES)
@@ -492,27 +536,22 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             )
 
         else:
-            # Create ADK session
-            session = Session(
-                id=f"video_gen_{job_id}",
-                app_name="virtual_streamer",
-                user_id="api_user",
-                state={},
-            )
-
             story_output = None
+            sentences = None
 
             if request.title:
                 # Step 1: Run StoryGeneratorAgent
                 logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
-                story_output = await run_story_generator(request.title, session)
+                story_output = await run_story_generator(request.title)
                 logger.info(
                     f"[Job {job_id}] Story generated: {story_output.title} "
                     f"with {len(story_output.dialog.lines)} dialog lines"
                 )
+                # Extract sentences from story output
+                sentences = story_output.dialog.model_dump()
 
             elif request.story_text:
-                # Parse story_text as DialogLines and set in session state
+                # Parse story_text as DialogLines
                 # For now, treat story_text as simple text to be split
                 from virtual_streamer.agents.story_generator.schema import (
                     DialogLine,
@@ -526,11 +565,11 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                     if line.strip()
                 ]
                 dialog_lines = DialogLines(lines=lines)
-                session.state[SENTENCES] = dialog_lines.model_dump()
+                sentences = dialog_lines.model_dump()
 
             # Step 2: Run SentenceVideoMatcher
             logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
-            video_matches = await run_sentence_video_matcher(session, config)
+            video_matches = await run_sentence_video_matcher(sentences, config)
             logger.info(
                 f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
             )
