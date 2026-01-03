@@ -23,7 +23,7 @@ from dataclasses import dataclass
 import httpx
 
 # ADK imports
-from google.adk.sessions import Session
+from google.adk.sessions import Session, InMemorySessionService
 from google.adk.agents.invocation_context import InvocationContext
 
 # Agent imports
@@ -210,9 +210,10 @@ async def run_story_generator(title: str, session: Session) -> StoryOutput:
     story_generator = get_story_generator()
 
     # Create invocation context
+    session_service = InMemorySessionService()
     ctx = InvocationContext(
         invocation_id=f"story_{uuid.uuid4().hex[:8]}",
-        #session_service=SessionService, #missing session service here
+        session_service=session_service,
         session=session,
         agent=story_generator,
     )
@@ -264,8 +265,10 @@ async def run_sentence_video_matcher(
     )
 
     # Create invocation context
+    session_service = InMemorySessionService()
     ctx = InvocationContext(
         invocation_id=f"matcher_{uuid.uuid4().hex[:8]}",
+        session_service=session_service,
         session=session,
         agent=video_matcher,
     )

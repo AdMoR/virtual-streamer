@@ -324,7 +324,7 @@ async def run_video_generation(
     
     # Create session and run orchestrator
     from google.adk.agents.invocation_context import InvocationContext
-    from google.adk.sessions import Session
+    from google.adk.sessions import Session, InMemorySessionService
     
     session = Session(
         id="video_gen_session",
@@ -335,8 +335,10 @@ async def run_video_generation(
         },
     )
     
+    session_service = InMemorySessionService()
     ctx = InvocationContext(
         invocation_id="video_gen_invocation",
+        session_service=session_service,
         session=session,
         agent=orchestrator,
     )
