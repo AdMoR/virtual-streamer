@@ -13,6 +13,8 @@ from typing import List, Dict, Any, Optional, Type
 from pydantic import BaseModel
 import stable_whisper
 
+from virtual_streamer.video_search.client import VideoSearchResult
+
 
 class LLMInterface(ABC):
     """Abstract interface for Language Model providers."""
@@ -137,16 +139,19 @@ class VideoRetrieverInterface(ABC):
     """Abstract interface for video retrieval systems."""
 
     @abstractmethod
-    def search(self, query: str, top_k: int = 10) -> List[str]:
+    def search(
+        self, query: str, top_k: int = 10, tags: Optional[List[str]] = None
+    ) -> List[VideoSearchResult]:
         """
         Search for videos matching the query.
 
         Args:
             query: Search query text
             top_k: Number of results to return
+            tags: Optional list of tags to filter by
 
         Returns:
-            List of video file paths
+            List of VideoSearchResult objects with path, similarity, tags, etc.
         """
         pass
 

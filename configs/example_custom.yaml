@@ -20,11 +20,11 @@ stt:
   provider: whisper
   model: tiny
 
-# Use hybrid retrieval method
+# Video search configuration using remote VideoSearchClient
 video_retrieval:
-  method: hybrid
-  index_path: /custom/path/to/clips
-  vector_store_path: /custom/path/to/vector_store
+  collection: my_custom_collection  # Qdrant collection name
+  server_url: http://localhost:8003  # Video search server URL
+  character_filter: fred  # Filter by character tag
 
 # Custom output directory
 output_dir: /custom/output/videos

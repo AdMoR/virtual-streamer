@@ -5,7 +5,7 @@ This module provides working implementations for:
 - LLM providers (Anthropic, OpenAI, LiteLLM)
 - TTS providers (Fish-Speech, Solero, Coqui)
 - STT providers (Whisper, Faster-Whisper)
-- Video retrievers (BM25, Vector, Hybrid)
+- Video retrievers (VideoSearchRetriever using remote VideoSearchClient)
 - Prompt providers (Local, MLflow)
 """
 
@@ -18,10 +18,6 @@ import anthropic
 import openai
 from litellm import completion as litellm_completion, acompletion as litellm_acompletion
 import stable_whisper
-from llama_index.retrievers.bm25 import BM25Retriever
-from llama_index.core import VectorStoreIndex, Settings
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-import Stemmer
 
 from virtual_streamer.video_generation.interfaces import (
     LLMInterface,
@@ -38,13 +34,10 @@ from virtual_streamer.video_generation.config import (
     PromptConfig,
 )
 from virtual_streamer.utils.utils import txt_to_speech_call_fish, get_length
-from virtual_streamer.workflows.video_retriever import (
-    load_json_documents,
-    prepare_nodes_v2,
-)
 from virtual_streamer.video_server.utils import get_character_data_sync
 from virtual_streamer.video_server.models import Character
 from virtual_streamer.api.dependencies import get_path_resolver
+from virtual_streamer.video_search.client import VideoSearchClient, VideoSearchResult
 
 
 # ============================================================================
@@ -458,139 +451,50 @@ def format_timestamp(seconds: float) -> str:
 # ============================================================================
 
 
-class BM25VideoRetriever(VideoRetrieverInterface):
-    """BM25-based video retriever."""
+class VideoSearchRetriever(VideoRetrieverInterface):
+    """Video retriever using remote VideoSearchClient with VideoPrism embeddings.
+    
+    Connects to a remote video embedding server that provides similarity search
+    using VideoPrism embeddings stored in Qdrant.
+    """
 
     def __init__(self, config: VideoRetrievalConfig):
         self.config = config
-        documents = load_json_documents(config.index_path)
-        nodes = prepare_nodes_v2(documents)
+        self.client = VideoSearchClient(server_url=config.server_url)
+        self.collection = config.collection
 
-        # Filter by character if specified
-        if config.character_filter:
-            nodes = [
-                n for n in nodes if config.character_filter == n.metadata.get("who")
-            ]
-
-        self.retriever = BM25Retriever.from_defaults(
-            nodes=nodes,
-            similarity_top_k=config.top_k,
-            stemmer=Stemmer.Stemmer("french"),
-            language="french",
+    def search(
+        self, query: str, top_k: int = 10, tags: Optional[List[str]] = None
+    ) -> List[VideoSearchResult]:
+        """Search for videos using VideoPrism embeddings via remote server.
+        
+        Args:
+            query: Natural language search query
+            top_k: Number of results to return
+            tags: Optional list of tags to filter by (e.g., ['person:fred'])
+            
+        Returns:
+            List of VideoSearchResult objects with path, similarity, tags, etc.
+        """
+        # Use character_filter as default tag if no tags provided
+        search_tags = tags
+        if search_tags is None and self.config.character_filter:
+            search_tags = [self.config.character_filter]
+        
+        return self.client.search(
+            query=query,
+            collection=self.collection,
+            top_k=top_k,
+            tags=search_tags,
         )
-        self.nodes = nodes
-
-    def search(self, query: str, top_k: int = 10) -> List[str]:
-        """Search for videos using BM25."""
-        results = self.retriever.retrieve(query)
-        video_paths = []
-        for result in results[:top_k]:
-            if hasattr(result.node, "metadata") and "path" in result.node.metadata:
-                path = result.node.metadata["path"]
-                # Fix path if needed (from data to data1)
-                path = path.replace("/media/amor/data/", "/media/amor/data1/")
-                video_paths.append(path)
-        return video_paths
 
     def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
-        """Get metadata for a video."""
-        # Find node with matching path
-        for node in self.nodes:
-            if node.metadata.get("path") == video_path:
-                return node.metadata
-        return {}
-
-
-class VectorVideoRetriever(VideoRetrieverInterface):
-    """Vector embedding-based video retriever."""
-
-    def __init__(self, config: VideoRetrievalConfig):
-        self.config = config
-
-        # Set up embedding model
-        embed_model = HuggingFaceEmbedding(model_name=config.embedding_model)
-        Settings.embed_model = embed_model
-
-        # Load and prepare nodes
-        documents = load_json_documents(config.index_path)
-        nodes = prepare_nodes_v2(documents)
-
-        # Filter by character if specified
-        if config.character_filter:
-            nodes = [
-                n for n in nodes if config.character_filter == n.metadata.get("who")
-            ]
-
-        self.nodes = nodes
-
-        # Create or load vector index
-        if config.vector_store_path and os.path.exists(config.vector_store_path):
-            from llama_index.core import StorageContext, load_index_from_storage
-
-            storage_context = StorageContext.from_defaults(
-                persist_dir=config.vector_store_path
-            )
-            self.index = load_index_from_storage(storage_context)
-        else:
-            self.index = VectorStoreIndex(nodes)
-            if config.vector_store_path:
-                self.index.storage_context.persist(config.vector_store_path)
-
-        self.retriever = self.index.as_retriever(similarity_top_k=config.top_k)
-
-    def search(self, query: str, top_k: int = 10) -> List[str]:
-        """Search for videos using vector embeddings."""
-        results = self.retriever.retrieve(query)
-        video_paths = []
-        for result in results[:top_k]:
-            if hasattr(result.node, "metadata") and "path" in result.node.metadata:
-                path = result.node.metadata["path"]
-                path = path.replace("/media/amor/data/", "/media/amor/data1/")
-                video_paths.append(path)
-        return video_paths
-
-    def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
-        """Get metadata for a video."""
-        for node in self.nodes:
-            if node.metadata.get("path") == video_path:
-                return node.metadata
-        return {}
-
-
-class HybridVideoRetriever(VideoRetrieverInterface):
-    """Hybrid retriever combining BM25 and vector search."""
-
-    def __init__(self, config: VideoRetrievalConfig):
-        self.bm25_retriever = BM25VideoRetriever(config)
-        self.vector_retriever = VectorVideoRetriever(config)
-        self.config = config
-
-    def search(self, query: str, top_k: int = 10) -> List[str]:
-        """Search using both BM25 and vector methods, then merge results."""
-        bm25_results = self.bm25_retriever.search(query, top_k=top_k)
-        vector_results = self.vector_retriever.search(query, top_k=top_k)
-
-        # Merge and deduplicate, prioritizing BM25
-        merged = []
-        seen = set()
-
-        # Interleave results
-        for i in range(max(len(bm25_results), len(vector_results))):
-            if i < len(bm25_results) and bm25_results[i] not in seen:
-                merged.append(bm25_results[i])
-                seen.add(bm25_results[i])
-            if i < len(vector_results) and vector_results[i] not in seen:
-                merged.append(vector_results[i])
-                seen.add(vector_results[i])
-
-            if len(merged) >= top_k:
-                break
-
-        return merged[:top_k]
-
-    def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
-        """Get metadata for a video."""
-        return self.bm25_retriever.get_video_metadata(video_path)
+        """Get metadata for a video.
+        
+        Note: With the remote VideoSearchClient, metadata is included in search results.
+        This method returns basic path info for compatibility.
+        """
+        return {"path": video_path}
 
 
 # ============================================================================
@@ -785,15 +689,8 @@ def create_stt(config: STTConfig) -> STTInterface:
 
 
 def create_video_retriever(config: VideoRetrievalConfig) -> VideoRetrieverInterface:
-    """Create video retriever instance based on configuration."""
-    if config.method == "bm25":
-        return BM25VideoRetriever(config)
-    elif config.method == "vector":
-        return VectorVideoRetriever(config)
-    elif config.method == "hybrid":
-        return HybridVideoRetriever(config)
-    else:
-        raise ValueError(f"Unknown video retrieval method: {config.method}")
+    """Create video retriever instance using remote VideoSearchClient."""
+    return VideoSearchRetriever(config)
 
 
 def create_prompt_provider(config: PromptConfig) -> PromptProviderInterface:

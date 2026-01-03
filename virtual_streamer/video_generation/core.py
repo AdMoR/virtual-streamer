@@ -372,9 +372,9 @@ async def find_best_video_for_sentence(
         progress.update(f"Searching videos for: {sentence[:50]}...")
 
     # Initial search with sentence as query
-    videos = video_retriever.search(sentence, config.video_retrieval.top_k)
+    search_results = video_retriever.search(sentence, config.video_retrieval.top_k)
 
-    if not videos:
+    if not search_results:
         # No videos found, return empty result
         return VideoMatchResult(
             sentence=sentence,
@@ -384,6 +384,9 @@ async def find_best_video_for_sentence(
             reasoning="No videos found",
             alternatives_tried=[],
         )
+
+    # Extract video paths from search results
+    videos = [result.path for result in search_results]
 
     # Judge top videos in parallel (with semaphore controlling concurrency)
     judgement_tasks = [
@@ -428,8 +431,9 @@ async def find_best_video_for_sentence(
         for keyword in keywords:
             alternatives_tried.append(keyword)
 
-            alt_videos = video_retriever.search(keyword, config.video_retrieval.top_k)
-            if alt_videos:
+            alt_search_results = video_retriever.search(keyword, config.video_retrieval.top_k)
+            if alt_search_results:
+                alt_videos = [result.path for result in alt_search_results]
                 alt_judgement_tasks = [
                     judge_video_match(video, sentence, llm, config, semaphore)
                     for video in alt_videos[: config.max_video_judgement_attempts]

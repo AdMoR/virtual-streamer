@@ -44,6 +44,7 @@ PREFIX_CLIPS = "clips/"
 PREFIX_AUDIO = "audios/"
 PREFIX_CHARACTERS = "characters/"
 PREFIX_PROJECTS = "projects/"
+PREFIX_IDENTITY_IMAGES = "identity_images/"
 
 
 # --- FastAPI App ---
@@ -210,11 +211,13 @@ async def delete_video_clip(clip_id: str):
 async def create_character(
     name: str = Form(...),
     description: str = Form(None),
+    video_search_tag: str = Form(None),
     voice_files: List[UploadFile] = File(...),
     transcripts: List[str] = Form(...),
     video_file: UploadFile = File(...),
+    identity_files: List[UploadFile] = File(default=[]),
 ):
-    """Creates a new Character definition with optional representative video upload."""
+    """Creates a new Character definition with voice samples, video, and identity images."""
     character_id = name
     now = datetime.utcnow()
     # Save uploaded voice sample files and build VoiceSample objects
@@ -236,12 +239,28 @@ async def create_character(
         await storage_client.put_object(storage_key, file_content, content_type="video/mp4")
         video_path = storage_key
 
+    # Save uploaded identity images
+    identity_image_paths = []
+    for img_file in identity_files:
+        file_content = await img_file.read()
+        # Determine content type from filename
+        content_type = "image/jpeg"
+        if img_file.filename.lower().endswith(".png"):
+            content_type = "image/png"
+        elif img_file.filename.lower().endswith(".webp"):
+            content_type = "image/webp"
+        storage_key = f"{PREFIX_IDENTITY_IMAGES}{character_id}/{img_file.filename}"
+        await storage_client.put_object(storage_key, file_content, content_type=content_type)
+        identity_image_paths.append(storage_key)
+
     character = Character(
         character_id=character_id,
         name=name,
         description=description,
         voice_samples=voice_samples_list,
         video_clip_path=video_path,
+        video_search_tag=video_search_tag,
+        identity_images=identity_image_paths,
         created_at=now,
         updated_at=now,
     )
