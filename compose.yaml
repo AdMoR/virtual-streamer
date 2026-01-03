@@ -22,6 +22,7 @@ services:
     depends_on:
       - tts
       - minio
+      - mysql
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -37,6 +38,12 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=virtual-streamer
+      # MySQL Configuration
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=virtual_streamer
+      - MYSQL_PASSWORD=streamerpass
+      - MYSQL_DATABASE=virtual_streamer
       # Model checkpoint
       - CHECKPOINT_PATH=/app/checkpoints/Wav2Lip.pth
       # API configuration
@@ -93,6 +100,25 @@ services:
       timeout: 20s
       retries: 3
 
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: virtual_streamer
+      MYSQL_USER: virtual_streamer
+      MYSQL_PASSWORD: streamerpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - tts
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   videos:
     driver: local # Define the driver and options under the volume name
@@ -112,6 +138,8 @@ volumes:
       type: none
       device: /media/amor/data1/virtual_streamer_folder/storage
       o: bind
+  mysql_data:
+
 
 
 networks:

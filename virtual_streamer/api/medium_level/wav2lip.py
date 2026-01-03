@@ -19,7 +19,7 @@ import torch
 from tqdm import tqdm
 
 from virtual_streamer.video_server.models import VideoClipBase, VideoOptions
-from virtual_streamer.api.dependencies import get_path_resolver, get_character_data
+from virtual_streamer.api.dependencies import get_path_resolver, get_character_data, get_storage_resolver
 from virtual_streamer.wav2lip import audio
 from virtual_streamer.wav2lip.main_logic import (
     Config,
@@ -226,14 +226,19 @@ async def generate_wav2lip(payload: Wav2LipRequest):
         run_dirname = f"./temp/wav2lip_run_{uuid.uuid4()}"
         os.makedirs(run_dirname, exist_ok=True)
 
-    # Resolve video path using path resolver
-    path_resolver = get_path_resolver()
-    video_path = path_resolver.resolve_video(video_path)
-
-    if not os.path.exists(video_path):
+    # Download video from MinIO storage to local cache
+    storage_resolver = get_storage_resolver()
+    try:
+        video_path = await storage_resolver.resolve_file(video_path)
+    except FileNotFoundError:
         shutil.rmtree(run_dirname, ignore_errors=True)
         raise HTTPException(
-            status_code=500, detail=f"Video clip not found at path: {video_path}"
+            status_code=500, detail=f"Video clip not found in storage: {video_path}"
+        )
+    except Exception as e:
+        shutil.rmtree(run_dirname, ignore_errors=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to download video from storage: {e}"
         )
 
     # Get or preprocess face detection data

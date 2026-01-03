@@ -11,7 +11,7 @@ import os
 
 from virtual_streamer.video_server.models import DialogueEntry, Character
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
-from virtual_streamer.api.dependencies import get_path_resolver, get_character_data
+from virtual_streamer.api.dependencies import get_path_resolver, get_character_data, get_storage_resolver
 
 # Router setup
 router = APIRouter(prefix="/tts", tags=["Text-to-Speech"])
@@ -63,14 +63,22 @@ async def generate_tts(payload: DialogueEntry):
         # Use first voice sample for voice cloning
         first_sample = character.voice_samples[0]
 
-        # Resolve the reference audio path using path resolver
-        path_resolver = get_path_resolver()
-        reference_audio_path = path_resolver.resolve_audio(
-            first_sample.sample_storage_path
-        )
-
-        if not path_resolver.exists(first_sample.sample_storage_path):
-            print(f"Warning: Reference audio not found at {reference_audio_path}")
+        # Download reference audio from MinIO storage
+        storage_resolver = get_storage_resolver()
+        try:
+            reference_audio_path = await storage_resolver.resolve_file(
+                first_sample.sample_storage_path
+            )
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Reference audio not found in storage: {first_sample.sample_storage_path}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download reference audio from storage: {e}",
+            )
 
         tts_params["reference_audio"] = reference_audio_path
         tts_params["reference_text"] = first_sample.transcript

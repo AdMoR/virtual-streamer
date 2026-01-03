@@ -8,6 +8,7 @@ from fastapi import (
     Form,
     File,
     UploadFile,
+    Response,
 )
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -58,6 +59,51 @@ app = FastAPI(
 async def health_check():
     """Basic health check."""
     return {"status": "healthy", "storage": "minio"}
+
+
+# --- File Retrieval Endpoints ---
+
+
+@app.get("/files/{path:path}", tags=["Files"])
+async def get_file(path: str):
+    """
+    Stream file from MinIO storage.
+    
+    Args:
+        path: Storage key path (e.g., "clips/video.mp4" or "audios/sample.wav")
+        
+    Returns:
+        File content with appropriate content type
+    """
+    data = await storage_client.get_object(path)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not found: {path}"
+        )
+    content_type = MinIOClient._guess_content_type(path) or "application/octet-stream"
+    return Response(content=data, media_type=content_type)
+
+
+@app.get("/files/{path:path}/url", tags=["Files"])
+async def get_file_url(path: str, expiry: int = Query(3600, ge=60, le=86400)):
+    """
+    Get a presigned URL for direct MinIO access.
+    
+    Args:
+        path: Storage key path (e.g., "clips/video.mp4")
+        expiry: URL expiry time in seconds (default: 3600, max: 86400)
+        
+    Returns:
+        Object with presigned URL
+    """
+    if not await storage_client.object_exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not found: {path}"
+        )
+    url = storage_client.get_url(path)
+    return {"path": path, "url": url, "expiry_seconds": expiry}
 
 
 # --- Video Clip Endpoints ---
