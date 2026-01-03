@@ -101,6 +101,8 @@ def register_via_api(
     audio_paths: list[Path],
     transcripts: list[str],
     video_path: Path,
+    identity_image_paths: Optional[list[Path]] = None,
+    video_search_tag: Optional[str] = None,
 ) -> dict:
     """
     Register character via POST /characters API.
@@ -112,6 +114,8 @@ def register_via_api(
         audio_paths: List of paths to audio files
         transcripts: List of transcripts (one per audio file)
         video_path: Path to representative video file
+        identity_image_paths: Optional list of paths to identity images
+        video_search_tag: Optional tag for video search filtering (e.g., 'person:fred')
         
     Returns:
         API response as dict
@@ -124,6 +128,8 @@ def register_via_api(
     }
     if description:
         data["description"] = description
+    if video_search_tag:
+        data["video_search_tag"] = video_search_tag
     
     # Prepare files
     files = []
@@ -143,10 +149,26 @@ def register_via_api(
         ("video_file", (video_path.name, open(video_path, "rb"), "video/mp4"))
     )
     
+    # Add identity images
+    if identity_image_paths:
+        for img_path in identity_image_paths:
+            content_type = "image/jpeg"
+            if img_path.suffix.lower() == ".png":
+                content_type = "image/png"
+            elif img_path.suffix.lower() == ".webp":
+                content_type = "image/webp"
+            files.append(
+                ("identity_files", (img_path.name, open(img_path, "rb"), content_type))
+            )
+    
     print(f"\nRegistering character '{name}' via API...")
     print(f"  URL: {url}")
     print(f"  Voice samples: {len(audio_paths)}")
     print(f"  Video: {video_path.name}")
+    if identity_image_paths:
+        print(f"  Identity images: {len(identity_image_paths)}")
+    if video_search_tag:
+        print(f"  Video search tag: {video_search_tag}")
     
     response = requests.post(url, data=data, files=files)
     
@@ -215,6 +237,19 @@ Examples:
         help="Path to representative video file for Wav2Lip",
     )
     
+    # Identity images
+    parser.add_argument(
+        "--identity-images",
+        nargs="+",
+        help="Paths to identity/reference images for the character",
+    )
+    
+    # Video search tag
+    parser.add_argument(
+        "--video-search-tag",
+        help="Tag for video search filtering (e.g., 'person:fred')",
+    )
+    
     # Transcription settings
     parser.add_argument(
         "--whisper-model",
@@ -267,6 +302,18 @@ Examples:
     
     print(f"\n✓ All {len(audio_paths)} file(s) transcribed")
     
+    # Get identity image paths if provided
+    identity_image_paths = None
+    if args.identity_images:
+        identity_image_paths = [Path(f) for f in args.identity_images]
+        for p in identity_image_paths:
+            if not p.exists():
+                print(f"Error: Identity image not found: {p}")
+                sys.exit(1)
+        print(f"\nFound {len(identity_image_paths)} identity image(s):")
+        for p in identity_image_paths:
+            print(f"  - {p}")
+    
     # Register via API
     try:
         result = register_via_api(
@@ -276,6 +323,8 @@ Examples:
             audio_paths=audio_paths,
             transcripts=transcripts,
             video_path=video_path,
+            identity_image_paths=identity_image_paths,
+            video_search_tag=args.video_search_tag,
         )
         
         print(f"\n{'='*60}")
@@ -285,6 +334,10 @@ Examples:
         print(f"  Name: {result.get('name')}")
         print(f"  Voice samples: {len(result.get('voice_samples', []))}")
         print(f"  Video: {result.get('video_clip_path')}")
+        if result.get('video_search_tag'):
+            print(f"  Video search tag: {result.get('video_search_tag')}")
+        if result.get('identity_images'):
+            print(f"  Identity images: {len(result.get('identity_images', []))}")
         
     except requests.exceptions.ConnectionError:
         print(f"\n✗ Error: Could not connect to API at {args.api_url}")

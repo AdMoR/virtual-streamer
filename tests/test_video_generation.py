@@ -43,6 +43,7 @@ from virtual_streamer.video_generation.core import (
     create_config_dump,
     recreate_from_config_dump,
 )
+from virtual_streamer.video_search.client import VideoSearchResult, TagInfo
 
 
 # ============================================================================
@@ -154,8 +155,24 @@ class MockVideoRetriever(VideoRetrieverInterface):
     def __init__(self):
         self.mock_videos = ["/mock/video1.mp4", "/mock/video2.mp4", "/mock/video3.mp4"]
 
-    def search(self, query: str, top_k: int = 10) -> List[str]:
-        return self.mock_videos[:top_k]
+    def search(
+        self, query: str, top_k: int = 10, tags: Optional[List[str]] = None
+    ) -> List[VideoSearchResult]:
+        """Return mock VideoSearchResult objects."""
+        results = []
+        for i, path in enumerate(self.mock_videos[:top_k]):
+            results.append(
+                VideoSearchResult(
+                    segment_id=f"seg_{i}",
+                    video_id=f"vid_{i}",
+                    segment_index=i,
+                    duration=5.0,
+                    path=path,
+                    tags=[],
+                    similarity=0.9 - (i * 0.1),
+                )
+            )
+        return results
 
     def get_video_metadata(self, video_path: str) -> dict:
         return {"duration": 5.0, "who": "fred"}
@@ -372,11 +389,12 @@ class TestInterfaces:
         """Test mock video retriever implementation."""
         retriever = MockVideoRetriever()
 
-        videos = retriever.search("test query", top_k=5)
-        assert len(videos) <= 5
-        assert all("/mock/" in v for v in videos)
+        results = retriever.search("test query", top_k=5)
+        assert len(results) <= 5
+        assert all("/mock/" in r.path for r in results)
+        assert all(isinstance(r, VideoSearchResult) for r in results)
 
-        metadata = retriever.get_video_metadata(videos[0])
+        metadata = retriever.get_video_metadata(results[0].path)
         assert "duration" in metadata
 
     def test_mock_prompt_provider(self):

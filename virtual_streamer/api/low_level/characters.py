@@ -18,17 +18,20 @@ router = APIRouter(prefix="/characters", tags=["Characters"])
 # Storage prefixes for MinIO
 PREFIX_AUDIO = "audios/"
 PREFIX_CLIPS = "clips/"
+PREFIX_IDENTITY_IMAGES = "identity_images/"
 
 
 @router.post("", response_model=Character, status_code=status.HTTP_201_CREATED)
 async def create_character(
     name: str = Form(...),
     description: str = Form(None),
+    video_search_tag: str = Form(None),
     voice_files: List[UploadFile] = File(...),
     transcripts: List[str] = Form(...),
     video_file: UploadFile = File(...),
+    identity_files: List[UploadFile] = File(default=[]),
 ):
-    """Creates a new Character definition with voice samples and representative video."""
+    """Creates a new Character definition with voice samples, video, and identity images."""
     storage = get_storage_client()
     repo = get_entity_repository()
 
@@ -50,6 +53,19 @@ async def create_character(
         await storage.put_object(storage_key, file_content, content_type="video/mp4")
         video_path = storage_key
 
+    # Upload identity images to MinIO
+    identity_image_paths = []
+    for img_file in identity_files:
+        file_content = await img_file.read()
+        content_type = "image/jpeg"
+        if img_file.filename.lower().endswith(".png"):
+            content_type = "image/png"
+        elif img_file.filename.lower().endswith(".webp"):
+            content_type = "image/webp"
+        storage_key = f"{PREFIX_IDENTITY_IMAGES}{character_id}/{img_file.filename}"
+        await storage.put_object(storage_key, file_content, content_type=content_type)
+        identity_image_paths.append(storage_key)
+
     # Store metadata in MySQL
     character_data = await repo.create_character(
         character_id=character_id,
@@ -57,6 +73,8 @@ async def create_character(
         description=description,
         video_clip_path=video_path,
         voice_samples=voice_samples_data,
+        video_search_tag=video_search_tag,
+        identity_images=identity_image_paths,
     )
 
     # Convert to Pydantic model
@@ -72,6 +90,8 @@ async def create_character(
             )
             for s in character_data["voice_samples"]
         ],
+        video_search_tag=character_data.get("video_search_tag"),
+        identity_images=character_data.get("identity_images", []),
         created_at=character_data["created_at"],
         updated_at=character_data["updated_at"],
     )
@@ -100,6 +120,8 @@ async def get_character(character_id: str):
             )
             for s in character_data["voice_samples"]
         ],
+        video_search_tag=character_data.get("video_search_tag"),
+        identity_images=character_data.get("identity_images", []),
         created_at=character_data["created_at"],
         updated_at=character_data["updated_at"],
     )
@@ -124,6 +146,8 @@ async def list_characters(limit: int = 100):
                 )
                 for s in c["voice_samples"]
             ],
+            video_search_tag=c.get("video_search_tag"),
+            identity_images=c.get("identity_images", []),
             created_at=c["created_at"],
             updated_at=c["updated_at"],
         )

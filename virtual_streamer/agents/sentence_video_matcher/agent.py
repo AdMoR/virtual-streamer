@@ -3,7 +3,7 @@ Sentence Video Matcher Agent.
 
 This agent takes DialogLines from the story generator and finds the best 
 matching video for each dialog line using:
-1. Vector store search to find candidate videos
+1. VideoSearchClient to find candidate videos via remote embedding server
 2. Parallel video matching using MapperAgent + VideoMatcher workers
 3. AggregatorAgent to select the best match per dialog line
 
@@ -95,21 +95,21 @@ class SentenceVideoMapper(MapperAgent):
         
         items = []
         for dialog_line in dialog_lines.lines:
-            # Search using the dialog text
-            candidates = self._video_retriever.search(
+            # Search using the dialog text - returns VideoSearchResult objects
+            search_results = self._video_retriever.search(
                 dialog_line.dialog, 
                 top_k=self._max_candidates
             )
             
-            if not candidates:
+            if not search_results:
                 logger.warning(f"No candidates found for: {dialog_line.dialog[:50]}...")
                 continue
             
-            for video_path in candidates:
+            for result in search_results:
                 items.append({
                     "character": dialog_line.character,
                     "sentence": dialog_line.dialog,
-                    "video_path": video_path,
+                    "video_path": result.path,
                 })
         
         logger.info(f"Built {len(items)} items for parallel processing")

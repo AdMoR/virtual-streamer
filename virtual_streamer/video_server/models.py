@@ -123,6 +123,13 @@ class CharacterBase(BaseModel):
     voice_samples: List[VoiceSample] = Field(
         ..., min_items=0, description="Samples used to define/clone the voice"
     )
+    video_search_tag: Optional[str] = Field(
+        None, description="Tag for filtering videos in search (e.g., 'person:fred')"
+    )
+    identity_images: List[str] = Field(
+        default_factory=list,
+        description="Storage paths to identity/reference images for the character",
+    )
 
 
 class Character(CharacterBase):

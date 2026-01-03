@@ -1,24 +1,14 @@
 import json
 import random
 import streamlit as st
-from llama_index.retrievers.bm25 import BM25Retriever
-import Stemmer
 from virtual_streamer.utils.utils import (
     combine_video_and_short_audio,
     combine_part_in_concat_file,
     add_subtitle_from_srt,
 )
-from virtual_streamer.workflows.video_retriever import (
-    prepare_nodes,
-    load_json_documents,
-    prepare_nodes_v2,
-)
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
 import stable_whisper
 from litellm import completion
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core import Settings
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 import anthropic
 import os
 import cv2
@@ -26,6 +16,7 @@ import base64
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
+from virtual_streamer.video_search.client import VideoSearchClient
 
 
 class ContextualRating(str, Enum):
@@ -305,56 +296,42 @@ Return ONLY the keyword/phrase, nothing else.
 SEPARATOR = "."
 
 
-# Initialize retriever and index (these should be initialized once at module level or in a setup function)
-_retriever = None
-_index = None
+# Initialize VideoSearchClient for video search
+_video_search_client = None
+_default_collection = os.environ.get("VIDEO_SEARCH_COLLECTION", "cps_videos")
 
 
-def initialize_search():
-    """Initialize the BM25 retriever and vector index for video search."""
-    global _retriever, _index
-
-    if _retriever is None or _index is None:
-        # Load documents and prepare nodes
-        documents = load_json_documents()
-        nodes = prepare_nodes_v2(documents)
-
-        # Initialize BM25 retriever
-        _retriever = BM25Retriever.from_defaults(
-            nodes=nodes, similarity_top_k=10, stemmer=Stemmer.Stemmer("french")
-        )
-
-        # Initialize vector index
-        Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-        _index = VectorStoreIndex(nodes)
+def get_video_search_client():
+    """Get or initialize the VideoSearchClient."""
+    global _video_search_client
+    if _video_search_client is None:
+        _video_search_client = VideoSearchClient()
+    return _video_search_client
 
 
-def search_videos(query: str, top_k: int = 10) -> list[str]:
+def search_videos_api(query: str, top_k: int = 10, collection: str = None) -> list[str]:
     """
-    Search for videos using the given query.
+    Search for videos using the VideoSearchClient.
 
     Args:
         query: Search query string
         top_k: Number of results to return
+        collection: Qdrant collection name (defaults to VIDEO_SEARCH_COLLECTION env var)
 
     Returns:
         List of video file paths
     """
-    initialize_search()
-
-    # Use BM25 retriever to find relevant videos
-    results = _retriever.retrieve(query)
+    client = get_video_search_client()
+    collection = collection or _default_collection
+    
+    results = client.search(
+        query=query,
+        collection=collection,
+        top_k=top_k,
+    )
 
     # Extract video paths from results
-    video_paths = []
-    for result in results[:top_k]:
-        # Assuming the node metadata contains a 'video_path' field
-        if hasattr(result.node, "metadata") and "video_path" in result.node.metadata:
-            video_paths.append(result.node.metadata["video_path"])
-        elif hasattr(result.node, "text"):
-            # If video path is in the text, extract it
-            video_paths.append(result.node.text)
-
+    video_paths = [result.path for result in results]
     return video_paths
 
 
@@ -533,40 +510,6 @@ def find_best_matching_video(
 
 
 @st.cache_resource
-def load_retriever_bm25(
-    directory_path="/media/amor/data1/Downloads/CPS/clip_infos", who="fred"
-):
-    nodes = prepare_nodes(load_json_documents(directory_path))
-    fred_nodes = [n for n in nodes if who == n.metadata["who"]]
-    bm25_retriever = BM25Retriever.from_defaults(
-        nodes=fred_nodes,
-        similarity_top_k=15,
-        # Optional: We can pass in the stemmer and set the language for stopwords
-        # This is important for removing stopwords and stemming the query + text
-        # The default is english for both
-        stemmer=Stemmer.Stemmer("french"),
-        language="french",
-    )
-    return bm25_retriever
-
-
-@st.cache_resource
-def load_retriever(
-    directory_path="/media/amor/data1/Downloads/CPS/clip_infos", who="fred"
-):
-    embed_model = HuggingFaceEmbedding(model_name="lightonai/modernbert-embed-large")
-    Settings.embed_model = embed_model
-
-    # storage_context=storage_context
-    nodes = prepare_nodes_v2(load_json_documents(directory_path))
-    fred_nodes = [n for n in nodes if who == n.metadata["who"]]
-    index = VectorStoreIndex(fred_nodes)
-    index.storage_context.persist("/media/amor/data1/Downloads/CPS/vector_store")
-    retriever = index.as_retriever(verbose=True, similarity_top_k=5)
-    return retriever
-
-
-@st.cache_resource
 def load_transcripter():
     model = stable_whisper.load_faster_whisper("base")
     # model = stable_whisper.load_hf_whisper('large-v3', batch_size=4)
@@ -574,7 +517,6 @@ def load_transcripter():
 
 
 model = load_transcripter()
-bm25_retriever = load_retriever()
 DEFAULT_LENGTH = 35
 
 
@@ -615,11 +557,8 @@ def generate_text():
 
 
 def search_videos(kw):
-    retrieved_docs = bm25_retriever.retrieve(kw)
-    videos = list()
-    for x in retrieved_docs:
-        videos.append(x.metadata["path"])
-    return videos
+    """Search for videos using VideoSearchClient."""
+    return search_videos_api(kw, top_k=10)
 
 
 def tab1_ui():

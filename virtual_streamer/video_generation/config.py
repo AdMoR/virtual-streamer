@@ -72,25 +72,19 @@ class STTConfig(BaseModel):
 
 
 class VideoRetrievalConfig(BaseModel):
-    """Configuration for video retrieval system."""
+    """Configuration for video retrieval system using remote VideoSearchClient."""
 
-    method: str = Field(
-        default="bm25", description="Retrieval method: bm25, vector, or hybrid"
+    collection: str = Field(
+        default="cps_videos",
+        description="Qdrant collection name for video search",
     )
-    index_path: str = Field(
-        default="/media/amor/data1/Downloads/CPS/clip_infos",
-        description="Path to video index/clips info",
-    )
-    vector_store_path: Optional[str] = Field(
-        default=None, description="Path to vector store (for vector/hybrid methods)"
-    )
-    embedding_model: str = Field(
-        default="lightonai/modernbert-embed-large",
-        description="Embedding model for vector search",
+    server_url: Optional[str] = Field(
+        default=None,
+        description="Video search server URL (defaults to VIDEO_SEARCH_SERVER_URL env var or localhost:8003)",
     )
     top_k: int = Field(default=5, gt=0, description="Number of videos to retrieve")
-    character_filter: str = Field(
-        default="fred", description="Filter by character name"
+    character_filter: Optional[str] = Field(
+        default=None, description="Filter by character name/tag"
     )
 
 

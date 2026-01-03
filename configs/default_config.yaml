@@ -40,14 +40,12 @@ stt:
 
 # Video Retrieval Configuration
 # ------------------------------
-# Configure how videos are searched and matched
+# Configure video search using remote VideoSearchClient with VideoPrism embeddings
 video_retrieval:
-  method: bm25  # Options: bm25, vector, hybrid
-  index_path: /media/amor/data1/Downloads/CPS/clip_infos
-  # vector_store_path: null  # Path to vector store (for vector/hybrid methods)
-  embedding_model: lightonai/modernbert-embed-large
+  collection: cps_videos  # Qdrant collection name for video search
+  # server_url: null  # Video search server URL (defaults to VIDEO_SEARCH_SERVER_URL env var)
   top_k: 10
-  character_filter: fred  # Filter videos by character name
+  character_filter: person:fred  # Filter by character tag (e.g., person:fred)
 
 # Prompt Configuration
 # --------------------
