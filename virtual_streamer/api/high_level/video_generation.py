@@ -595,11 +595,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             minio_video_key = f"generated_videos/{timestamp}/video_{timestamp}.mp4"
             await storage.upload_file(final_video_path, minio_video_key)
 
-            print(f"Story output : {type(story_output)} => {story_output}")
             result = GenerationResult(
                 video_path=final_video_path,
                 config_dump_path=None,
-                story_output=None,
+                story_output=story_output,
                 metadata={
                     "sentence_count": len(video_matches.matches),
                     "total_duration": get_length(final_video_path),
