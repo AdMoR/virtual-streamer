@@ -72,7 +72,7 @@ class VideoSearchClient:
         ...     print(f"{r.video_id}: {r.similarity:.4f}")
     """
 
-    DEFAULT_SERVER_URL = "http://localhost:8003"
+    DEFAULT_SERVER_URL = "http://localhost:8004"
 
     def __init__(self, server_url: Optional[str] = None):
         """Initialize the Video Search Client.

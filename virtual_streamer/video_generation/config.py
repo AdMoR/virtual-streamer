@@ -82,7 +82,7 @@ class VideoRetrievalConfig(BaseModel):
         default=None,
         description="Video search server URL (defaults to VIDEO_SEARCH_SERVER_URL env var or localhost:8003)",
     )
-    top_k: int = Field(default=5, gt=0, description="Number of videos to retrieve")
+    top_k: int = Field(default=1, gt=0, description="Number of videos to retrieve")
     character_filter: Optional[str] = Field(
         default=None, description="Filter by character name/tag"
     )
@@ -195,10 +195,10 @@ class VideoGenerationConfig(BaseSettings):
 
     # Video search and matching
     max_search_attempts: int = Field(
-        default=3, gt=0, description="Max attempts to find alternative search keywords"
+        default=1, gt=0, description="Max attempts to find alternative search keywords"
     )
     max_video_judgement_attempts: int = Field(
-        default=5, gt=0, description="Max videos to judge for each sentence"
+        default=1, gt=0, description="Max videos to judge for each sentence"
     )
 
     # Text processing
@@ -216,7 +216,7 @@ class VideoGenerationConfig(BaseSettings):
 
     # Parallelization
     max_parallel_llm_calls: int = Field(
-        default=5, gt=0, description="Maximum parallel LLM API calls"
+        default=1, gt=0, description="Maximum parallel LLM API calls"
     )
 
     # Config dump

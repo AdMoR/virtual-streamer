@@ -3,12 +3,15 @@ API Dependencies and Utilities
 
 Common dependencies and utilities used across API layers.
 """
-
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 
 from virtual_streamer.utils.minio_client import get_storage_client, MinIOClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class PathResolver:

@@ -138,6 +138,8 @@ class BaseLlmAgent(LlmAgent):
         model = self._build_model(agent_config)
         model_string = agent_config.model.get_model_string()
 
+        logger.info(f"Agent {name} config: {model_string}")
+
         # Initialize parent LlmAgent
         super().__init__(
             name=name,

@@ -283,15 +283,8 @@ class AgentConfigRegistry(BaseSettings):
 
         if config_path.exists():
             return AgentConfig.from_yaml(config_path)
-
-        # Return default config if no file exists
-        return AgentConfig(
-            name=agent_name,
-            model=ModelConfig(
-                provider=self.default_provider,
-                model=self.default_model,
-            ),
-        )
+        else:
+            raise Exception(f"Agent config file not found: {config_path}")
 
 
 # Cached singleton instances

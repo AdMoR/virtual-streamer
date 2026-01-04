@@ -100,6 +100,7 @@ COPY ./webservice.py .
 COPY ./README.md .
 COPY ./webservice_prod.py .
 COPY ./virtual_streamer ./virtual_streamer
+COPY ./configs ./configs
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked

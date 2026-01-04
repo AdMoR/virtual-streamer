@@ -44,6 +44,8 @@ services:
       - MYSQL_USER=virtual_streamer
       - MYSQL_PASSWORD=streamerpass
       - MYSQL_DATABASE=virtual_streamer
+      # video embedding search
+      - VIDEO_SEARCH_SERVER_URL=http://video-embedding-server:8004
       # Model checkpoint
       - CHECKPOINT_PATH=/app/checkpoints/Wav2Lip.pth
       # API configuration
@@ -59,13 +61,42 @@ services:
     restart: always
     # Command is now in Dockerfile (no override needed)
 
+  video-embedding-server:
+    build:
+      context: /home/amor/Documents/code_dw/video_embedding_server
+      dockerfile: /home/amor/Documents/code_dw/video_embedding_server/Dockerfile
+    image: video-embedding-server:latest
+    container_name: video-embedding-server
+    depends_on:
+      - qdrant
+
+    # NO GPU sections - removed deploy.resources and devices
+
+    environment:
+      # Force CPU-only execution
+      - JAX_PLATFORM_NAME=cpu
+      - CUDA_VISIBLE_DEVICES=
+      # Qdrant connection
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+
+    volumes:
+      - /media/amor/data1/Downloads/CPS/fred_voice_clips_embeddings/:/app/data/embeddings
+      - huggingface-cache:/root/.cache/huggingface
+    networks:
+      - tts
+    stdin_open: true
+    tty: true
+    ports:
+      - "8004:8004"
+
   tts:
     #build:
     #  dockerfile: docker/docker_fr_tts/Dockerfile
     image: fishaudio/fish-speech:server-cuda
     volumes:
-      - ./checkpoints:/app/checkpoints
-      - ./references:/app/references
+      - tts_checkpoints:/app/checkpoints
+      - tts_references:/app/references
     environment:
       - COMPILE=1
       - API_SERVER_PORT=8003
@@ -119,6 +150,16 @@ services:
       timeout: 5s
       retries: 5
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    networks:
+      - tts
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
 volumes:
   videos:
     driver: local # Define the driver and options under the volume name
@@ -139,6 +180,20 @@ volumes:
       device: /media/amor/data1/virtual_streamer_folder/storage
       o: bind
   mysql_data:
+  qdrant_data:
+  huggingface-cache:
+  tts_references:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /media/amor/data1/virtual_streamer_folder/tts_references
+      o: bind
+  tts_checkpoints:
+    driver: local # Define the driver and options under the volume name
+    driver_opts:
+      type: none
+      device: /media/amor/data1/virtual_streamer_folder/tts_checkpoints
+      o: bind
 
 
 

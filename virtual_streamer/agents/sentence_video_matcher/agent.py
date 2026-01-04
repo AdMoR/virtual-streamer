@@ -53,7 +53,7 @@ class SentenceVideoMapper(MapperAgent):
     def __init__(
         self,
         video_retriever: VideoRetrieverInterface,
-        max_candidates: int = 5,
+        max_candidates: int = 1,
         name: str = "sentence_video_mapper",
     ):
         """
@@ -193,7 +193,7 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
 
 def create_sentence_video_matcher(
     video_retriever: VideoRetrieverInterface,
-    max_candidates: int = 5,
+    max_candidates: int = 1,
 ) -> MapReduceAgent:
     """
     Factory function to create a SentenceVideoMatcher agent.

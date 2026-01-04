@@ -3,7 +3,7 @@ Medium-level API: Text-to-Speech Service
 
 Provides TTS generation using various backends (Fish-Speech, etc.)
 """
-
+from virtual_streamer.utils.utils import get_length
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import uuid
@@ -13,6 +13,7 @@ from virtual_streamer.video_server.models import DialogueEntry, Character, Voice
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
 from virtual_streamer.api.dependencies import get_path_resolver, get_storage_resolver
 from virtual_streamer.utils.entity_repository import get_entity_repository
+
 
 # Router setup
 router = APIRouter(prefix="/tts", tags=["Text-to-Speech"])
@@ -42,10 +43,11 @@ async def generate_tts(payload: DialogueEntry):
     # Fetch character data to get voice configuration
     try:
         repo = get_entity_repository()
-        character_data = await repo.get_character(payload.character_id)
+        character_id = "Jesus" #payload.character_id
+        character_data = await repo.get_character(character_id)
         if character_data is None:
             raise HTTPException(
-                status_code=404, detail=f"Character '{payload.character_id}' not found"
+                status_code=404, detail=f"Character '{character_id}' not found"
             )
         character = Character(
             character_id=character_data["character_id"],
@@ -72,7 +74,7 @@ async def generate_tts(payload: DialogueEntry):
         )
 
     # Generate unique filename in temp directory
-    temp_dir = os.environ.get("TEMP_DIR", "./temp")
+    temp_dir = os.environ.get("TEMP_DIR", "/tmp")
     os.makedirs(temp_dir, exist_ok=True)
 
     audio_filename = f"tts_{payload.entry_id}_{uuid.uuid4()}.wav"
@@ -123,9 +125,6 @@ async def generate_tts(payload: DialogueEntry):
         )
 
     print(f"TTS audio generated successfully at: {audio_outpath}")
-
-    # Get audio duration
-    from virtual_streamer.utils.utils import get_length
 
     duration = get_length(audio_outpath)
 
