@@ -528,7 +528,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 recreate_from_config_dump,
             )
 
-            tts = create_tts(config.tts, character_name=config.character_name)
+            tts = await create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
 
             result = await recreate_from_config_dump(

@@ -1,45 +1,43 @@
-import os
-import httpx
-from virtual_streamer.video_server.models import Character
+"""
+DEPRECATED: This module is deprecated.
+
+All character data access should now use:
+- Inside API: EntityRepository from virtual_streamer.utils.entity_repository
+- Outside API: CharacterClient from virtual_streamer.api.clients.character_client
+
+Example usage for external code:
+    from virtual_streamer.api.clients.character_client import CharacterClient
+
+    async with CharacterClient() as client:
+        character = await client.get_character("fred")
+        characters = await client.list_characters()
+
+For synchronous code:
+    import asyncio
+    from virtual_streamer.api.clients.character_client import CharacterClient
+
+    async def _fetch():
+        async with CharacterClient() as client:
+            return await client.get_character("fred")
+    
+    character = asyncio.run(_fetch())
+"""
+
+# Re-export from new location for backward compatibility
+# These imports will fail if the new client is used, serving as a reminder to migrate
+from virtual_streamer.api.clients.character_client import (
+    CharacterClient,
+    get_character as _get_character_async,
+    list_characters as _list_characters_async,
+)
+
+import warnings
 
 
-ENTITY_SERVICE_HOST = os.environ.get("ENTITY_SERVICE_HOST", "0.0.0.0").rstrip(
-    "/"
-)  # Ensure no trailing slas
-
-
-async def get_character_data(character_id: str) -> Character:
-    """Helper function to fetch character data from the entity service."""
-    character_url = f"http://{ENTITY_SERVICE_HOST}:8000/api/v1/characters/{character_id}"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        print(character_url)
-        response = await client.get(character_url)
-        response.raise_for_status()  # Raise exception for 4xx/5xx responses
-        result_dict = response.json()
-        character = Character.model_validate(result_dict)
-        return character
-
-
-def get_character_data_sync(character_id: str) -> Character:
-    """Helper function to fetch character data from the entity service."""
-    character_url = f"http://{ENTITY_SERVICE_HOST}:8000/api/v1/characters/{character_id}"
-    with httpx.Client(timeout=30.0) as client:
-        print(character_url)
-        response = client.get(character_url)
-        response.raise_for_status()  # Raise exception for 4xx/5xx responses
-        result_dict = response.json()
-        character = Character.model_validate(result_dict)
-        return character
-
-
-def get_characters_data() -> list[Character]:
-    """Helper function to fetch character data from the entity service."""
-    character_url = f"http://{ENTITY_SERVICE_HOST}:8000/api/v1/characters"
-    with httpx.Client(timeout=30.0) as client:
-        print(character_url)
-        response = client.get(character_url)
-        response.raise_for_status()  # Raise exception for 4xx/5xx responses
-        result_dict = response.json()
-        print(result_dict)
-        characters = [Character.model_validate(k) for k in result_dict]
-        return characters
+def _emit_deprecation_warning(func_name: str):
+    warnings.warn(
+        f"{func_name} is deprecated. Use CharacterClient from "
+        "virtual_streamer.api.clients.character_client instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )

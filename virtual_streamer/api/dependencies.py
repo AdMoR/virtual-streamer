@@ -6,12 +6,9 @@ Common dependencies and utilities used across API layers.
 
 import os
 from pathlib import Path
-from typing import Optional, List
-from fastapi import HTTPException
+from typing import Optional
 
-from virtual_streamer.video_server.models import Character
 from virtual_streamer.utils.minio_client import get_storage_client, MinIOClient
-from virtual_streamer.utils.storage_interface import StorageInterface
 
 
 class PathResolver:
@@ -221,81 +218,3 @@ def get_storage_resolver() -> StoragePathResolver:
         _storage_resolver = StoragePathResolver()
 
     return _storage_resolver
-
-
-# Character storage functions
-
-# Storage configuration
-_CHARACTER_PREFIX = "characters/"
-
-
-async def get_character_data(character_id: str) -> Character:
-    """
-    Fetch character data from MinIO storage.
-
-    This replaces the old HTTP call to entity_api service.
-
-    Args:
-        character_id: Character identifier
-
-    Returns:
-        Character object
-
-    Raises:
-        HTTPException: If character not found
-    """
-    storage = get_storage_client()
-    key = f"{_CHARACTER_PREFIX}{character_id}.json"
-
-    try:
-        data = await storage.get_json(key)
-        if data is None:
-            raise HTTPException(
-                status_code=404, detail=f"Character '{character_id}' not found"
-            )
-
-        # Ensure backward compatibility
-        data["video_clip_path"] = data.get("video_clip_path", "")
-        return Character(**data)
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=404, detail=f"Character '{character_id}' not found"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading character '{character_id}': {str(e)}",
-        )
-
-
-async def list_characters(limit: int = 100) -> List[Character]:
-    """
-    List all characters from MinIO storage.
-
-    Args:
-        limit: Maximum number of characters to return
-
-    Returns:
-        List of Character objects
-    """
-    storage = get_storage_client()
-    keys = await storage.list_objects(_CHARACTER_PREFIX)
-
-    characters = []
-    count = 0
-    for key in keys:
-        if key.endswith(".json"):
-            try:
-                data = await storage.get_json(key)
-                if data:
-                    # Ensure backward compatibility
-                    data["video_clip_path"] = data.get("video_clip_path", "")
-                    characters.append(Character(**data))
-                    count += 1
-                    if count >= limit:
-                        break
-            except Exception as e:
-                print(f"Warning: Error loading character from {key}: {e}")
-                continue
-
-    return characters

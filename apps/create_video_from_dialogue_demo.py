@@ -2,13 +2,28 @@ import streamlit as st
 import requests
 import os
 import time
+import asyncio
 import httpx
+from typing import List
 from virtual_streamer.utils.utils import s3_download
 from virtual_streamer.video_server.models import Character
-from virtual_streamer.video_server.utils import (
-    get_character_data_sync,
-    get_characters_data,
-)
+from virtual_streamer.api.clients.character_client import CharacterClient
+
+
+def get_character_data_sync(character_id: str) -> Character:
+    """Synchronous wrapper to fetch character data using CharacterClient."""
+    async def _fetch():
+        async with CharacterClient() as client:
+            return await client.get_character(character_id)
+    return asyncio.run(_fetch())
+
+
+def get_characters_data() -> List[Character]:
+    """Synchronous wrapper to list all characters using CharacterClient."""
+    async def _fetch():
+        async with CharacterClient() as client:
+            return await client.list_characters()
+    return asyncio.run(_fetch())
 
 # --- Configuration ---
 # Get the backend URL from environment variable or use a default

@@ -163,7 +163,7 @@ async def main():
                 print(f"Recreating video from config dump: {config.from_config_dump}\n")
 
             # Only need TTS and STT for recreation
-            tts = create_tts(config.tts, character_name=config.character_name)
+            tts = await create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
 
             result = await recreate_from_config_dump(
@@ -176,7 +176,7 @@ async def main():
                 progress.update("Initializing components...")
 
             llm = create_llm(config.llm)
-            tts = create_tts(config.tts, character_name=config.character_name)
+            tts = await create_tts(config.tts, character_name=config.character_name)
             stt = create_stt(config.stt)
             video_retriever = create_video_retriever(config.video_retrieval)
             prompt_provider = create_prompt_provider(config.prompt)

@@ -63,7 +63,7 @@ from virtual_streamer.video_server.models import (
     CharacterBase,
 )
 from virtual_streamer.workflows.character_setup import CHARACTERS
-from virtual_streamer.video_server.utils import get_character_data
+from virtual_streamer.api.clients.character_client import CharacterClient
 
 
 # --- Pydantic Models ---
@@ -147,8 +147,9 @@ async def generate_tts(payload: DialogueEntry):
     """
     print(f"Received TTS generation request for entry: {payload.entry_id}")
 
-    # 1 - Fetch character data from Entity Service to get speaker info
-    character = await get_character_data(payload.character_id)
+    # 1 - Fetch character data from API
+    async with CharacterClient() as client:
+        character = await client.get_character(payload.character_id)
 
     # 2 - Generate a unique filename in the temp directory
     # Using entry_id and a UUID ensures uniqueness and traceability
@@ -290,8 +291,9 @@ async def run_wav2lip(payload: Wav2LipRequest):
     video = payload.video
     video_path = video.storage_path
 
-    # Retrieve the objects from entity server
-    character = await get_character_data(character_id)
+    # Retrieve character data from API
+    async with CharacterClient() as client:
+        character = await client.get_character(character_id)
 
     # Basic validation
     if not os.path.exists(audio_path):
@@ -373,11 +375,11 @@ async def qa_process_video(
     name = question_data.name
 
     try:
-        character: Character = await get_character_data(character_name)
-    except HTTPException:
-        character_url = f"http://{ENTITY_SERVICE_HOST}:8002/characters"
+        async with CharacterClient() as client:
+            character: Character = await client.get_character(character_name)
+    except Exception as e:
         raise Exception(
-            f"Failed to fetch character '{character.name}': {character_url}"
+            f"Failed to fetch character '{character_name}': {e}"
         )
 
     # --- Step 1: Get the audio for the response using fish-tts ---

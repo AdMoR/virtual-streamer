@@ -34,9 +34,9 @@ from virtual_streamer.video_generation.config import (
     PromptConfig,
 )
 from virtual_streamer.utils.utils import txt_to_speech_call_fish, txt_to_speech_call_fish_async, get_length
-from virtual_streamer.video_server.utils import get_character_data_sync
 from virtual_streamer.video_server.models import Character
 from virtual_streamer.api.dependencies import get_path_resolver
+from virtual_streamer.api.clients.character_client import CharacterClient
 from virtual_streamer.video_search.client import VideoSearchClient, VideoSearchResult
 
 
@@ -642,7 +642,7 @@ def create_llm(config: LLMConfig) -> LLMInterface:
         raise ValueError(f"Unknown LLM provider: {config.provider}")
 
 
-def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSInterface:
+async def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSInterface:
     """
     Create TTS instance based on configuration.
 
@@ -661,7 +661,8 @@ def create_tts(config: TTSConfig, character_name: Optional[str] = None) -> TTSIn
     if character_name and not config.reference_audio:
         try:
             print(f"🎤 Loading voice samples for character: {character_name}")
-            character: Character = get_character_data_sync(character_name)
+            async with CharacterClient() as client:
+                character: Character = await client.get_character(character_name)
 
             if character.voice_samples and len(character.voice_samples) > 0:
                 # Use the first voice sample for voice cloning
