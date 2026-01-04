@@ -76,15 +76,6 @@ def separation_fn(raw_text: str, max_length: int = 35) -> List[str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-import concurrent.futures
-
-
-def run_async_in_threads(coro):
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(asyncio.run, coro)
-        return future.result()
-
-
 def extract_middle_frame(video_path: str) -> Optional[bytes]:
     """
     Extract the middle frame from a video and return as base64 encoded string.
@@ -99,11 +90,8 @@ def extract_middle_frame(video_path: str) -> Optional[bytes]:
     """
     if video_path.startswith("minio"):
         # Path is like minio://{bucket_name}/folder/{collection}/video_name.mp4
-        local_path = f"/tmp/{os.path.basename(video_path)}"
-        bucket = video_path.split("/")[2]
-        client = MinIOClient(bucket=bucket)
-        bucket_path = video_path.split(bucket)[1].lstrip("/")
-        run_async_in_threads(client.download_file(bucket_path, local_path))
+        from virtual_streamer.utils.minio_client import download_remote_video
+        local_path = download_remote_video(video_path)
         video_path = local_path
 
     cap = cv2.VideoCapture(video_path)

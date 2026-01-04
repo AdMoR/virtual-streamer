@@ -1,5 +1,7 @@
 import enum
 import json
+import logging
+
 import serde
 from serde.json import from_json, to_json
 from typing import List, Dict, Optional, Callable, Any
@@ -352,17 +354,19 @@ def txt_to_speech_call_fish(
                 "authorization": f"Bearer {api_key}",
                 "content-type": "application/msgpack",
             },
-            timeout=60,
+            timeout=15*60,
         )
         if response.status_code == 200:
             with open(outpath, "wb") as f:
                 f.write(response.content)
             return outpath
         else:
+            logging.error(f"Failed to synthesize speech : {response.status_code}, {response.text}")
             raise Exception(
                 f"Fish TTS request failed with status code {response.status_code}: {response.text}"
             )
     except Exception as e:
+        logging.error(f"Failed to synthesize speech  with unknown error: {e}", exc_info=True)
         raise Exception(f"Fish TTS call failed: {str(e)}")
 
 

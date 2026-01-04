@@ -125,6 +125,7 @@ class WebserviceClient:
                 "text": text,
                 "timestamp": 0,
             },
+            timeout=30*60,
         )
         response.raise_for_status()
         data = response.json()
@@ -162,6 +163,7 @@ class WebserviceClient:
                 "character_id": self.character_id,
                 "output_dir": output_dir,
             },
+            timeout=30*60,
         )
         response.raise_for_status()
         data = response.json()
@@ -182,6 +184,7 @@ class WebserviceClient:
             response = await self._client.post(
                 "/api/v1/stt/transcribe-to-srt",
                 files=files,
+                timeout=30*60,
             )
         response.raise_for_status()
         data = response.json()
@@ -426,7 +429,7 @@ async def script_to_video(
             logger.info(f"  Segment {i+1} complete: {segment_path}")
 
         except Exception as e:
-            logger.error(f"  Error processing segment {i+1}: {e}")
+            logger.error(f"  Error processing segment {i+1}: {e}", exc_info=True)
             raise
 
     # Concatenate all segments
@@ -589,13 +592,14 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             logger.info(f"[Job {job_id}] Uploading to storage...")
             storage = get_storage_client()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            minio_video_key = f"videos/{timestamp}/video_{timestamp}.mp4"
+            minio_video_key = f"generated_videos/{timestamp}/video_{timestamp}.mp4"
             await storage.upload_file(final_video_path, minio_video_key)
 
+            print(f"Story output : {type(story_output)} => {story_output}")
             result = GenerationResult(
                 video_path=final_video_path,
                 config_dump_path=None,
-                story_output=story_output,
+                story_output=None,
                 metadata={
                     "sentence_count": len(video_matches.matches),
                     "total_duration": get_length(final_video_path),

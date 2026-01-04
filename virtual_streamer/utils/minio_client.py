@@ -17,6 +17,8 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 
 from virtual_streamer.utils.storage_interface import StorageInterface
+import concurrent.futures
+
 
 
 class MinIOClient(StorageInterface):
@@ -287,3 +289,23 @@ def reset_storage_client() -> None:
     global _minio_client
     _minio_client = None
 
+
+
+def run_async_in_threads(coro):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(asyncio.run, coro)
+        return future.result()
+
+
+
+def download_remote_video(video_path):
+    if video_path.startswith("minio"):
+        # Path is like minio://{bucket_name}/folder/{collection}/video_name.mp4
+        local_path = f"/tmp/{os.path.basename(video_path)}"
+        bucket = video_path.split("/")[2]
+        client = MinIOClient(bucket=bucket)
+        bucket_path = video_path.split(bucket)[1].lstrip("/")
+        run_async_in_threads(client.download_file(bucket_path, local_path))
+        return local_path
+    else:
+        raise Exception(f"Unsupported video format: {video_path}")

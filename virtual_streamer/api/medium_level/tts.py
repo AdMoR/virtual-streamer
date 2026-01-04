@@ -3,6 +3,8 @@ Medium-level API: Text-to-Speech Service
 
 Provides TTS generation using various backends (Fish-Speech, etc.)
 """
+import logging
+
 from virtual_streamer.utils.utils import get_length
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -17,6 +19,9 @@ from virtual_streamer.utils.entity_repository import get_entity_repository
 
 # Router setup
 router = APIRouter(prefix="/tts", tags=["Text-to-Speech"])
+
+
+logger = logging.getLogger(__name__)
 
 
 class TTSResponse(BaseModel):
@@ -43,7 +48,7 @@ async def generate_tts(payload: DialogueEntry):
     # Fetch character data to get voice configuration
     try:
         repo = get_entity_repository()
-        character_id = "Jesus" #payload.character_id
+        character_id = "jesus_short" #payload.character_id
         character_data = await repo.get_character(character_id)
         if character_data is None:
             raise HTTPException(
@@ -66,9 +71,11 @@ async def generate_tts(payload: DialogueEntry):
             created_at=character_data.get("created_at"),
             updated_at=character_data.get("updated_at"),
         )
-    except HTTPException:
+    except HTTPException as e :
+        logger.error(f"Failed to generate TTS audio for entry: {payload.entry_id}, {e}", exc_info=True)
         raise
     except Exception as e:
+        logger.error(f"Failed to generate TTS audio for entry: {payload.entry_id}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Error fetching character '{payload.character_id}': {e}"
         )
@@ -81,8 +88,10 @@ async def generate_tts(payload: DialogueEntry):
     audio_outpath = os.path.join(temp_dir, audio_filename)
 
     print(
-        f"Generating TTS for entry {payload.entry_id} with character {character.character_id}..."
+        f"Generating TTS for entry {payload.entry_id} with character {character_id}..."
     )
+
+    print(character.model_dump_json(indent=2))
 
     # Prepare TTS parameters
     tts_params = {}

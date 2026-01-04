@@ -3,7 +3,8 @@ Medium-level API: Speech-to-Text Service
 
 Provides STT transcription using Whisper models.
 """
-
+import logging
+import stable_whisper
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 import os
@@ -45,7 +46,7 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
 
         # Transcribe
         result = model.transcribe(tmp_path)
-        text = result["text"]
+        text = result.text
 
         return STTResponse(text=text)
 
@@ -70,7 +71,6 @@ async def transcribe_to_srt(audio_file: UploadFile = File(...)):
     Returns:
         STTResponse with SRT file path
     """
-    import stable_whisper
 
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
@@ -92,11 +92,12 @@ async def transcribe_to_srt(audio_file: UploadFile = File(...)):
         srt_path = os.path.join(temp_dir, f"subtitle_{os.path.basename(tmp_path)}.srt")
         result.to_srt_vtt(srt_path, word_level=False)
 
-        text = result["text"]
+        text = result.text
 
         return STTResponse(text=text, srt_path=srt_path)
 
     except Exception as e:
+        logging.error(f"STT transcription failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"STT transcription failed: {str(e)}"
         )

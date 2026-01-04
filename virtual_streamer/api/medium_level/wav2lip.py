@@ -3,6 +3,7 @@ Medium-level API: Wav2Lip Service
 
 Provides lip-sync video generation using Wav2Lip model.
 """
+import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -197,110 +198,121 @@ async def generate_wav2lip(payload: Wav2LipRequest):
     Returns:
         Wav2LipResponse with generated video path
     """
-    # Initialize model on first use
-    _init_wav2lip()
-
-    print(f"Received Wav2Lip request: {payload}")
-
-    character_id = payload.character_id
-    audio_path = payload.audio_path
-    video_path = payload.video.storage_path
-
-    # Validate audio file exists
-    if not os.path.exists(audio_path):
-        raise HTTPException(
-            status_code=400, detail=f"Audio file not found at path: {audio_path}"
-        )
-
-    # Retrieve character data
     try:
-        repo = get_entity_repository()
-        character_data = await repo.get_character(character_id)
-        if character_data is None:
+        # Initialize model on first use
+        _init_wav2lip()
+
+        print(f"Received Wav2Lip request: {payload}")
+
+        character_id = "jesus_short" #payload.character_id
+        audio_path = payload.audio_path
+        video_path = payload.video.storage_path
+
+        # Validate audio file exists
+        if not os.path.exists(audio_path):
             raise HTTPException(
-                status_code=404, detail=f"Character '{character_id}' not found"
+                status_code=400, detail=f"Audio file not found at path: {audio_path}"
             )
-        character = Character(
-            character_id=character_data["character_id"],
-            name=character_data["name"],
-            description=character_data.get("description"),
-            video_clip_path=character_data.get("video_clip_path", ""),
-            voice_samples=[
-                VoiceSample(
-                    sample_storage_path=s["sample_storage_path"],
-                    transcript=s["transcript"],
-                )
-                for s in character_data.get("voice_samples", [])
-            ],
-            video_search_tag=character_data.get("video_search_tag"),
-            identity_images=character_data.get("identity_images", []),
-            created_at=character_data.get("created_at"),
-            updated_at=character_data.get("updated_at"),
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching character '{character_id}': {e}"
-        )
 
-    # Determine output directory
-    if payload.output_dir:
-        run_dirname = payload.output_dir
-        os.makedirs(run_dirname, exist_ok=True)
-    else:
-        run_dirname = f"./temp/wav2lip_run_{uuid.uuid4()}"
-        os.makedirs(run_dirname, exist_ok=True)
-
-    # Download video from MinIO storage to local cache
-    storage_resolver = get_storage_resolver()
-    try:
-        video_path = await storage_resolver.resolve_file(video_path)
-    except FileNotFoundError:
-        shutil.rmtree(run_dirname, ignore_errors=True)
-        raise HTTPException(
-            status_code=500, detail=f"Video clip not found in storage: {video_path}"
-        )
-    except Exception as e:
-        shutil.rmtree(run_dirname, ignore_errors=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to download video from storage: {e}"
-        )
-
-    # Get or preprocess face detection data (GPU-protected operation)
-    if character.name not in _face_detection_groups:
-        print(f"Preprocessing face detection for character '{character.name}'...")
+        # Retrieve character data
         try:
-            # Run face preprocessing on GPU with semaphore protection
-            await run_on_gpu(
-                preprocess,
-                _args, video_path, character.name, _detector, _face_detection_groups
+            repo = get_entity_repository()
+            character_data = await repo.get_character(character_id)
+            if character_data is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Character '{character_id}' not found"
+                )
+            character = Character(
+                character_id=character_data["character_id"],
+                name=character_data["name"],
+                description=character_data.get("description"),
+                video_clip_path=character_data.get("video_clip_path", ""),
+                voice_samples=[
+                    VoiceSample(
+                        sample_storage_path=s["sample_storage_path"],
+                        transcript=s["transcript"],
+                    )
+                    for s in character_data.get("voice_samples", [])
+                ],
+                video_search_tag=character_data.get("video_search_tag"),
+                identity_images=character_data.get("identity_images", []),
+                created_at=character_data.get("created_at"),
+                updated_at=character_data.get("updated_at"),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error fetching character '{character_id}': {e}"
+            )
+
+        # Determine output directory
+        if payload.output_dir:
+            run_dirname = payload.output_dir
+            os.makedirs(run_dirname, exist_ok=True)
+        else:
+            run_dirname = f"./temp/wav2lip_run_{uuid.uuid4()}"
+            os.makedirs(run_dirname, exist_ok=True)
+
+        # Download video from MinIO storage to local cache
+        try:
+            from virtual_streamer.utils.minio_client import download_remote_video
+            local_path = download_remote_video(video_path)
+            video_path = local_path
+        except FileNotFoundError:
+            shutil.rmtree(run_dirname, ignore_errors=True)
+            raise HTTPException(
+                status_code=500, detail=f"Video clip not found in storage: {video_path}"
             )
         except Exception as e:
             shutil.rmtree(run_dirname, ignore_errors=True)
             raise HTTPException(
-                status_code=500, detail=f"Face preprocessing failed: {e}"
+                status_code=500, detail=f"Failed to download video from storage: {e}"
             )
 
-    face_det_group = _face_detection_groups[character.name]
+        print("character loaded")
+        return Wav2LipResponse(
+            raw_video_path=video_path, processing_time=0.0
+        )
 
-    # Run Wav2Lip generation (GPU-protected, non-blocking operation)
-    start_time = time.time()
+        # Get or preprocess face detection data (GPU-protected operation)
+        if character.name not in _face_detection_groups:
+            print(f"Preprocessing face detection for character '{character.name}'...")
+            try:
+                # Run face preprocessing on GPU with semaphore protection
+                await run_on_gpu(
+                    preprocess,
+                    _args, video_path, character.name, _detector, _face_detection_groups
+                )
+            except Exception as e:
+                shutil.rmtree(run_dirname, ignore_errors=True)
+                raise HTTPException(
+                    status_code=500, detail=f"Face preprocessing failed: {e}"
+                )
 
-    try:
-        # Run Wav2Lip inference on GPU with semaphore protection
-        # Uses asyncio.to_thread to avoid blocking the event loop
-        raw_video_path = await run_on_gpu(wav2lip_exec, run_dirname, audio_path, face_det_group)
+        print("preprocessing done")
+        face_det_group = _face_detection_groups[character.name]
+
+        # Run Wav2Lip generation (GPU-protected, non-blocking operation)
+        start_time = time.time()
+
+        try:
+            # Run Wav2Lip inference on GPU with semaphore protection
+            # Uses asyncio.to_thread to avoid blocking the event loop
+            raw_video_path = await run_on_gpu(wav2lip_exec, run_dirname, audio_path, face_det_group)
+        except Exception as e:
+            shutil.rmtree(run_dirname, ignore_errors=True)
+            raise HTTPException(status_code=500, detail=f"Wav2Lip generation failed: {e}")
+
+        processing_time = time.time() - start_time
+        print(f"Wav2Lip generation completed in {processing_time:.2f}s")
+
+        return Wav2LipResponse(
+            raw_video_path=raw_video_path, processing_time=processing_time
+        )
     except Exception as e:
-        shutil.rmtree(run_dirname, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=f"Wav2Lip generation failed: {e}")
-
-    processing_time = time.time() - start_time
-    print(f"Wav2Lip generation completed in {processing_time:.2f}s")
-
-    return Wav2LipResponse(
-        raw_video_path=raw_video_path, processing_time=processing_time
-    )
+        logging.error("General failure on wav2lip", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"General failure: {e}")
 
 
 @router.get("/health")
