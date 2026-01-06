@@ -483,22 +483,21 @@ class VideoSearchRetriever(VideoRetrieverInterface):
     """
 
     def __init__(self, config: VideoRetrievalConfig):
-        if not config.collection:
-            raise ValueError(
-                "VideoRetrievalConfig.collection is required. "
-                "It should be loaded from the StoryTemplate."
-            )
         self.config = config
         self.client = VideoSearchClient(server_url=config.server_url)
-        self.collection = config.collection
 
     def search(
-        self, query: str, top_k: int = 10, tags: Optional[List[str]] = None
+        self,
+        query: str,
+        collection: str,
+        top_k: int = 10,
+        tags: Optional[List[str]] = None,
     ) -> List[VideoSearchResult]:
         """Search for videos using VideoPrism embeddings via remote server.
         
         Args:
             query: Natural language search query
+            collection: Qdrant collection name to search in
             top_k: Number of results to return
             tags: Optional list of tags to filter by (e.g., ['person:fred'])
             
@@ -512,7 +511,7 @@ class VideoSearchRetriever(VideoRetrieverInterface):
         
         return self.client.search(
             query=query,
-            collection=self.collection,
+            collection=collection,
             top_k=top_k,
             tags=search_tags,
         )

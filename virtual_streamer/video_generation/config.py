@@ -74,11 +74,6 @@ class STTConfig(BaseModel):
 class VideoRetrievalConfig(BaseModel):
     """Configuration for video retrieval system using remote VideoSearchClient."""
 
-    collection: Optional[str] = Field(
-        default=None,
-        description="Qdrant collection name for video search. "
-        "Required at runtime - typically loaded from StoryTemplate.",
-    )
     server_url: Optional[str] = Field(
         default=None,
         description="Video search server URL (defaults to VIDEO_SEARCH_SERVER_URL env var or localhost:8003)",

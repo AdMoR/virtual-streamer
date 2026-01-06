@@ -30,6 +30,9 @@ TITLE = "title"
 STORY_TEMPLATE_ID = "story_template_id"
 """str: Optional story template ID to use for generation. If not set, uses default prompt."""
 
+VIDEO_COLLECTION = "video_collection"
+"""str: Qdrant collection name for video search. Loaded from StoryTemplate."""
+
 CONFIG = "config"
 """dict: Serialized VideoGenerationConfig with all settings."""
 

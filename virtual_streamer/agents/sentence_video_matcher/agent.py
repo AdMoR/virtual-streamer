@@ -31,6 +31,7 @@ from virtual_streamer.agents.sentence_video_matcher.schema import (
 )
 from virtual_streamer.agents.sentence_video_matcher.utils import _select_best
 from virtual_streamer.video_generation.interfaces import VideoRetrieverInterface
+from virtual_streamer.agents.common.state_keys import VIDEO_COLLECTION
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,14 @@ class SentenceVideoMapper(MapperAgent):
         """
         sentences_data = ctx.session.state.get(SENTENCES_KEY, {})
         
+        # Get video collection from state (set from StoryTemplate)
+        collection = ctx.session.state.get(VIDEO_COLLECTION)
+        if not collection:
+            raise ValueError(
+                f"'{VIDEO_COLLECTION}' not found in state. "
+                "It should be set from StoryTemplate.collection before running the matcher."
+            )
+        
         # Parse DialogLines from state
         dialog_lines = [DialogLine.model_validate(x) for x in sentences_data]
         
@@ -91,14 +100,15 @@ class SentenceVideoMapper(MapperAgent):
             logger.warning("No dialog lines found in state")
             raise Exception("No dialog lines found in state")
         
-        logger.info(f"Building items for {len(dialog_lines)} dialog lines")
+        logger.info(f"Building items for {len(dialog_lines)} dialog lines using collection '{collection}'")
         
         items = []
         for line_id, dialog_line in enumerate(dialog_lines):
             # Search using scene_description for video embedding search
             search_results = self._video_retriever.search(
-                dialog_line.scene_description, 
-                top_k=self._max_candidates
+                query=dialog_line.scene_description,
+                collection=collection,
+                top_k=self._max_candidates,
             )
             
             if not search_results:

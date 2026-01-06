@@ -160,13 +160,18 @@ class VideoRetrieverInterface(ABC):
 
     @abstractmethod
     def search(
-        self, query: str, top_k: int = 10, tags: Optional[List[str]] = None
+        self,
+        query: str,
+        collection: str,
+        top_k: int = 10,
+        tags: Optional[List[str]] = None,
     ) -> List[VideoSearchResult]:
         """
         Search for videos matching the query.
 
         Args:
             query: Search query text
+            collection: Qdrant collection name to search in
             top_k: Number of results to return
             tags: Optional list of tags to filter by
 

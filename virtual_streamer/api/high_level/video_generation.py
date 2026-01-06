@@ -41,6 +41,7 @@ from virtual_streamer.agents.common.state_keys import (
     STORY_OUTPUT,
     SENTENCES,
     VIDEO_MATCHES,
+    VIDEO_COLLECTION,
 )
 
 # Video generation imports
@@ -275,6 +276,7 @@ async def run_story_generator(
 
 async def run_sentence_video_matcher(
     sentences: List[Any],
+    collection: str,
     config: VideoGenerationConfig,
 ) -> SentenceVideoMatcherOutput:
     """
@@ -282,6 +284,7 @@ async def run_sentence_video_matcher(
 
     Args:
         sentences: List of sentences/dialog lines to match
+        collection: Qdrant collection name for video search (from StoryTemplate)
         config: Video generation configuration
 
     Returns:
@@ -304,17 +307,20 @@ async def run_sentence_video_matcher(
         session_service=session_service,
     )
 
-    # Create session with initial state
+    # Create session with initial state including video collection
     user_id = f"user_{uuid.uuid4().hex[:8]}"
     session_id = f"matcher_{uuid.uuid4().hex[:8]}"
     session = await session_service.create_session(
         app_name=APP_NAME,
         user_id=user_id,
         session_id=session_id,
-        state={SENTENCES: sentences},
+        state={
+            SENTENCES: sentences,
+            VIDEO_COLLECTION: collection,
+        },
     )
 
-    logger.info("Running SentenceVideoMatcher agent")
+    logger.info(f"Running SentenceVideoMatcher agent with collection '{collection}'")
 
     # Create message content
     content = types.Content(role="user", parts=[types.Part(text="Match videos to sentences")])
@@ -551,6 +557,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         else:
             story_output = None
             sentences = None
+            collection = None
 
             # Load StoryTemplate to get collection for video search
             story_template = None
@@ -560,11 +567,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 story_template = await repo.get_story_template(request.story_template_id)
                 if story_template is None:
                     raise ValueError(f"Story template '{request.story_template_id}' not found")
-                # Set the collection from the template
-                config.video_retrieval.collection = story_template["collection"]
+                collection = story_template["collection"]
                 logger.info(
                     f"[Job {job_id}] Using story template: {request.story_template_id}, "
-                    f"collection: {story_template['collection']}"
+                    f"collection: {collection}"
                 )
 
             if request.title:
@@ -598,15 +604,15 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 sentences = dialog_lines.model_dump()
 
             # Validate that collection is set before video matching
-            if not config.video_retrieval.collection:
+            if not collection:
                 raise ValueError(
-                    "Video retrieval collection is required. "
+                    "Video collection is required. "
                     "Provide a story_template_id with a configured collection."
                 )
 
             # Step 2: Run SentenceVideoMatcher
             logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
-            video_matches = await run_sentence_video_matcher(sentences, config)
+            video_matches = await run_sentence_video_matcher(sentences, collection, config)
             logger.info(
                 f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
             )
