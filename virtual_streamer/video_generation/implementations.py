@@ -483,6 +483,11 @@ class VideoSearchRetriever(VideoRetrieverInterface):
     """
 
     def __init__(self, config: VideoRetrievalConfig):
+        if not config.collection:
+            raise ValueError(
+                "VideoRetrievalConfig.collection is required. "
+                "It should be loaded from the StoryTemplate."
+            )
         self.config = config
         self.client = VideoSearchClient(server_url=config.server_url)
         self.collection = config.collection
@@ -504,13 +509,10 @@ class VideoSearchRetriever(VideoRetrieverInterface):
         search_tags = tags
         if search_tags is None and self.config.character_filter:
             search_tags = [self.config.character_filter]
-
-        search_tags = search_tags
-        collection = "friends_v1"
         
         return self.client.search(
             query=query,
-            collection=collection,
+            collection=self.collection,
             top_k=top_k,
             tags=search_tags,
         )

@@ -21,6 +21,7 @@ def _dict_to_model(data: dict) -> StoryTemplate:
         template_id=data["template_id"],
         name=data["name"],
         prompt=data["prompt"],
+        collection=data["collection"],
         target_lines=data["target_lines"],
         character_ids=data.get("character_ids", []),
         created_at=data["created_at"],
@@ -32,6 +33,7 @@ def _dict_to_model(data: dict) -> StoryTemplate:
 async def create_story_template(
     name: str = Form(..., description="Display name for the story template"),
     prompt: str = Form(..., description="Full prompt text for story generation"),
+    collection: str = Form(..., description="Qdrant collection name for video search"),
     target_lines: int = Form(6, description="Target number of dialogue lines"),
     character_ids: List[str] = Form(
         default=[],
@@ -64,6 +66,7 @@ async def create_story_template(
         template_id=template_id,
         name=name,
         prompt=prompt,
+        collection=collection,
         target_lines=target_lines,
         character_ids=character_ids,
     )
@@ -100,6 +103,7 @@ async def update_story_template(
     template_id: str,
     name: Optional[str] = Form(None, description="New display name"),
     prompt: Optional[str] = Form(None, description="New prompt text"),
+    collection: Optional[str] = Form(None, description="New Qdrant collection name"),
     target_lines: Optional[int] = Form(None, description="New target line count"),
     character_ids: Optional[List[str]] = Form(
         None,
@@ -132,6 +136,7 @@ async def update_story_template(
         template_id=template_id,
         name=name,
         prompt=prompt,
+        collection=collection,
         target_lines=target_lines,
         character_ids=character_ids,
     )

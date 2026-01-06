@@ -169,6 +169,7 @@ class EntityRepository:
                         id VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(255) NOT NULL,
                         prompt TEXT NOT NULL,
+                        collection VARCHAR(255) NOT NULL,
                         target_lines INT DEFAULT 6,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -593,6 +594,7 @@ class EntityRepository:
         template_id: str,
         name: str,
         prompt: str,
+        collection: str,
         target_lines: int = 6,
         character_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -605,10 +607,10 @@ class EntityRepository:
                 # Insert story template
                 await cur.execute(
                     """
-                    INSERT INTO story_templates (id, name, prompt, target_lines, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO story_templates (id, name, prompt, collection, target_lines, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (template_id, name, prompt, target_lines, now),
+                    (template_id, name, prompt, collection, target_lines, now),
                 )
 
                 # Insert character associations
@@ -632,7 +634,7 @@ class EntityRepository:
             async with conn.cursor() as cur:
                 # Get template
                 await cur.execute(
-                    "SELECT id, name, prompt, target_lines, created_at FROM story_templates WHERE id = %s",
+                    "SELECT id, name, prompt, collection, target_lines, created_at FROM story_templates WHERE id = %s",
                     (template_id,),
                 )
                 row = await cur.fetchone()
@@ -643,9 +645,10 @@ class EntityRepository:
                     "template_id": row[0],
                     "name": row[1],
                     "prompt": row[2],
-                    "target_lines": row[3],
-                    "created_at": row[4].isoformat() if row[4] else None,
-                    "updated_at": row[4].isoformat() if row[4] else None,
+                    "collection": row[3],
+                    "target_lines": row[4],
+                    "created_at": row[5].isoformat() if row[5] else None,
+                    "updated_at": row[5].isoformat() if row[5] else None,
                 }
 
                 # Get associated character IDs
@@ -683,6 +686,7 @@ class EntityRepository:
         template_id: str,
         name: Optional[str] = None,
         prompt: Optional[str] = None,
+        collection: Optional[str] = None,
         target_lines: Optional[int] = None,
         character_ids: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
@@ -700,6 +704,9 @@ class EntityRepository:
                 if prompt is not None:
                     updates.append("prompt = %s")
                     values.append(prompt)
+                if collection is not None:
+                    updates.append("collection = %s")
+                    values.append(collection)
                 if target_lines is not None:
                     updates.append("target_lines = %s")
                     values.append(target_lines)

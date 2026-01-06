@@ -8,12 +8,14 @@ Usage:
     python scripts/register_story_template.py \
         --name "C'est pas Sorcier Parody" \
         --characters fred jamy \
+        --collection cps_videos \
         --target-lines 6 \
         --prompt-file prompts/cest_pas_sorcier.txt
 
     python scripts/register_story_template.py \
         --name "AI Jesus Sermon" \
         --characters jesus \
+        --collection jesus_videos \
         --target-lines 8 \
         --prompt "You are creating sermons in the style of AI Jesus..."
 """
@@ -29,6 +31,7 @@ def register_via_api(
     api_url: str,
     name: str,
     prompt: str,
+    collection: str,
     target_lines: int,
     character_ids: list[str],
 ) -> dict:
@@ -39,6 +42,7 @@ def register_via_api(
         api_url: Base API URL
         name: Template display name
         prompt: Full prompt text for story generation
+        collection: Qdrant collection name for video search
         target_lines: Target number of dialogue lines
         character_ids: List of character IDs to associate
         
@@ -51,6 +55,7 @@ def register_via_api(
     data = {
         "name": name,
         "prompt": prompt,
+        "collection": collection,
         "target_lines": target_lines,
     }
     
@@ -61,6 +66,7 @@ def register_via_api(
     
     print(f"\nRegistering story template '{name}' via API...")
     print(f"  URL: {url}")
+    print(f"  Collection: {collection}")
     print(f"  Characters: {', '.join(character_ids)}")
     print(f"  Target lines: {target_lines}")
     print(f"  Prompt length: {len(prompt)} chars")
@@ -86,6 +92,7 @@ Examples:
   python scripts/register_story_template.py \\
       --name "C'est pas Sorcier Parody" \\
       --characters fred jamy \\
+      --collection cps_videos \\
       --target-lines 6 \\
       --prompt-file prompts/cest_pas_sorcier.txt
 
@@ -93,6 +100,7 @@ Examples:
   python scripts/register_story_template.py \\
       --name "AI Jesus Sermon" \\
       --characters jesus \\
+      --collection jesus_videos \\
       --target-lines 8 \\
       --prompt "You are creating sermons..."
         """,
@@ -111,6 +119,13 @@ Examples:
         nargs="+",
         required=True,
         help="Character IDs to associate with this template (must exist in DB)",
+    )
+    
+    # Collection
+    parser.add_argument(
+        "--collection",
+        required=True,
+        help="Qdrant collection name for video search",
     )
     
     # Target lines
@@ -167,7 +182,8 @@ Examples:
     print(preview)
     print("-" * 60)
     
-    print(f"\nCharacters: {', '.join(args.characters)}")
+    print(f"\nCollection: {args.collection}")
+    print(f"Characters: {', '.join(args.characters)}")
     print(f"Target lines: {args.target_lines}")
     
     # Register via API
@@ -176,6 +192,7 @@ Examples:
             api_url=args.api_url,
             name=args.name,
             prompt=prompt,
+            collection=args.collection,
             target_lines=args.target_lines,
             character_ids=args.characters,
         )
@@ -185,6 +202,7 @@ Examples:
         print(f"{'='*60}")
         print(f"  Template ID: {result.get('template_id')}")
         print(f"  Name: {result.get('name')}")
+        print(f"  Collection: {result.get('collection')}")
         print(f"  Target lines: {result.get('target_lines')}")
         print(f"  Characters: {', '.join(result.get('character_ids', []))}")
         
