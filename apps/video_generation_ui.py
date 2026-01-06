@@ -315,8 +315,8 @@ with tab2:
         status_container = st.container()
 
         if auto_refresh:
-            # Auto-refresh every 2 seconds
-            refresh_interval = 2
+            # Auto-refresh every 5 seconds
+            refresh_interval = 5
 
             while True:
                 with status_container:

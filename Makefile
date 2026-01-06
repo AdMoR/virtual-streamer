@@ -78,3 +78,5 @@ docker-push-virtual_streamer_api:
 # Build and push in one command
 docker-release-virtual_streamer_api: docker-build-virtual_streamer_api docker-push-virtual_streamer_api
 
+adk-server:
+	@adk web ./virtual_streamer/agents --port 8005

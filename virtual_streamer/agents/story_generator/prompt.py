@@ -51,7 +51,9 @@ Example dialog entry:
 Focus on:
 - Making the refined title catchy and descriptive
 - In story_plan, explain your creative choices and the comedic arc
-- In dialog, make scene_description specific enough to find visually matching videos"""
+- In dialog, make scene_description specific enough to find visually matching videos
+- Each turn of a character should be small, maximum one sentence of 15 words, for a long sentence, spead the sentence into several turns.
+- Last line of the serie must have a twist."""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

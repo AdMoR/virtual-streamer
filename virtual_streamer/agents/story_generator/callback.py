@@ -40,17 +40,14 @@ class SplitStoryCallback(AfterModelCallback):
         story = extract_llm_response_json(llm_response, StoryOutput)
 
         if not story:
-            logger.error("Failed to parse story output from LLM response")
-            callback_context.state[STORY_OUTPUT] = {}
-            callback_context.state[SENTENCES] = DialogLines(lines=[]).model_dump()
-            return
+            raise Exception("Could not extract StoryOutput from response")
 
         # Store the full story output (as dict for state serialization)
         callback_context.state[STORY_OUTPUT] = story.model_dump()
 
         # Store DialogLines as serialized dict (consumer agent will parse back)
-        callback_context.state[SENTENCES] = story.dialog.model_dump()
+        callback_context.state[SENTENCES] = story.model_dump()["dialog"]
 
         logger.info(
-            f"Generated story '{story.title}' with {len(story.dialog.lines)} dialog lines"
+            f"Generated story '{story.title}' with {len(story.dialog)} dialog lines"
         )

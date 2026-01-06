@@ -85,16 +85,16 @@ class SentenceVideoMapper(MapperAgent):
         sentences_data = ctx.session.state.get(SENTENCES_KEY, {})
         
         # Parse DialogLines from state
-        dialog_lines = DialogLines.model_validate(sentences_data)
+        dialog_lines = [DialogLine.model_validate(x) for x in sentences_data]
         
-        if not dialog_lines.lines:
+        if not dialog_lines:
             logger.warning("No dialog lines found in state")
             raise Exception("No dialog lines found in state")
         
-        logger.info(f"Building items for {len(dialog_lines.lines)} dialog lines")
+        logger.info(f"Building items for {len(dialog_lines)} dialog lines")
         
         items = []
-        for line_id, dialog_line in enumerate(dialog_lines.lines):
+        for line_id, dialog_line in enumerate(dialog_lines):
             # Search using scene_description for video embedding search
             search_results = self._video_retriever.search(
                 dialog_line.scene_description, 

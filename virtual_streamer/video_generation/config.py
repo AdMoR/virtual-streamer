@@ -348,9 +348,9 @@ class StoryOutput(BaseModel):
         description="Overall plan and reasoning used to create the dialog. "
                     "Explains the creative choices and comedic arc."
     )
-    dialog: DialogLines = Field(
+    dialog: list[DialogLine] = Field(
         description="The dialog lines. Each line has character_id (from the template), "
-                    "dialog (spoken text), and scene_description (visual description for video search)."
+                    "text (spoken text), and scene_description (visual description for video search)."
     )
 
 

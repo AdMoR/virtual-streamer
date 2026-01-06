@@ -562,10 +562,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 )
                 logger.info(
                     f"[Job {job_id}] Story generated: {story_output.title} "
-                    f"with {len(story_output.dialog.lines)} dialog lines"
+                    f"with {len(story_output.dialog)} dialog lines"
                 )
                 # Extract sentences from story output
-                sentences = story_output.dialog.model_dump()
+                sentences = story_output.dialog
 
             elif request.story_text:
                 # Parse story_text as DialogLines
