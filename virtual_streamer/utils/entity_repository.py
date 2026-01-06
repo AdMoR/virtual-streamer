@@ -309,6 +309,75 @@ class EntityRepository:
                 await cur.execute("DELETE FROM characters WHERE id = %s", (character_id,))
                 return cur.rowcount > 0
 
+    async def update_character(
+        self,
+        character_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        video_clip_path: Optional[str] = None,
+        video_search_tag: Optional[str] = None,
+        identity_images: Optional[List[str]] = None,
+        voice_samples: Optional[List[Dict[str, str]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update an existing character.
+        
+        Only provided fields are updated. Pass None to keep existing value.
+        For voice_samples, if provided, it REPLACES all existing samples.
+        For identity_images, if provided, it REPLACES all existing images.
+        """
+        import json as json_module
+        
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # Build dynamic update query
+                updates = []
+                values = []
+                
+                if name is not None:
+                    updates.append("name = %s")
+                    values.append(name)
+                if description is not None:
+                    updates.append("description = %s")
+                    values.append(description)
+                if video_clip_path is not None:
+                    updates.append("video_clip_path = %s")
+                    values.append(video_clip_path)
+                if video_search_tag is not None:
+                    updates.append("video_search_tag = %s")
+                    values.append(video_search_tag)
+                if identity_images is not None:
+                    updates.append("identity_images = %s")
+                    values.append(json_module.dumps(identity_images))
+
+                if updates:
+                    values.append(character_id)
+                    await cur.execute(
+                        f"UPDATE characters SET {', '.join(updates)} WHERE id = %s",
+                        tuple(values),
+                    )
+
+                # Replace voice samples if provided
+                if voice_samples is not None:
+                    # Delete existing samples
+                    await cur.execute(
+                        "DELETE FROM voice_samples WHERE character_id = %s",
+                        (character_id,),
+                    )
+                    # Insert new samples
+                    for sample in voice_samples:
+                        await cur.execute(
+                            """
+                            INSERT INTO voice_samples (character_id, storage_path, transcript)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (character_id, sample["storage_path"], sample["transcript"]),
+                        )
+
+        return await self.get_character(character_id)
+
     # ==================== VIDEO CLIP METHODS ====================
 
     async def create_video_clip(
