@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 META_PROMPT = """{template_prompt}
 
-Characters available:
+Characters available (use these exact character_id values):
 {characters}
 
 Generate a story with exactly {target_lines} dialogue lines.
@@ -38,12 +38,20 @@ IMPORTANT: Your response must be structured with three parts:
 
 1. **title**: Create a refined, more complete title for the story (based on the user's input: "{title}")
 2. **story_plan**: Describe your overall plan and reasoning for creating this dialog (like a thinking process - what makes this scenario funny, what progression you're following, key elements you're including)
-3. **dialog**: The actual dialog lines produced by the characters, following all the rules above
+3. **dialog**: The actual dialog lines. Each line must include:
+   - **character_id**: Use the exact ID from the characters list above (e.g., "fred", "jamy")
+   - **dialog**: The spoken text (what the character says out loud)
+   - **scene_description**: A visual description of the scene that will be used to search for matching video clips. Describe what should be visible: location, actions, objects, mood. Do NOT include the dialog text here.
+
+Example dialog entry:
+- character_id: "fred"
+- dialog: "Eh dis donc Jamy, ça te dit de faire du surf?"
+- scene_description: "A person talking enthusiastically to the camera in a beach setting with surfboards visible in the background"
 
 Focus on:
 - Making the refined title catchy and descriptive
 - In story_plan, explain your creative choices and the comedic arc
-- In dialog, provide only the spoken lines (no stage directions or descriptions)"""
+- In dialog, make scene_description specific enough to find visually matching videos"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -116,19 +124,20 @@ def build_characters_block(characters: list[dict]) -> str:
     Build the {characters} block from Character entities.
     
     Args:
-        characters: List of character dicts with 'name' and 'description' keys
+        characters: List of character dicts with 'character_id', 'name' and 'description' keys
     
     Returns:
-        Formatted character block string
+        Formatted character block string with character_id clearly shown
     """
     lines = []
     for char in characters:
+        char_id = char.get("character_id", char.get("name", "unknown").lower())
         name = char.get("name", "Unknown")
         desc = char.get("description", "")
         if desc:
-            lines.append(f"- {name}: {desc}")
+            lines.append(f"- {name} (character_id: \"{char_id}\"): {desc}")
         else:
-            lines.append(f"- {name}")
+            lines.append(f"- {name} (character_id: \"{char_id}\")")
     return "\n".join(lines)
 
 
@@ -176,8 +185,8 @@ def format_story_prompt(title: str) -> str:
         template_prompt=DEFAULT_TEMPLATE_PROMPT,
         target_lines=DEFAULT_TARGET_LINES,
         characters=[
-            {"name": "Fred", "description": "Bombastic host of C'est pas Sorcier, overconfident entrepreneur"},
-            {"name": "Jamy", "description": "Scientist and skeptical listener"},
+            {"character_id": "fred", "name": "Fred", "description": "Bombastic host of C'est pas Sorcier, overconfident entrepreneur"},
+            {"character_id": "jamy", "name": "Jamy", "description": "Scientist and skeptical listener"},
         ],
         title=title,
     )
@@ -210,6 +219,7 @@ async def load_template_and_build_prompt(template_id: str, title: str) -> Option
         char = await repo.get_character(char_id)
         if char:
             characters.append({
+                "character_id": char_id,
                 "name": char.get("name", char_id),
                 "description": char.get("description", ""),
             })

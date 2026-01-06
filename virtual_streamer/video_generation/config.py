@@ -321,8 +321,10 @@ from pydantic import BaseModel, Field
 
 
 class DialogLine(BaseModel):
-    character: str
-    dialog: str
+    character_id: str = Field(..., description="ID of the character speaking", example="fred")
+    dialog: str = Field(..., description="The dialogue text", example="Eh dis donc Jamy, ça te dit de faire du surf?")
+    scene_description: str = Field(..., description="The description of the scene", 
+    example="The scene is set in a ski resort in the Alps. A person is talking to the camera.")
 
 
 class DialogLines(BaseModel):
@@ -336,7 +338,7 @@ class StoryOutput(BaseModel):
     The LLM generates a story with three components:
     - title: A refined, catchy title
     - story_plan: The creative reasoning and comedic arc
-    - dialog: The actual spoken lines
+    - dialog: Dialog lines with character_id, dialog text, and scene_description
     """
 
     title: str = Field(
@@ -347,8 +349,8 @@ class StoryOutput(BaseModel):
                     "Explains the creative choices and comedic arc."
     )
     dialog: DialogLines = Field(
-        description="The actual dialog lines produced by Fred and other characters. "
-                    "Only spoken lines, no stage directions or descriptions."
+        description="The dialog lines. Each line has character_id (from the template), "
+                    "dialog (spoken text), and scene_description (visual description for video search)."
     )
 
 

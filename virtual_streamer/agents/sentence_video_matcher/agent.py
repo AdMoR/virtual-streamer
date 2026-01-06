@@ -73,14 +73,14 @@ class SentenceVideoMapper(MapperAgent):
     
     def build_items_from_state(self, ctx: InvocationContext) -> List[Dict[str, Any]]:
         """
-        Build (character, sentence, video_path) items from DialogLines in state.
+        Build (character_id, sentence, scene_description, video_path) items from DialogLines in state.
         
         Reads DialogLines from state, parses into DialogLine objects,
-        searches for candidate videos, and creates items matching 
-        VideoSentenceInput schema.
+        searches for candidate videos using scene_description, and creates 
+        items matching VideoSentenceInput schema.
         
         Returns:
-            List of {"character": str, "sentence": str, "video_path": str} dicts
+            List of {"character_id": str, "sentence": str, "scene_description": str, "video_path": str} dicts
         """
         sentences_data = ctx.session.state.get(SENTENCES_KEY, {})
         
@@ -94,21 +94,23 @@ class SentenceVideoMapper(MapperAgent):
         logger.info(f"Building items for {len(dialog_lines.lines)} dialog lines")
         
         items = []
-        for dialog_line in dialog_lines.lines:
-            # Search using the dialog text - returns VideoSearchResult objects
+        for line_id, dialog_line in enumerate(dialog_lines.lines):
+            # Search using scene_description for video embedding search
             search_results = self._video_retriever.search(
-                dialog_line.dialog, 
+                dialog_line.scene_description, 
                 top_k=self._max_candidates
             )
             
             if not search_results:
-                logger.warning(f"No candidates found for: {dialog_line.dialog[:50]}...")
+                logger.warning(f"No candidates found for line {line_id}: {dialog_line.scene_description[:50]}...")
                 continue
             
             for result in search_results:
                 items.append({
-                    "character": dialog_line.character,
+                    "line_id": line_id,
+                    "character_id": dialog_line.character_id,
                     "sentence": dialog_line.dialog,
+                    "scene_description": dialog_line.scene_description,
                     "video_path": result.path,
                 })
         
@@ -153,7 +155,7 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
             results: List[VideoMatchResult]
     ) -> SentenceVideoMatcherOutput:
         """
-        Group results by sentence and select best match per dialog line.
+        Group results by line_id and select best match per dialog line.
 
         Args:
             results: All VideoMatchResult from parallel workers
@@ -161,22 +163,27 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
         Returns:
             SentenceVideoMatcherOutput with DialogLineMatch per dialog line
         """
-        # Group by (character, sentence) tuple to handle same sentence from different characters
-        by_dialog: Dict[tuple, List[VideoMatchResult]] = {}
+        # Group by line_id (guaranteed unique per dialog line)
+        by_line: Dict[int, List[VideoMatchResult]] = {}
         for result in results:
-            key = (result.character, result.sentence)
-            by_dialog.setdefault(key, []).append(result)
+            by_line.setdefault(result.line_id, []).append(result)
 
-        logger.info(f"Aggregating results for {len(by_dialog)} dialog lines")
+        logger.info(f"Aggregating results for {len(by_line)} dialog lines")
 
         # Select best from each group and convert to DialogLineMatch
+        # Sort by line_id to preserve original order
         matches = []
-        for (character, sentence), group in by_dialog.items():
+        for line_id in sorted(by_line.keys()):
+            group = by_line[line_id]
             best = _select_best(group)
             if best:
                 # Convert VideoMatchResult to DialogLineMatch
                 dialog_line_match = DialogLineMatch(
-                    dialog_line=DialogLine(character=character, dialog=sentence),
+                    dialog_line=DialogLine(
+                        character_id=best.character_id,
+                        dialog=best.sentence,
+                        scene_description=best.scene_description,
+                    ),
                     video_path=best.video_path,
                     rating=best.rating,
                     grade=best.grade,
@@ -184,7 +191,7 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
                 )
                 matches.append(dialog_line_match)
                 logger.debug(
-                    f"Best for '{character}: {sentence[:30]}...': "
+                    f"Best for line {line_id} '{best.character_id}: {best.sentence[:30]}...': "
                     f"{best.video_path} (rating={best.rating}, grade={best.grade})"
                 )
 

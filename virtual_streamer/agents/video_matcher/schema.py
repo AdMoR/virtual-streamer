@@ -20,9 +20,11 @@ class ContextualRating(str, Enum):
 
 
 class VideoSentenceInput(BaseModel):
-    """Input for video matching: character, sentence and video path."""
-    character: str = Field(description="The character speaking this line")
+    """Input for video matching: line_id, character_id, sentence, scene_description and video path."""
+    line_id: int = Field(description="Unique index for this dialog line (for aggregation)")
+    character_id: str = Field(description="The ID of the character speaking this line")
     sentence: str = Field(description="The dialogue sentence to match")
+    scene_description: str = Field(description="Visual description of the scene for video search")
     video_path: str = Field(description="Path to the video file to evaluate")
 
 
@@ -58,8 +60,10 @@ class VideoMatchResult(BaseModel):
     Includes the video_path so we know which video was judged.
     """
     
-    character: str = Field(description="The character speaking this line")
+    line_id: int = Field(description="Unique index for this dialog line (for aggregation)")
+    character_id: str = Field(description="The ID of the character speaking this line")
     sentence: str = Field(description="The original sentence being matched")
+    scene_description: str = Field(description="Visual description of the scene")
     video_path: str = Field(description="Path to the video that was evaluated")
     rating: ContextualRating = Field(description="Match quality rating")
     grade: int = Field(description="Numeric grade for ranking", ge=0, le=10)
@@ -73,8 +77,10 @@ class VideoMatchResult(BaseModel):
     ) -> "VideoMatchResult":
         """Create VideoMatchResult by combining input and output."""
         return cls(
-            character=input_data.character,
+            line_id=input_data.line_id,
+            character_id=input_data.character_id,
             sentence=input_data.sentence,
+            scene_description=input_data.scene_description,
             video_path=input_data.video_path,
             rating=output_data.rating,
             grade=output_data.grade,
