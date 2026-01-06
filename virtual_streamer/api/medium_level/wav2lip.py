@@ -204,7 +204,7 @@ async def generate_wav2lip(payload: Wav2LipRequest):
 
         print(f"Received Wav2Lip request: {payload}")
 
-        character_id = "jesus_short" #payload.character_id
+        character_id = payload.character_id
         audio_path = payload.audio_path
         video_path = payload.video.storage_path
 

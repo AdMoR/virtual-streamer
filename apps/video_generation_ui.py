@@ -72,6 +72,28 @@ def list_characters() -> Optional[list]:
         return []
 
 
+def list_story_templates() -> Optional[list]:
+    """List available story templates."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/story-templates", timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.warning(f"Could not load story templates: {e}")
+        return []
+
+
+def download_video_from_url(url: str) -> Optional[bytes]:
+    """Download video content from a presigned URL."""
+    try:
+        response = requests.get(url, timeout=120)
+        response.raise_for_status()
+        return response.content
+    except Exception as e:
+        st.error(f"Failed to download video: {e}")
+        return None
+
+
 # Title and description
 st.title("🎬 Virtual Streamer - Video Generation")
 st.markdown("""
@@ -135,7 +157,7 @@ with tab1:
     # Input method selection
     input_method = st.radio(
         "Input Method",
-        ["Title (Generate Story)", "Paste Story Text", "From Config Dump"],
+        ["Title (Generate Story)", "From Story Template", "Paste Story Text", "From Config Dump"],
         horizontal=True,
     )
 
@@ -171,6 +193,60 @@ with tab1:
                     st.markdown("Switch to the **Job Status** tab to monitor progress.")
                     # Store in session state
                     st.session_state["current_job_id"] = job_id
+
+    elif input_method == "From Story Template":
+        st.markdown("**Select a story template and provide a scenario title:**")
+
+        # Load available story templates
+        templates = list_story_templates()
+
+        if not templates:
+            st.warning("No story templates available. Create templates via the API first.")
+        else:
+            # Build template options with character info
+            template_options = {}
+            for t in templates:
+                chars = ", ".join(t.get("character_ids", [])) or "No characters"
+                label = f"{t['name']} ({chars})"
+                template_options[label] = t
+
+            selected_label = st.selectbox(
+                "Story Template",
+                options=list(template_options.keys()),
+                help="Select a predefined story template with its associated characters",
+            )
+            selected_template = template_options[selected_label]
+
+            # Show template details
+            with st.expander("Template Details"):
+                st.markdown(f"**Template ID:** `{selected_template['template_id']}`")
+                st.markdown(f"**Target Lines:** {selected_template.get('target_lines', 6)}")
+                st.markdown(f"**Characters:** {', '.join(selected_template.get('character_ids', [])) or 'None'}")
+                st.text_area(
+                    "Prompt Preview",
+                    value=selected_template.get("prompt", "")[:500] + "..." if len(selected_template.get("prompt", "")) > 500 else selected_template.get("prompt", ""),
+                    height=150,
+                    disabled=True,
+                )
+
+            # Title input for the scenario
+            template_title = st.text_input(
+                "Scenario Title",
+                placeholder="e.g., 'Fred découvre les NFT'",
+                help="The specific scenario/topic for this story template",
+            )
+
+            if st.button("🚀 Generate Video", type="primary", disabled=not template_title, key="template_generate"):
+                request_data["title"] = template_title
+                request_data["story_template_id"] = selected_template["template_id"]
+                with st.spinner("Submitting job..."):
+                    job_id = submit_job(request_data)
+                    if job_id:
+                        st.success(f"✓ Job submitted successfully!")
+                        st.info(f"Job ID: `{job_id}`")
+                        st.markdown(f"Using template: **{selected_template['name']}**")
+                        st.markdown("Switch to the **Job Status** tab to monitor progress.")
+                        st.session_state["current_job_id"] = job_id
 
     elif input_method == "Paste Story Text":
         st.markdown("**Paste your story text:**")
@@ -271,15 +347,39 @@ with tab2:
                         if status["status"] == "completed" and status.get("result"):
                             st.success("✓ Video generation completed successfully!")
                             result = status["result"]
+                            metadata = result.get("metadata", {})
 
-                            st.markdown("### 📹 Results")
-                            st.json(result)
+                            # Display video if URL is available
+                            video_url = metadata.get("video_url")
+                            if video_url:
+                                st.markdown("### 📹 Generated Video")
+                                # Download and display video
+                                video_data = download_video_from_url(video_url)
+                                if video_data:
+                                    st.video(video_data)
+                                    # Download button
+                                    st.download_button(
+                                        label="⬇️ Download Video",
+                                        data=video_data,
+                                        file_name=f"video_{job_id_input[:8]}.mp4",
+                                        mime="video/mp4",
+                                    )
+                                else:
+                                    st.warning("Could not load video preview. URL may have expired.")
+                                    st.code(f"Video URL: {video_url}")
+
+                            st.markdown("### 📋 Details")
+                            with st.expander("Full Result Data"):
+                                st.json(result)
 
                             if result.get("video_path"):
                                 st.code(f"Video path: {result['video_path']}")
 
                             if result.get("config_dump_path"):
                                 st.code(f"Config dump: {result['config_dump_path']}")
+
+                            if metadata.get("total_duration"):
+                                st.info(f"Video duration: {metadata['total_duration']:.1f} seconds")
 
                             break  # Stop auto-refresh
 
@@ -321,7 +421,32 @@ with tab2:
 
                 if status["status"] == "completed" and status.get("result"):
                     st.success("✓ Video generation completed!")
-                    st.json(status["result"])
+                    result = status["result"]
+                    metadata = result.get("metadata", {})
+
+                    # Display video if URL is available
+                    video_url = metadata.get("video_url")
+                    if video_url:
+                        st.markdown("### 📹 Generated Video")
+                        video_data = download_video_from_url(video_url)
+                        if video_data:
+                            st.video(video_data)
+                            st.download_button(
+                                label="⬇️ Download Video",
+                                data=video_data,
+                                file_name=f"video_{job_id_input[:8]}.mp4",
+                                mime="video/mp4",
+                                key="manual_download",
+                            )
+                        else:
+                            st.warning("Could not load video preview.")
+                            st.code(f"Video URL: {video_url}")
+
+                    with st.expander("Full Result Data"):
+                        st.json(result)
+
+                    if metadata.get("total_duration"):
+                        st.info(f"Video duration: {metadata['total_duration']:.1f} seconds")
 
                 elif status["status"] == "failed":
                     st.error("❌ Failed")

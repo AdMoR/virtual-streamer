@@ -48,7 +48,7 @@ async def generate_tts(payload: DialogueEntry):
     # Fetch character data to get voice configuration
     try:
         repo = get_entity_repository()
-        character_id = "jesus_short" #payload.character_id
+        character_id = payload.character_id
         character_data = await repo.get_character(character_id)
         if character_data is None:
             raise HTTPException(

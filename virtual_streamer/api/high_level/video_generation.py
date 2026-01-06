@@ -37,6 +37,7 @@ from virtual_streamer.agents.sentence_video_matcher import (
 )
 from virtual_streamer.agents.common.state_keys import (
     TITLE,
+    STORY_TEMPLATE_ID,
     STORY_OUTPUT,
     SENTENCES,
     VIDEO_MATCHES,
@@ -199,12 +200,15 @@ class WebserviceClient:
 APP_NAME = "virtual_streamer"
 
 
-async def run_story_generator(title: str) -> StoryOutput:
+async def run_story_generator(
+    title: str, story_template_id: Optional[str] = None
+) -> StoryOutput:
     """
     Run the StoryGeneratorAgent to generate a story from a title.
 
     Args:
         title: The title/topic for story generation
+        story_template_id: Optional story template ID to customize generation
 
     Returns:
         StoryOutput with title, story_plan, and dialog
@@ -223,11 +227,14 @@ async def run_story_generator(title: str) -> StoryOutput:
     # Create session with initial state
     user_id = f"user_{uuid.uuid4().hex[:8]}"
     session_id = f"story_{uuid.uuid4().hex[:8]}"
+    initial_state = {TITLE: title}
+    if story_template_id:
+        initial_state[STORY_TEMPLATE_ID] = story_template_id
     session = await session_service.create_session(
         app_name=APP_NAME,
         user_id=user_id,
         session_id=session_id,
-        state={TITLE: title},
+        state=initial_state,
     )
 
     logger.info(f"Running StoryGeneratorAgent for title: {title}")
@@ -452,10 +459,13 @@ async def script_to_video(
 class VideoGenerationRequest(BaseModel):
     """Request model for video generation."""
 
-    # Input (mutually exclusive)
+    # Input (mutually exclusive: title, story_text, or from_config_dump)
     title: Optional[str] = None
     story_text: Optional[str] = None
     from_config_dump: Optional[str] = None
+
+    # Story template (optional, used with title to customize story generation)
+    story_template_id: Optional[str] = None
 
     # Character configuration
     character_name: Optional[str] = "fred"
@@ -545,7 +555,11 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             if request.title:
                 # Step 1: Run StoryGeneratorAgent
                 logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
-                story_output = await run_story_generator(request.title)
+                if request.story_template_id:
+                    logger.info(f"[Job {job_id}] Using story template: {request.story_template_id}")
+                story_output = await run_story_generator(
+                    request.title, story_template_id=request.story_template_id
+                )
                 logger.info(
                     f"[Job {job_id}] Story generated: {story_output.title} "
                     f"with {len(story_output.dialog.lines)} dialog lines"
@@ -595,6 +609,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             minio_video_key = f"generated_videos/{timestamp}/video_{timestamp}.mp4"
             await storage.upload_file(final_video_path, minio_video_key)
 
+            # Generate presigned URL for video access
+            video_url = storage.get_url(minio_video_key)
+            logger.info(f"[Job {job_id}] Video URL generated: {video_url[:80]}...")
+
             result = GenerationResult(
                 video_path=final_video_path,
                 config_dump_path=None,
@@ -604,6 +622,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                     "total_duration": get_length(final_video_path),
                     "timestamp": datetime.now().isoformat(),
                     "minio_video_key": minio_video_key,
+                    "video_url": video_url,
                 },
             )
 
