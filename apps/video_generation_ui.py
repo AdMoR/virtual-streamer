@@ -11,6 +11,7 @@ import time
 import json
 from typing import Optional, Dict, Any
 import os
+from virtual_streamer.utils.minio_client import MinIOClient, run_async_in_threads
 
 # Configuration
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
@@ -18,6 +19,15 @@ API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
 # Page config
 st.set_page_config(
     page_title="Virtual Streamer - Video Generation", page_icon="🎬", layout="wide"
+)
+
+
+bucket = "virtual_streamer"
+client = MinIOClient(
+    access_key=os.environ.get("MINIO_ROOT_USER"),
+    secret_key=os.environ.get("MINIO_ROOT_PASSWORD"),
+    endpoint="http://localhost:9000",
+    bucket=bucket
 )
 
 
@@ -325,16 +335,12 @@ with tab2:
                             if video_url:
                                 st.markdown("### 📹 Generated Video")
                                 # Download and display video
-                                video_data = download_video_from_url(video_url)
-                                if video_data:
-                                    st.video(video_data)
-                                    # Download button
-                                    st.download_button(
-                                        label="⬇️ Download Video",
-                                        data=video_data,
-                                        file_name=f"video_{job_id_input[:8]}.mp4",
-                                        mime="video/mp4",
-                                    )
+                                local_path = f"/tmp/{os.path.basename(video_url)}"
+                                client = MinIOClient(bucket=bucket)
+                                bucket_path = video_url.split("/")[1].lstrip("/")
+                                run_async_in_threads(client.download_file(bucket_path, local_path))
+                                if local_path:
+                                    st.video(local_path)
                                 else:
                                     st.warning("Could not load video preview. URL may have expired.")
                                     st.code(f"Video URL: {video_url}")

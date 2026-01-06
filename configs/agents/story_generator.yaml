@@ -7,7 +7,7 @@ model:
   # Use Claude Sonnet for high-quality creative writing
   provider: anthropic
   model: claude-sonnet-4-5-20250929
-  temperature: 0.8  # Higher temperature for creativity
+  temperature: 0.3  # Higher temperature for creativity
   max_tokens: 4096
 
 metadata:

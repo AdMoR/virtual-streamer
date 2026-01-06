@@ -197,7 +197,7 @@ class VideoGenerationConfig(BaseSettings):
     max_search_attempts: int = Field(
         default=1, gt=0, description="Max attempts to find alternative search keywords"
     )
-    max_video_judgement_attempts: int = Field(
+    max_video_candidates: int = Field(
         default=1, gt=0, description="Max videos to judge for each sentence"
     )
 

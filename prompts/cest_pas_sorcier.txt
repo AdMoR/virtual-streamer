@@ -28,6 +28,12 @@ Story Arc:
 
 6. The character don't explain their joke.
 
+The final dialog line should contain a twist.
+Some example :
+- Fred has prepaid a large amount of money for his stupid idea => shutting the story here is great because it created a final surprise.
+- Fred tells his plan to create a "Fête du slip" and finished by "Tu en penses quoi Jamy", Jamy answer "Moi je mets pluto des strings" => it creates a surprise as Jamy seems very serious and could not wear strings.
+Please consider other twist ideas when building the plan.
+
 Tone elements:
 
 • Fred is overly excited by his brand new idea and overlooks the absurdity of his idea. The text is told as Fred is speaking to Jamy, but the video is seen from Jamy's point of view, Fred speaks to the camera while showing things.

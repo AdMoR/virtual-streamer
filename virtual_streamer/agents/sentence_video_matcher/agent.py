@@ -95,6 +95,10 @@ class SentenceVideoMapper(MapperAgent):
         
         # Parse DialogLines from state
         dialog_lines = [DialogLine.model_validate(x) for x in sentences_data]
+        print("-" * 30)
+        logger.info(
+            "\n".join(f"{x.character_id}: {x.text}" for x in dialog_lines)
+        )
         
         if not dialog_lines:
             logger.warning("No dialog lines found in state")
@@ -108,6 +112,7 @@ class SentenceVideoMapper(MapperAgent):
             search_results = self._video_retriever.search(
                 query=dialog_line.scene_description,
                 collection=collection,
+                tags=[dialog_line.character_id],
                 top_k=self._max_candidates,
             )
             
@@ -210,7 +215,7 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
 
 def create_sentence_video_matcher(
     video_retriever: VideoRetrieverInterface,
-    max_candidates: int = 1,
+    max_candidates: int,
 ) -> MapReduceAgent:
     """
     Factory function to create a SentenceVideoMatcher agent.

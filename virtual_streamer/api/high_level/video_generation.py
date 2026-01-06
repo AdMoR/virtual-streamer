@@ -92,9 +92,8 @@ class WebserviceClient:
     Handles TTS, Wav2Lip, and STT API calls with proper error handling.
     """
 
-    def __init__(self, config: APIConfig, character_id: str = "fred"):
+    def __init__(self, config: APIConfig):
         self.config = config
-        self.character_id = character_id
         self._client: Optional[httpx.AsyncClient] = None
 
     async def __aenter__(self):
@@ -108,12 +107,13 @@ class WebserviceClient:
         if self._client:
             await self._client.aclose()
 
-    async def generate_tts(self, text: str, entry_id: str = "") -> str:
+    async def generate_tts(self, text: str, character_id: str, entry_id: str = "") -> str:
         """
         Call TTS API to generate audio from text.
 
         Args:
             text: Dialog text to synthesize
+            character_id: Character ID to synthesize
             entry_id: Optional entry ID for tracking
 
         Returns:
@@ -123,7 +123,7 @@ class WebserviceClient:
             "/api/v1/tts/generate",
             json={
                 "entry_id": entry_id or f"tts_{datetime.now().timestamp()}",
-                "character_id": self.character_id,
+                "character_id": character_id,
                 "text": text,
                 "timestamp": 0,
             },
@@ -137,6 +137,7 @@ class WebserviceClient:
         self,
         audio_path: str,
         video_path: str,
+        character_id: str,
         output_dir: Optional[str] = None,
     ) -> str:
         """
@@ -162,7 +163,7 @@ class WebserviceClient:
                     "subtitles_enabled": False,
                     "subtitle_style": None,
                 },
-                "character_id": self.character_id,
+                "character_id": character_id,
                 "output_dir": output_dir,
             },
             timeout=30*60,
@@ -296,7 +297,7 @@ async def run_sentence_video_matcher(
     # Create the sentence video matcher agent
     video_matcher = create_sentence_video_matcher(
         video_retriever=video_retriever,
-        max_candidates=config.max_video_judgement_attempts,
+        max_candidates=config.max_video_candidates,
     )
 
     # Create session service and runner
@@ -408,6 +409,7 @@ async def script_to_video(
             logger.info(f"  [1/4] Generating TTS audio...")
             audio_path = await client.generate_tts(
                 text=dialog,
+                character_id=match.dialog_line.character_id,
                 entry_id=f"segment_{i}",
             )
             logger.info(f"  Audio generated: {audio_path}")
@@ -418,6 +420,7 @@ async def script_to_video(
             lip_synced_video = await client.generate_wav2lip(
                 audio_path=audio_path,
                 video_path=video_path,
+                character_id=match.dialog_line.character_id,
                 output_dir=wav2lip_output_dir,
             )
             logger.info(f"  Lip-synced video: {lip_synced_video}")
@@ -472,9 +475,6 @@ class VideoGenerationRequest(BaseModel):
     # Story template (required - defines characters, prompt, and video collection)
     story_template_id: str
 
-    # Character configuration
-    character_name: Optional[str] = "fred"
-
     # LLM configuration (for ADK agents)
     llm_provider: Optional[str] = "anthropic"
     llm_model: Optional[str] = "claude-sonnet-4-5-20250929"
@@ -519,7 +519,6 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         config = VideoGenerationConfig(
             title=request.title,
             story_file=None,
-            character_name=request.character_name,
             output_dir=request.output_dir or "./output",
             verbose=request.verbose,
             max_parallel_llm_calls=request.max_parallel_llm_calls,
@@ -534,7 +533,6 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
 
         # API configuration
         api_config = APIConfig()
-        character_id = request.character_name or "fred"
 
         story_output = None
         sentences = None
@@ -567,19 +565,9 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         elif request.story_text:
             # Parse story_text as DialogLines
             # For now, treat story_text as simple text to be split
-            from virtual_streamer.agents.story_generator.schema import (
-                DialogLine,
-                DialogLines,
+            story_output = await run_story_generator(
+                request.story_text, story_template_id=request.story_template_id
             )
-
-            # Simple split by newlines - each line is a dialog from "Fred"
-            lines = [
-                DialogLine(character="Fred", text=line.strip())
-                for line in request.story_text.split("\n")
-                if line.strip()
-            ]
-            dialog_lines = DialogLines(lines=lines)
-            sentences = dialog_lines.model_dump()
 
         # Step 2: Run SentenceVideoMatcher
         logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
@@ -591,7 +579,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         # Step 3: Script to Video (TTS, Wav2Lip, STT via webservices)
         logger.info(f"[Job {job_id}] Running script_to_video...")
 
-        async with WebserviceClient(api_config, character_id) as client:
+        async with WebserviceClient(api_config) as client:
             final_video_path = await script_to_video(
                 matches=video_matches.matches,
                 client=client,

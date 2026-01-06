@@ -33,7 +33,7 @@ DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", "/media/amor/data1/Downloads/CPS/c
 
 def get_video_generation_orchestrator(
         video_retriever: VideoRetrieverInterface,
-        max_video_candidates: int = 5,
+        max_video_candidates: int ,
 ) -> SequentialAgent:
     """
     Create the main video generation orchestrator.
@@ -148,7 +148,7 @@ def create_root_agent() -> SequentialAgent:
 
     return get_video_generation_orchestrator(
         video_retriever=video_retriever,
-        max_video_candidates=5,
+        max_video_candidates=2,
     )
 
 

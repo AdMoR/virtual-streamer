@@ -319,7 +319,7 @@ async def run_video_generation(
     logger.info("Creating ADK orchestrator...")
     orchestrator = get_video_generation_orchestrator(
         video_retriever=video_retriever,
-        max_video_candidates=config.max_video_judgement_attempts,
+        max_video_candidates=config.max_video_candidates,
     )
     
     # Create session and run orchestrator
@@ -478,7 +478,7 @@ async def main():
     config = VideoGenerationConfig()
     config.output_dir = args.output_dir
     config.temp_dir = args.temp_dir
-    config.max_video_judgement_attempts = args.max_candidates
+    config.max_video_candidates = args.max_candidates
     config.video_processing.fontsize = args.fontsize
     
     api_config = APIConfig(
