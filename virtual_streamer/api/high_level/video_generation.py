@@ -552,11 +552,24 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             story_output = None
             sentences = None
 
+            # Load StoryTemplate to get collection for video search
+            story_template = None
+            if request.story_template_id:
+                from virtual_streamer.utils.entity_repository import get_entity_repository
+                repo = get_entity_repository()
+                story_template = await repo.get_story_template(request.story_template_id)
+                if story_template is None:
+                    raise ValueError(f"Story template '{request.story_template_id}' not found")
+                # Set the collection from the template
+                config.video_retrieval.collection = story_template["collection"]
+                logger.info(
+                    f"[Job {job_id}] Using story template: {request.story_template_id}, "
+                    f"collection: {story_template['collection']}"
+                )
+
             if request.title:
                 # Step 1: Run StoryGeneratorAgent
                 logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
-                if request.story_template_id:
-                    logger.info(f"[Job {job_id}] Using story template: {request.story_template_id}")
                 story_output = await run_story_generator(
                     request.title, story_template_id=request.story_template_id
                 )
@@ -583,6 +596,13 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 ]
                 dialog_lines = DialogLines(lines=lines)
                 sentences = dialog_lines.model_dump()
+
+            # Validate that collection is set before video matching
+            if not config.video_retrieval.collection:
+                raise ValueError(
+                    "Video retrieval collection is required. "
+                    "Provide a story_template_id with a configured collection."
+                )
 
             # Step 2: Run SentenceVideoMatcher
             logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")

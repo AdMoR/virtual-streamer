@@ -275,6 +275,9 @@ class StoryTemplateBase(BaseModel):
         description="Full prompt text containing tone, rules, examples. "
         "Variables {title}, {target_lines}, {characters} are injected by meta-prompt.",
     )
+    collection: str = Field(
+        ..., description="Qdrant collection name for video search"
+    )
     target_lines: int = Field(
         default=6,
         gt=0,
@@ -302,6 +305,7 @@ class StoryTemplate(StoryTemplateBase):
                 "template_id": "cest_pas_sorcier",
                 "name": "C'est pas Sorcier Parody",
                 "prompt": "You are a designer of a humorous parody of C'est pas Sorcier...\nFred is overconfident...\nJamy speaks max ONCE...",
+                "collection": "cps_videos",
                 "target_lines": 6,
                 "character_ids": ["fred", "jamy"],
                 "created_at": "2025-01-05T12:00:00Z",
