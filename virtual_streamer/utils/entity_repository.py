@@ -163,6 +163,28 @@ class EntityRepository:
                     )
                 """)
 
+                # Story templates table
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS story_templates (
+                        id VARCHAR(255) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        prompt TEXT NOT NULL,
+                        target_lines INT DEFAULT 6,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # Template-Characters join table (many-to-many)
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS template_characters (
+                        template_id VARCHAR(255) NOT NULL,
+                        character_id VARCHAR(255) NOT NULL,
+                        PRIMARY KEY (template_id, character_id),
+                        FOREIGN KEY (template_id) REFERENCES story_templates(id) ON DELETE CASCADE,
+                        FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                    )
+                """)
+
                 print("Ensured all entity tables exist")
 
     # ==================== CHARACTER METHODS ====================
@@ -493,6 +515,159 @@ class EntityRepository:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("DELETE FROM video_clips WHERE id = %s", (clip_id,))
+                return cur.rowcount > 0
+
+    # ==================== STORY TEMPLATE METHODS ====================
+
+    async def create_story_template(
+        self,
+        template_id: str,
+        name: str,
+        prompt: str,
+        target_lines: int = 6,
+        character_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Create a new story template with associated characters."""
+        pool = await self._get_pool()
+        now = datetime.utcnow()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # Insert story template
+                await cur.execute(
+                    """
+                    INSERT INTO story_templates (id, name, prompt, target_lines, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (template_id, name, prompt, target_lines, now),
+                )
+
+                # Insert character associations
+                if character_ids:
+                    for character_id in character_ids:
+                        await cur.execute(
+                            """
+                            INSERT INTO template_characters (template_id, character_id)
+                            VALUES (%s, %s)
+                            """,
+                            (template_id, character_id),
+                        )
+
+        return await self.get_story_template(template_id)
+
+    async def get_story_template(self, template_id: str) -> Optional[Dict[str, Any]]:
+        """Get a story template by ID with its associated characters."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # Get template
+                await cur.execute(
+                    "SELECT id, name, prompt, target_lines, created_at FROM story_templates WHERE id = %s",
+                    (template_id,),
+                )
+                row = await cur.fetchone()
+                if row is None:
+                    return None
+
+                template = {
+                    "template_id": row[0],
+                    "name": row[1],
+                    "prompt": row[2],
+                    "target_lines": row[3],
+                    "created_at": row[4].isoformat() if row[4] else None,
+                    "updated_at": row[4].isoformat() if row[4] else None,
+                }
+
+                # Get associated character IDs
+                await cur.execute(
+                    "SELECT character_id FROM template_characters WHERE template_id = %s",
+                    (template_id,),
+                )
+                char_rows = await cur.fetchall()
+                template["character_ids"] = [c[0] for c in char_rows]
+
+                return template
+
+    async def list_story_templates(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """List all story templates with their character associations."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id FROM story_templates ORDER BY created_at DESC LIMIT %s",
+                    (limit,),
+                )
+                rows = await cur.fetchall()
+
+        templates = []
+        for row in rows:
+            template = await self.get_story_template(row[0])
+            if template:
+                templates.append(template)
+
+        return templates
+
+    async def update_story_template(
+        self,
+        template_id: str,
+        name: Optional[str] = None,
+        prompt: Optional[str] = None,
+        target_lines: Optional[int] = None,
+        character_ids: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Update an existing story template."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # Build dynamic update query
+                updates = []
+                values = []
+                if name is not None:
+                    updates.append("name = %s")
+                    values.append(name)
+                if prompt is not None:
+                    updates.append("prompt = %s")
+                    values.append(prompt)
+                if target_lines is not None:
+                    updates.append("target_lines = %s")
+                    values.append(target_lines)
+
+                if updates:
+                    values.append(template_id)
+                    await cur.execute(
+                        f"UPDATE story_templates SET {', '.join(updates)} WHERE id = %s",
+                        tuple(values),
+                    )
+
+                # Update character associations if provided
+                if character_ids is not None:
+                    # Remove existing associations
+                    await cur.execute(
+                        "DELETE FROM template_characters WHERE template_id = %s",
+                        (template_id,),
+                    )
+                    # Add new associations
+                    for character_id in character_ids:
+                        await cur.execute(
+                            """
+                            INSERT INTO template_characters (template_id, character_id)
+                            VALUES (%s, %s)
+                            """,
+                            (template_id, character_id),
+                        )
+
+        return await self.get_story_template(template_id)
+
+    async def delete_story_template(self, template_id: str) -> bool:
+        """Delete a story template (cascade deletes character associations)."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM story_templates WHERE id = %s", (template_id,))
                 return cur.rowcount > 0
 
     async def close(self):

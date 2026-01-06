@@ -27,6 +27,9 @@ Usage:
 TITLE = "title"
 """str: Input title for story generation. Example: "Fred se lance dans l'IA" """
 
+STORY_TEMPLATE_ID = "story_template_id"
+"""str: Optional story template ID to use for generation. If not set, uses default prompt."""
+
 CONFIG = "config"
 """dict: Serialized VideoGenerationConfig with all settings."""
 

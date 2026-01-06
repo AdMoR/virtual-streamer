@@ -167,6 +167,13 @@ class VideoGenerationConfig(BaseSettings):
         default=None, description="Recreate video from config dump (skips LLM calls)"
     )
 
+    # Story template configuration
+    story_template_id: Optional[str] = Field(
+        default=None,
+        description="ID of story template to use for generation. "
+        "If not set, uses default C'est pas Sorcier template.",
+    )
+
     # ========================================================================
     # Configuration files
     # ========================================================================

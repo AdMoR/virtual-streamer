@@ -1,14 +1,56 @@
+"""
+Story Generation Prompt Builder.
+
+Supports two modes:
+1. Template-based: Loads StoryTemplate from DB and builds prompt via meta-prompt
+2. Fallback: Uses hardcoded default prompt for backward compatibility
+
+The two-level prompt system:
+- Template prompt: Raw text stored in DB (tone, rules, examples - story-specific)
+- Meta prompt: Hardcoded in code, wraps template and injects {title}, {target_lines}, {characters}
+"""
+
 import logging
+from typing import Optional
 
 from google.adk.agents.readonly_context import ReadonlyContext
 
-from virtual_streamer.agents.common.state_keys import TITLE
+from virtual_streamer.agents.common.state_keys import TITLE, STORY_TEMPLATE_ID
 from virtual_streamer.lib.providers.instruction import InstructionProvider
 
 logger = logging.getLogger(__name__)
 
-# Base prompt for C'est pas Sorcier parody generation
-STORY_GENERATION_PROMPT = """You are a designer of a humorous parody of C'est pas Sorcier the French Science discovery show.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# META PROMPT - Wraps template prompt and injects variables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+META_PROMPT = """{template_prompt}
+
+Characters available:
+{characters}
+
+Generate a story with exactly {target_lines} dialogue lines.
+
+Scenario: {title}
+
+IMPORTANT: Your response must be structured with three parts:
+
+1. **title**: Create a refined, more complete title for the story (based on the user's input: "{title}")
+2. **story_plan**: Describe your overall plan and reasoning for creating this dialog (like a thinking process - what makes this scenario funny, what progression you're following, key elements you're including)
+3. **dialog**: The actual dialog lines produced by the characters, following all the rules above
+
+Focus on:
+- Making the refined title catchy and descriptive
+- In story_plan, explain your creative choices and the comedic arc
+- In dialog, provide only the spoken lines (no stage directions or descriptions)"""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEFAULT TEMPLATE PROMPT - Used when no story_template_id is provided
+# ═══════════════════════════════════════════════════════════════════════════════
+
+DEFAULT_TEMPLATE_PROMPT = """You are a designer of a humorous parody of C'est pas Sorcier the French Science discovery show.
 This humorous version is set in the present days, 20 years after the last airing of C'est pas Sorcier and Fred and Jamy the 2 main presenters of the show are still working together.
 Fred is always the main actor of the story.
 
@@ -38,8 +80,6 @@ Story Arc:
 
 6. The character don't explain their joke.
 
-7. The story should be fast paced, one idea per sentence. The story finishes in 6 sentences.
-
 Tone elements:
 
 • Fred is overly excited by his brand new idea and overlooks the absurdity of his idea. The text is told as Fred is speaking to Jamy, but the video is seen from Jamy's point of view, Fred speaks to the camera while showing things.
@@ -61,25 +101,70 @@ Other rules:
 This script will be used to generate a humoristic video. Each entry like "Fred: ......" will be used for a single sequence.
 A sequence should convey a single idea, where Fred is doing a single Action.
 
-Now create a story based on the user proposition:
+The story should be fast paced, one idea per sentence."""
 
-Scenario: {title}
+DEFAULT_TARGET_LINES = 6
+DEFAULT_CHARACTERS = "- Fred: Bombastic host of C'est pas Sorcier, overconfident entrepreneur\n- Jamy: Scientist and skeptical listener"
 
-IMPORTANT: Your response must be structured with three parts:
 
-1. **title**: Create a refined, more complete title for the story (based on the user's input: "{title}")
-2. **story_plan**: Describe your overall plan and reasoning for creating this dialog (like a thinking process - what makes this scenario funny, what progression you're following, key elements you're including)
-3. **dialog**: The actual dialog lines produced by Fred (and potentially other characters), following all the rules above
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROMPT BUILDING FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
 
-Focus on:
-- Making the refined title catchy and descriptive
-- In story_plan, explain your creative choices and the comedic arc
-- In dialog, provide only the spoken lines (no stage directions or descriptions)"""
+def build_characters_block(characters: list[dict]) -> str:
+    """
+    Build the {characters} block from Character entities.
+    
+    Args:
+        characters: List of character dicts with 'name' and 'description' keys
+    
+    Returns:
+        Formatted character block string
+    """
+    lines = []
+    for char in characters:
+        name = char.get("name", "Unknown")
+        desc = char.get("description", "")
+        if desc:
+            lines.append(f"- {name}: {desc}")
+        else:
+            lines.append(f"- {name}")
+    return "\n".join(lines)
+
+
+def build_prompt_from_template(
+    template_prompt: str,
+    target_lines: int,
+    characters: list[dict],
+    title: str,
+) -> str:
+    """
+    Build the final prompt using the meta-prompt system.
+    
+    Args:
+        template_prompt: Raw prompt text from StoryTemplate
+        target_lines: Target number of dialogue lines
+        characters: List of character dicts with 'name' and 'description'
+        title: Story title/scenario
+    
+    Returns:
+        Complete formatted prompt
+    """
+    characters_block = build_characters_block(characters)
+    
+    return META_PROMPT.format(
+        template_prompt=template_prompt,
+        characters=characters_block,
+        target_lines=target_lines,
+        title=title,
+    )
 
 
 def format_story_prompt(title: str) -> str:
     """
-    Format the story generation prompt with the given title.
+    Format the default story generation prompt with the given title.
+    
+    This is the fallback when no story_template_id is provided.
     
     Args:
         title: The scenario/title for story generation
@@ -87,18 +172,76 @@ def format_story_prompt(title: str) -> str:
     Returns:
         Formatted prompt string
     """
-    return STORY_GENERATION_PROMPT.format(title=title)
+    return build_prompt_from_template(
+        template_prompt=DEFAULT_TEMPLATE_PROMPT,
+        target_lines=DEFAULT_TARGET_LINES,
+        characters=[
+            {"name": "Fred", "description": "Bombastic host of C'est pas Sorcier, overconfident entrepreneur"},
+            {"name": "Jamy", "description": "Scientist and skeptical listener"},
+        ],
+        title=title,
+    )
+
+
+async def load_template_and_build_prompt(template_id: str, title: str) -> Optional[str]:
+    """
+    Load a story template from DB and build the prompt.
+    
+    Args:
+        template_id: ID of the story template to load
+        title: Story title/scenario
+    
+    Returns:
+        Formatted prompt string, or None if template not found
+    """
+    from virtual_streamer.utils.entity_repository import get_entity_repository
+    
+    repo = get_entity_repository()
+    
+    # Load template
+    template = await repo.get_story_template(template_id)
+    if template is None:
+        logger.warning(f"Story template '{template_id}' not found")
+        return None
+    
+    # Load associated characters
+    characters = []
+    for char_id in template.get("character_ids", []):
+        char = await repo.get_character(char_id)
+        if char:
+            characters.append({
+                "name": char.get("name", char_id),
+                "description": char.get("description", ""),
+            })
+        else:
+            logger.warning(f"Character '{char_id}' referenced by template not found")
+    
+    # Build prompt
+    return build_prompt_from_template(
+        template_prompt=template["prompt"],
+        target_lines=template.get("target_lines", DEFAULT_TARGET_LINES),
+        characters=characters,
+        title=title,
+    )
 
 
 class StoryInstructionProvider(InstructionProvider):
     """
-    Dynamic instruction provider that reads the title from state
-    and formats the story generation prompt.
+    Dynamic instruction provider that reads title and optional story_template_id
+    from state and builds the appropriate prompt.
+    
+    If story_template_id is provided:
+        - Loads StoryTemplate from DB
+        - Loads associated Characters
+        - Builds prompt via meta-prompt system
+    
+    Otherwise:
+        - Uses default hardcoded C'est pas Sorcier prompt
     """
 
     async def __call__(self, ctx: ReadonlyContext) -> str:
         """
-        Generate the instruction by reading title from state.
+        Generate the instruction by reading title and template from state.
 
         Args:
             ctx: Readonly context with access to state
@@ -109,5 +252,17 @@ class StoryInstructionProvider(InstructionProvider):
         title = ctx.state.get(TITLE, "")
         if not title:
             logger.warning("No title found in state, using empty title")
-
+        
+        # Check if a template ID is specified
+        template_id = ctx.state.get(STORY_TEMPLATE_ID)
+        
+        if template_id:
+            logger.info(f"Using story template: {template_id}")
+            prompt = await load_template_and_build_prompt(template_id, title)
+            if prompt:
+                return prompt
+            else:
+                logger.warning(f"Template '{template_id}' not found, falling back to default")
+        
+        # Fallback to default prompt
         return format_story_prompt(title)

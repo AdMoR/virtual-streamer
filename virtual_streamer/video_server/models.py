@@ -261,3 +261,50 @@ class ProjectValidationResult(BaseModel):
     )
     issues: List[ValidationIssue] = Field(default_factory=list)
     validated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# --- Story Template Models ---
+
+
+class StoryTemplateBase(BaseModel):
+    """Base model for story template, used for creation."""
+
+    name: str = Field(..., description="Display name of the story template")
+    prompt: str = Field(
+        ...,
+        description="Full prompt text containing tone, rules, examples. "
+        "Variables {title}, {target_lines}, {characters} are injected by meta-prompt.",
+    )
+    target_lines: int = Field(
+        default=6,
+        gt=0,
+        description="Target number of dialogue lines in generated story",
+    )
+    character_ids: List[str] = Field(
+        default_factory=list,
+        description="List of character IDs that can appear in stories using this template",
+    )
+
+
+class StoryTemplate(StoryTemplateBase):
+    """Full StoryTemplate representation, including generated fields."""
+
+    template_id: str = Field(
+        ..., description="Unique identifier for the story template"
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        orm_mode = True
+        json_schema_extra = {
+            "example": {
+                "template_id": "cest_pas_sorcier",
+                "name": "C'est pas Sorcier Parody",
+                "prompt": "You are a designer of a humorous parody of C'est pas Sorcier...\nFred is overconfident...\nJamy speaks max ONCE...",
+                "target_lines": 6,
+                "character_ids": ["fred", "jamy"],
+                "created_at": "2025-01-05T12:00:00Z",
+                "updated_at": "2025-01-05T12:00:00Z",
+            }
+        }
