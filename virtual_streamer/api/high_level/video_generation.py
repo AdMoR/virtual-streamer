@@ -619,6 +619,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             "story_output": result.story_output.model_dump()
             if result.story_output
             else None,
+            "video_matches": [match.model_dump() for match in video_matches.matches],
         }
         await job_store.update_job(job_id, status="completed", result=result_data)
 

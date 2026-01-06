@@ -233,14 +233,16 @@ def main():
         success, result = wait_for_job(args.api_url, job_id, args.poll_interval)
         if success:
             success_count += 1
-            # Collect story output if stories-output is enabled
+            # Collect story output and video matches if stories-output is enabled
             if args.stories_output and result:
                 story_output = result.get("story_output")
+                video_matches = result.get("video_matches")
                 if story_output:
                     collected_stories.append({
                         "original_title": title,
                         "job_id": job_id,
                         "story_output": story_output,
+                        "video_matches": video_matches,
                     })
         else:
             failure_count += 1
