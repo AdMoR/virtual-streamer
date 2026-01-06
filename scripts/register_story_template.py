@@ -3,6 +3,9 @@
 Story Template Registration Script.
 
 Registers a new story template with associated characters via the API.
+Supports two cleanup modes:
+  --purge: Delete all templates but keep table schema
+  --drop-tables: Drop and recreate tables (for schema migrations)
 
 Usage:
     python scripts/register_story_template.py \
@@ -18,6 +21,13 @@ Usage:
         --collection jesus_videos \
         --target-lines 8 \
         --prompt "You are creating sermons in the style of AI Jesus..."
+
+    # Drop tables and recreate with new schema, then register
+    python scripts/register_story_template.py --drop-tables \
+        --name "C'est pas Sorcier" \
+        --characters fred jamy \
+        --collection cps_videos \
+        --prompt-file prompts/cest_pas_sorcier.txt
 """
 
 import argparse
@@ -25,6 +35,83 @@ import sys
 from pathlib import Path
 
 import requests
+
+
+def drop_tables(api_url: str) -> bool:
+    """
+    Drop and recreate the story template tables.
+    
+    This is useful for schema migrations when the table structure has changed.
+    
+    Args:
+        api_url: Base API URL
+        
+    Returns:
+        True if successful
+    """
+    url = f"{api_url.rstrip('/')}/api/v1/story-templates/admin/drop-tables"
+    
+    print("\nDropping and recreating story template tables...")
+    print("  WARNING: This deletes ALL story templates permanently!")
+    
+    response = requests.post(url)
+    
+    if response.ok:
+        result = response.json()
+        print(f"✓ {result.get('message', 'Tables reset successfully')}")
+        return True
+    else:
+        print(f"✗ Failed to drop tables: {response.status_code}")
+        print(f"  Response: {response.text}")
+        return False
+
+
+def purge_all_templates(api_url: str) -> int:
+    """
+    Delete all existing story templates (keeps table schema).
+    
+    Args:
+        api_url: Base API URL
+        
+    Returns:
+        Number of templates deleted
+    """
+    base_url = f"{api_url.rstrip('/')}/api/v1/story-templates"
+    
+    # First, list all templates
+    print("\nFetching existing story templates...")
+    response = requests.get(base_url)
+    
+    if not response.ok:
+        print(f"✗ Failed to list templates: {response.status_code}")
+        print(f"  Response: {response.text}")
+        return 0
+    
+    templates = response.json()
+    
+    if not templates:
+        print("No existing templates to delete.")
+        return 0
+    
+    print(f"Found {len(templates)} template(s) to delete:")
+    for t in templates:
+        print(f"  - {t.get('template_id')}: {t.get('name')}")
+    
+    # Delete each template
+    deleted = 0
+    for template in templates:
+        template_id = template.get("template_id")
+        delete_url = f"{base_url}/{template_id}"
+        
+        del_response = requests.delete(delete_url)
+        if del_response.ok or del_response.status_code == 204:
+            print(f"  ✓ Deleted: {template_id}")
+            deleted += 1
+        else:
+            print(f"  ✗ Failed to delete {template_id}: {del_response.status_code}")
+    
+    print(f"\n✓ Purged {deleted}/{len(templates)} template(s)")
+    return deleted
 
 
 def register_via_api(
@@ -103,6 +190,22 @@ Examples:
       --collection jesus_videos \\
       --target-lines 8 \\
       --prompt "You are creating sermons..."
+
+  # Purge all existing templates and register a new one
+  python scripts/register_story_template.py \\
+      --purge \\
+      --name "C'est pas Sorcier" \\
+      --characters fred jamy \\
+      --collection cps_videos \\
+      --prompt-file prompts/cest_pas_sorcier.txt
+
+  # Drop tables for schema migration, then register
+  python scripts/register_story_template.py \\
+      --drop-tables \\
+      --name "C'est pas Sorcier" \\
+      --characters fred jamy \\
+      --collection cps_videos \\
+      --prompt-file prompts/cest_pas_sorcier.txt
         """,
     )
     
@@ -154,6 +257,18 @@ Examples:
         help="API base URL (default: http://localhost:8000)",
     )
     
+    # Cleanup options
+    parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Delete all existing story templates before registering (keeps table schema)",
+    )
+    parser.add_argument(
+        "--drop-tables",
+        action="store_true",
+        help="Drop and recreate story template tables before registering (for schema migrations)",
+    )
+    
     args = parser.parse_args()
     
     # Load prompt from file or use inline
@@ -185,6 +300,37 @@ Examples:
     print(f"\nCollection: {args.collection}")
     print(f"Characters: {', '.join(args.characters)}")
     print(f"Target lines: {args.target_lines}")
+    
+    # Drop tables if requested (for schema migrations)
+    if args.drop_tables:
+        print(f"\n{'='*60}")
+        print("DROPPING AND RECREATING STORY TEMPLATE TABLES")
+        print(f"{'='*60}")
+        try:
+            success = drop_tables(args.api_url)
+            if not success:
+                sys.exit(1)
+        except requests.exceptions.ConnectionError:
+            print(f"\n✗ Error: Could not connect to API at {args.api_url}")
+            print("  Make sure the API server is running.")
+            sys.exit(1)
+        except requests.exceptions.HTTPError as e:
+            print(f"\n✗ Error: Drop tables failed: {e}")
+            sys.exit(1)
+    # Purge existing templates if requested (and not dropping tables)
+    elif args.purge:
+        print(f"\n{'='*60}")
+        print("PURGING ALL EXISTING TEMPLATES")
+        print(f"{'='*60}")
+        try:
+            purge_all_templates(args.api_url)
+        except requests.exceptions.ConnectionError:
+            print(f"\n✗ Error: Could not connect to API at {args.api_url}")
+            print("  Make sure the API server is running.")
+            sys.exit(1)
+        except requests.exceptions.HTTPError as e:
+            print(f"\n✗ Error: Purge failed: {e}")
+            sys.exit(1)
     
     # Register via API
     try:

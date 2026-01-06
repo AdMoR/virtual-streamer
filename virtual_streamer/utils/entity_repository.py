@@ -746,6 +746,50 @@ class EntityRepository:
                 await cur.execute("DELETE FROM story_templates WHERE id = %s", (template_id,))
                 return cur.rowcount > 0
 
+    async def drop_story_template_tables(self) -> bool:
+        """
+        Drop story template tables for schema reset.
+        
+        Drops both story_templates and template_characters tables,
+        allowing them to be recreated with the latest schema.
+        
+        Returns:
+            True if tables were dropped successfully
+        """
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # Drop in correct order (foreign key constraints)
+                await cur.execute("DROP TABLE IF EXISTS template_characters")
+                await cur.execute("DROP TABLE IF EXISTS story_templates")
+                print("Dropped story_templates and template_characters tables")
+                
+                # Recreate with current schema
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS story_templates (
+                        id VARCHAR(255) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        prompt TEXT NOT NULL,
+                        collection VARCHAR(255) NOT NULL,
+                        target_lines INT DEFAULT 6,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS template_characters (
+                        template_id VARCHAR(255) NOT NULL,
+                        character_id VARCHAR(255) NOT NULL,
+                        PRIMARY KEY (template_id, character_id),
+                        FOREIGN KEY (template_id) REFERENCES story_templates(id) ON DELETE CASCADE,
+                        FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                    )
+                """)
+                print("Recreated story_templates and template_characters tables with latest schema")
+                
+                return True
+
     async def close(self):
         """Close the connection pool."""
         if self._pool:

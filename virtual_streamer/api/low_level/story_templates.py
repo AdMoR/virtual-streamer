@@ -158,3 +158,20 @@ async def delete_story_template(template_id: str):
 
     return None
 
+
+@router.post("/admin/drop-tables", status_code=status.HTTP_200_OK)
+async def drop_story_template_tables():
+    """
+    Drops and recreates the story template tables.
+    
+    WARNING: This deletes all story templates permanently.
+    Use this for schema migrations when the table structure has changed.
+    
+    Returns:
+        Message confirming tables were reset
+    """
+    repo = get_entity_repository()
+    await repo.drop_story_template_tables()
+    
+    return {"message": "Story template tables dropped and recreated with latest schema"}
+
