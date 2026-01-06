@@ -1045,14 +1045,14 @@ class TestSentenceVideoMatcherSchemas:
         
         matches = [
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", dialog="Hello"),
+                dialog_line=DialogLine(character="narrator", text="Hello"),
                 video_path="/video1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Good"
             ),
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", dialog="World"),
+                dialog_line=DialogLine(character="narrator", text="World"),
                 video_path="/video2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1314,14 +1314,14 @@ class TestSentenceVideoMatcherEndToEndMock:
         
         matches = [
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", dialog="Test 1"),
+                dialog_line=DialogLine(character="narrator", text="Test 1"),
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Good"
             ),
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", dialog="Test 2"),
+                dialog_line=DialogLine(character="narrator", text="Test 2"),
                 video_path="/v2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1336,7 +1336,7 @@ class TestSentenceVideoMatcherEndToEndMock:
         restored = SentenceVideoMatcherOutput.model_validate_json(json_str)
         
         assert len(restored.matches) == 2
-        assert restored.matches[0].dialog_line.dialog == "Test 1"
+        assert restored.matches[0].dialog_line.text == "Test 1"
         
         # Test to_dict_by_dialog
         by_dialog = output.to_dict_by_dialog()

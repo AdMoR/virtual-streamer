@@ -36,5 +36,5 @@ class SentenceVideoMatcherOutput(BaseModel):
     
     def to_dict_by_dialog(self) -> dict:
         """Convert to dictionary keyed by dialog text."""
-        return {match.dialog_line.dialog: match for match in self.matches}
+        return {match.dialog_line.text: match for match in self.matches}
 

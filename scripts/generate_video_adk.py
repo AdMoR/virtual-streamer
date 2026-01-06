@@ -232,9 +232,9 @@ async def compose_video_from_matches(
     video_segments = []
     
     for i, match in enumerate(matches):
-        logger.info(f"Processing segment {i+1}/{len(matches)}: {match.dialog_line.dialog[:50]}...")
+        logger.info(f"Processing segment {i+1}/{len(matches)}: {match.dialog_line.text[:50]}...")
         
-        dialog = match.dialog_line.dialog
+        dialog = match.dialog_line.text
         video_path = match.video_path
         
         try:

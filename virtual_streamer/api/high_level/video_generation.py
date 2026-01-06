@@ -389,7 +389,7 @@ async def script_to_video(
     video_segments = []
 
     for i, match in enumerate(matches):
-        dialog = match.dialog_line.dialog
+        dialog = match.dialog_line.text
         video_path = match.video_path
 
         if progress_callback:
@@ -577,7 +577,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
 
                 # Simple split by newlines - each line is a dialog from "Fred"
                 lines = [
-                    DialogLine(character="Fred", dialog=line.strip())
+                    DialogLine(character="Fred", text=line.strip())
                     for line in request.story_text.split("\n")
                     if line.strip()
                 ]

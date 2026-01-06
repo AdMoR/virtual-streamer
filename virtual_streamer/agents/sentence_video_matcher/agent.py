@@ -109,7 +109,7 @@ class SentenceVideoMapper(MapperAgent):
                 items.append({
                     "line_id": line_id,
                     "character_id": dialog_line.character_id,
-                    "sentence": dialog_line.dialog,
+                    "sentence": dialog_line.text,
                     "scene_description": dialog_line.scene_description,
                     "video_path": result.path,
                 })
@@ -181,7 +181,7 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
                 dialog_line_match = DialogLineMatch(
                     dialog_line=DialogLine(
                         character_id=best.character_id,
-                        dialog=best.sentence,
+                        text=best.sentence,
                         scene_description=best.scene_description,
                     ),
                     video_path=best.video_path,
