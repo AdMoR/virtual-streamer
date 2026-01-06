@@ -157,7 +157,7 @@ with tab1:
     # Input method selection
     input_method = st.radio(
         "Input Method",
-        ["Title (Generate Story)", "From Story Template", "Paste Story Text", "From Config Dump"],
+        ["Title (Generate Story)", "From Story Template", "Paste Story Text"],
         horizontal=True,
     )
 
@@ -259,35 +259,6 @@ with tab1:
 
         if st.button("🚀 Generate Video", type="primary", disabled=not story_text):
             request_data["story_text"] = story_text
-            with st.spinner("Submitting job..."):
-                job_id = submit_job(request_data)
-                if job_id:
-                    st.success(f"✓ Job submitted successfully!")
-                    st.info(f"Job ID: `{job_id}`")
-                    st.markdown("Switch to the **Job Status** tab to monitor progress.")
-                    st.session_state["current_job_id"] = job_id
-
-    else:  # From Config Dump
-        st.markdown("**Load from a previous config dump:**")
-        config_dump_path = st.text_input(
-            "Config Dump Path",
-            placeholder="./output/generation_config.json",
-            help="Path to a config dump from a previous generation",
-        )
-
-        st.info("""
-        **Config Dump Recreation**: This recreates a video using the same video clips
-        and settings from a previous generation, but regenerates audio and subtitles.
-        This is useful for:
-        - Testing different TTS voices
-        - Adjusting subtitle settings
-        - Regenerating without expensive LLM API calls
-        """)
-
-        if st.button(
-            "🚀 Recreate Video", type="primary", disabled=not config_dump_path
-        ):
-            request_data["from_config_dump"] = config_dump_path
             with st.spinner("Submitting job..."):
                 job_id = submit_job(request_data)
                 if job_id:

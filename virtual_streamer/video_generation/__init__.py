@@ -1,28 +1,22 @@
 """
 Video Generation Module
 
-This module provides a complete async video generation pipeline for creating
-videos from stories using AI models (LLM, TTS, STT) with optimized parallel processing.
+This module provides components for video generation using AI models.
 
 Main Components:
     - config: Pydantic configuration with CLI/env/YAML support
     - interfaces: Abstract base classes for all components
     - implementations: Concrete implementations (LLM, TTS, STT, etc.)
-    - core: Async workflow logic with concurrency control
+    - core: Utility functions for video processing
 
-Features:
-    - Async optimization with semaphore-based rate limiting
-    - Structured LLM outputs using Pydantic models
-    - Event loop safety with lazy initialization
-    - Complete config dumps for reproducibility
-    - Interface-based design for easy extension
+Note: The main video generation flow is now handled by ADK agents.
+See virtual_streamer.api.high_level.video_generation for the supported API.
 
 Usage:
     from virtual_streamer.video_generation import (
         VideoGenerationConfig,
         create_llm, create_tts, create_stt,
         create_video_retriever, create_prompt_provider,
-        generate_story, generate_video_from_story
     )
 """
 
@@ -61,9 +55,6 @@ from .implementations import (
 
 from .core import (
     generate_story,
-    generate_video_from_story,
-    recreate_from_config_dump,
-    find_best_video_for_sentence,
     judge_video_match,
     generate_search_keyword,
 )
@@ -103,9 +94,6 @@ __all__ = [
     "create_prompt_provider",
     # Core functions
     "generate_story",
-    "generate_video_from_story",
-    "recreate_from_config_dump",
-    "find_best_video_for_sentence",
     "judge_video_match",
     "generate_search_keyword",
     # Visualizer functions

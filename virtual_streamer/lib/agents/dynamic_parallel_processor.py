@@ -92,9 +92,10 @@ class MapperAgent(SequentialAgent, ABC):
             
             def build_items_from_state(self, ctx):
                 sentences = ctx.session.state.get("sentences", [])
+                collection = ctx.session.state.get("video_collection")
                 items = []
                 for sentence in sentences:
-                    candidates = self._video_retriever.search(sentence)
+                    candidates = self._video_retriever.search(sentence, collection)
                     for video_path in candidates:
                         items.append({"sentence": sentence, "video_path": video_path})
                 return items

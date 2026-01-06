@@ -538,16 +538,20 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/v1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
                 grade=10,  # Highest grade
                 reasoning="Bad"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/v2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=3,  # Lower grade but better rating
@@ -573,16 +577,20 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=5,
                 reasoning="Lower"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/v2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=9,

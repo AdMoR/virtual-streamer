@@ -159,9 +159,6 @@ class VideoGenerationConfig(BaseSettings):
     story_file: Optional[str] = Field(
         default=None, description="Path to existing story file to convert to video"
     )
-    from_config_dump: Optional[str] = Field(
-        default=None, description="Recreate video from config dump (skips LLM calls)"
-    )
 
     # Story template configuration
     story_template_id: Optional[str] = Field(
@@ -232,10 +229,10 @@ class VideoGenerationConfig(BaseSettings):
 
     def validate_inputs(self):
         """Validate that exactly one input method is specified."""
-        inputs = [self.title, self.story_file, self.from_config_dump]
+        inputs = [self.title, self.story_file]
         if sum(x is not None for x in inputs) != 1:
             raise ValueError(
-                "Exactly one of --title, --story-file, or --from-config-dump must be provided"
+                "Exactly one of --title or --story-file must be provided"
             )
 
     def get_output_path(self, filename: str) -> str:

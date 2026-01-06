@@ -39,37 +39,8 @@ from virtual_streamer.video_generation.config import (
 from virtual_streamer.video_generation.core import (
     separation_fn,
     generate_story,
-    generate_video_from_story,
-    create_config_dump,
-    recreate_from_config_dump,
 )
 from virtual_streamer.video_search.client import VideoSearchResult, TagInfo
-
-
-# ============================================================================
-# Mock Storage Client
-# ============================================================================
-
-
-class MockStorageClient:
-    """Mock storage client for testing."""
-    
-    async def upload_file(self, local_path: str, key: str) -> str:
-        return key
-    
-    async def put_json(self, key: str, data: dict) -> str:
-        return key
-    
-    async def get_json(self, key: str):
-        return None
-
-
-@pytest.fixture(autouse=True)
-def mock_storage():
-    """Mock the storage client for all tests."""
-    with patch('virtual_streamer.video_generation.core.get_storage_client') as mock:
-        mock.return_value = MockStorageClient()
-        yield mock
 
 
 # ============================================================================
@@ -91,13 +62,16 @@ class MockLLM(LLMInterface):
 
     async def complete_structured(self, prompt: str, response_model, **kwargs):
         """Mock structured completion."""
-        from virtual_streamer.video_generation.config import StoryOutput
+        from virtual_streamer.video_generation.config import StoryOutput, DialogLine
 
         if response_model == StoryOutput:
             return StoryOutput(
                 title="Fred se lance dans l'IA (Version complète)",
                 story_plan="Fred va découvrir l'IA et créer FredGPT avec un ton humoristique et absurde.",
-                dialog="Fred: Eh dis donc Jamy! Fred: J'ai découvert l'IA!",
+                dialog=[
+                    DialogLine(character_id="fred", text="Eh dis donc Jamy!", scene_description="Fred talks to camera in a lab setting"),
+                    DialogLine(character_id="fred", text="J'ai découvert l'IA!", scene_description="Fred looks excited in the same lab")
+                ],
             )
         # Default fallback
         return response_model()
@@ -156,7 +130,11 @@ class MockVideoRetriever(VideoRetrieverInterface):
         self.mock_videos = ["/mock/video1.mp4", "/mock/video2.mp4", "/mock/video3.mp4"]
 
     def search(
-        self, query: str, top_k: int = 10, tags: Optional[List[str]] = None
+        self,
+        query: str,
+        collection: str,
+        top_k: int = 10,
+        tags: Optional[List[str]] = None,
     ) -> List[VideoSearchResult]:
         """Return mock VideoSearchResult objects."""
         results = []
@@ -389,7 +367,7 @@ class TestInterfaces:
         """Test mock video retriever implementation."""
         retriever = MockVideoRetriever()
 
-        results = retriever.search("test query", top_k=5)
+        results = retriever.search("test query", collection="test_collection", top_k=5)
         assert len(results) <= 5
         assert all("/mock/" in r.path for r in results)
         assert all(isinstance(r, VideoSearchResult) for r in results)

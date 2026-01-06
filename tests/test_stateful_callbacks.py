@@ -189,9 +189,9 @@ class TestInjectVisionFrameCallback:
         cb = InjectVisionFrameCallback()
         schema = cb.get_input_schema()
         
-        # Valid input (now requires character field)
-        valid = schema(character="narrator", sentence="Hello", video_path="/test.mp4")
-        assert valid.character == "narrator"
+        # Valid input (requires all fields)
+        valid = schema(line_id=0, character_id="narrator", sentence="Hello", scene_description="A test scene", video_path="/test.mp4")
+        assert valid.character_id == "narrator"
         assert valid.sentence == "Hello"
         assert valid.video_path == "/test.mp4"
         
@@ -224,10 +224,12 @@ class TestStoreJudgementCallback:
         cb = StoreJudgementCallback()
         schema = cb.get_output_schema()
         
-        # VideoMatchResult requires character, sentence and video_path
+        # VideoMatchResult requires all fields
         valid = schema(
-            character="narrator",
+            line_id=0,
+            character_id="narrator",
             sentence="Hello world",
+            scene_description="A test scene",
             video_path="/path/to/video.mp4",
             rating=ContextualRating.CONTEXTUAL,
             grade=8,
@@ -235,7 +237,7 @@ class TestStoreJudgementCallback:
         )
         assert valid.rating == ContextualRating.CONTEXTUAL
         assert valid.grade == 8
-        assert valid.character == "narrator"
+        assert valid.character_id == "narrator"
         assert valid.sentence == "Hello world"
 
 
@@ -320,10 +322,10 @@ class TestStatefulWorkerProtocol:
         input_cb = InjectVisionFrameCallback(run_id="vm_test")
         schema = input_cb.get_input_schema()
         
-        # Valid data (now requires character field)
-        valid_data = {"character": "narrator", "sentence": "Hello world", "video_path": "/path/to/video.mp4"}
+        # Valid data (requires all fields)
+        valid_data = {"line_id": 0, "character_id": "narrator", "sentence": "Hello world", "scene_description": "A test scene", "video_path": "/path/to/video.mp4"}
         validated = schema.model_validate(valid_data)
-        assert validated.character == "narrator"
+        assert validated.character_id == "narrator"
         assert validated.sentence == "Hello world"
         assert validated.video_path == "/path/to/video.mp4"
     
@@ -442,14 +444,16 @@ class TestSchemaSerialization:
     def test_video_sentence_input_roundtrip(self):
         """Test VideoSentenceInput serialization."""
         original = VideoSentenceInput(
-            character="narrator",
+            line_id=0,
+            character_id="narrator",
             sentence="Test sentence",
+            scene_description="A test scene",
             video_path="/path/to/video.mp4"
         )
         json_str = original.model_dump_json()
         restored = VideoSentenceInput.model_validate_json(json_str)
         
-        assert restored.character == original.character
+        assert restored.character_id == original.character_id
         assert restored.sentence == original.sentence
         assert restored.video_path == original.video_path
     
@@ -569,24 +573,24 @@ class TestMapperAgentSchemaValidation:
         cb = InjectVisionFrameCallback(run_id="vm_validation")
         schema = cb.get_input_schema()
         
-        # Valid video sentence input (now requires character field)
-        valid = {"character": "narrator", "sentence": "Hello Jamy!", "video_path": "/videos/scene.mp4"}
+        # Valid video sentence input (requires all fields)
+        valid = {"line_id": 0, "character_id": "narrator", "sentence": "Hello Jamy!", "scene_description": "A test scene", "video_path": "/videos/scene.mp4"}
         validated = schema.model_validate(valid)
-        assert validated.character == "narrator"
+        assert validated.character_id == "narrator"
         assert validated.sentence == "Hello Jamy!"
         assert validated.video_path == "/videos/scene.mp4"
         
-        # Missing character
+        # Missing character_id
         with pytest.raises(ValidationError):
-            schema.model_validate({"sentence": "Hello", "video_path": "/videos/scene.mp4"})
+            schema.model_validate({"line_id": 0, "sentence": "Hello", "scene_description": "A test scene", "video_path": "/videos/scene.mp4"})
         
         # Missing sentence
         with pytest.raises(ValidationError):
-            schema.model_validate({"character": "narrator", "video_path": "/videos/scene.mp4"})
+            schema.model_validate({"line_id": 0, "character_id": "narrator", "scene_description": "A test scene", "video_path": "/videos/scene.mp4"})
         
         # Missing video_path
         with pytest.raises(ValidationError):
-            schema.model_validate({"character": "narrator", "sentence": "Hello"})
+            schema.model_validate({"line_id": 0, "character_id": "narrator", "sentence": "Hello", "scene_description": "A test scene"})
 
 
 # ============================================================================
@@ -835,8 +839,10 @@ class TestVideoMatchResultSchema:
         )
         
         input_data = VideoSentenceInput(
-            character="narrator",
+            line_id=0,
+            character_id="narrator",
             sentence="Hello world",
+            scene_description="A test scene",
             video_path="/path/to/video.mp4"
         )
         output_data = VideoJudgementOutput(
@@ -847,7 +853,7 @@ class TestVideoMatchResultSchema:
         
         result = VideoMatchResult.from_input_and_output(input_data, output_data)
         
-        assert result.character == "narrator"
+        assert result.character_id == "narrator"
         assert result.sentence == "Hello world"
         assert result.video_path == "/path/to/video.mp4"
         assert result.rating == ContextualRating.CONTEXTUAL
@@ -859,8 +865,10 @@ class TestVideoMatchResultSchema:
         from virtual_streamer.agents.video_matcher.schema import VideoMatchResult
         
         result = VideoMatchResult(
-            character="narrator",
+            line_id=0,
+            character_id="narrator",
             sentence="Test sentence",
+            scene_description="A test scene",
             video_path="/test/video.mp4",
             rating=ContextualRating.NEUTRAL,
             grade=5,
@@ -870,7 +878,7 @@ class TestVideoMatchResultSchema:
         json_str = result.model_dump_json()
         restored = VideoMatchResult.model_validate_json(json_str)
         
-        assert restored.character == result.character
+        assert restored.character_id == result.character_id
         assert restored.sentence == result.sentence
         assert restored.video_path == result.video_path
         assert restored.rating == result.rating
@@ -893,16 +901,20 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
                 grade=9,
                 reasoning="High grade but bad rating"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=6,
@@ -930,16 +942,20 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
                 grade=9,
                 reasoning="High grade"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -961,16 +977,20 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=5,
                 reasoning="Lower grade"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=9,
@@ -993,16 +1013,20 @@ class TestBestMatchAggregator:
         
         results = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
                 grade=3,
                 reasoning="Low grade"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="test",
+                scene_description="A test scene",
                 video_path="/video2.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
                 grade=7,
@@ -1045,14 +1069,14 @@ class TestSentenceVideoMatcherSchemas:
         
         matches = [
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", text="Hello"),
+                dialog_line=DialogLine(character_id="narrator", text="Hello", scene_description="A test scene"),
                 video_path="/video1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Good"
             ),
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", text="World"),
+                dialog_line=DialogLine(character_id="narrator", text="World", scene_description="A test scene"),
                 video_path="/video2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1199,27 +1223,33 @@ class TestSentenceVideoMapperIntegration:
         from virtual_streamer.agents.video_matcher.schema import VideoMatchResult
         from virtual_streamer.agents.video_matcher.aggregator import BestMatchAggregator
         
-        # Simulate state with worker results (with character field)
+        # Simulate state with worker results (with all required fields)
         state = {
             "result:abc:w0:judgement": VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="Hello",
+                scene_description="A test scene",
                 video_path="/videos/v1.mp4",
                 rating=ContextualRating.NOT_CONTEXTUAL,
                 grade=3,
                 reasoning="Poor match"
             ).model_dump_json(),
             "result:abc:w1:judgement": VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="Hello",
+                scene_description="A test scene",
                 video_path="/videos/v2.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Great match"
             ).model_dump_json(),
             "result:abc:w2:judgement": VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="Hello",
+                scene_description="A test scene",
                 video_path="/videos/v3.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1273,19 +1303,23 @@ class TestSentenceVideoMatcherEndToEndMock:
             "Je suis dans un datacenter": ["/videos/datacenter1.mp4", "/videos/datacenter2.mp4"],
         })
         
-        # Simulate what the agent would produce (with character field)
+        # Simulate what the agent would produce (with all required fields)
         expected_matches = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="Hello Jamy!",
+                scene_description="A scene with Jamy",
                 video_path="/videos/scene1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=9,
                 reasoning="Jamy is visible in the scene"
             ),
             VideoMatchResult(
-                character="narrator",
+                line_id=1,
+                character_id="narrator",
                 sentence="Je suis dans un datacenter",
+                scene_description="A datacenter scene",
                 video_path="/videos/datacenter1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
@@ -1314,14 +1348,14 @@ class TestSentenceVideoMatcherEndToEndMock:
         
         matches = [
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", text="Test 1"),
+                dialog_line=DialogLine(character_id="narrator", text="Test 1", scene_description="A test scene"),
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,
                 reasoning="Good"
             ),
             DialogLineMatch(
-                dialog_line=DialogLine(character="narrator", text="Test 2"),
+                dialog_line=DialogLine(character_id="narrator", text="Test 2", scene_description="A test scene"),
                 video_path="/v2.mp4",
                 rating=ContextualRating.NEUTRAL,
                 grade=5,
@@ -1350,8 +1384,10 @@ class TestSentenceVideoMatcherEndToEndMock:
         
         matches = [
             VideoMatchResult(
-                character="narrator",
+                line_id=0,
+                character_id="narrator",
                 sentence="Hello",
+                scene_description="A test scene",
                 video_path="/v1.mp4",
                 rating=ContextualRating.CONTEXTUAL,
                 grade=8,

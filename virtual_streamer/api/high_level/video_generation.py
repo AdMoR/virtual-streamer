@@ -465,13 +465,12 @@ async def script_to_video(
 class VideoGenerationRequest(BaseModel):
     """Request model for video generation."""
 
-    # Input (mutually exclusive: title, story_text, or from_config_dump)
+    # Input (mutually exclusive: title or story_text)
     title: Optional[str] = None
     story_text: Optional[str] = None
-    from_config_dump: Optional[str] = None
 
-    # Story template (optional, used with title to customize story generation)
-    story_template_id: Optional[str] = None
+    # Story template (required - defines characters, prompt, and video collection)
+    story_template_id: str
 
     # Character configuration
     character_name: Optional[str] = "fred"
@@ -520,137 +519,109 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         config = VideoGenerationConfig(
             title=request.title,
             story_file=None,
-            from_config_dump=request.from_config_dump,
             character_name=request.character_name,
             output_dir=request.output_dir or "./output",
             verbose=request.verbose,
             max_parallel_llm_calls=request.max_parallel_llm_calls,
         )
 
-        # Validate inputs
-        inputs = [request.title, request.story_text, request.from_config_dump]
+        # Validate inputs - require title or story_text
+        inputs = [request.title, request.story_text]
         if sum(x is not None for x in inputs) != 1:
             raise ValueError(
-                "Exactly one of title, story_text, or from_config_dump must be provided"
+                "Exactly one of title or story_text must be provided"
             )
 
         # API configuration
         api_config = APIConfig()
         character_id = request.character_name or "fred"
 
-        # Handle config dump recreation (legacy path)
-        if request.from_config_dump:
-            # For now, keep the legacy recreation logic
-            from virtual_streamer.video_generation import (
-                create_tts,
-                create_stt,
-                recreate_from_config_dump,
+        story_output = None
+        sentences = None
+
+        # Load StoryTemplate to get collection for video search
+        from virtual_streamer.utils.entity_repository import get_entity_repository
+        repo = get_entity_repository()
+        story_template = await repo.get_story_template(request.story_template_id)
+        if story_template is None:
+            raise ValueError(f"Story template '{request.story_template_id}' not found")
+        collection = story_template["collection"]
+        logger.info(
+            f"[Job {job_id}] Using story template: {request.story_template_id}, "
+            f"collection: {collection}"
+        )
+
+        if request.title:
+            # Step 1: Run StoryGeneratorAgent
+            logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
+            story_output = await run_story_generator(
+                request.title, story_template_id=request.story_template_id
             )
-
-            tts = await create_tts(config.tts, character_name=config.character_name)
-            stt = create_stt(config.stt)
-
-            result = await recreate_from_config_dump(
-                request.from_config_dump, tts, stt, config, None
-            )
-
-        else:
-            story_output = None
-            sentences = None
-            collection = None
-
-            # Load StoryTemplate to get collection for video search
-            story_template = None
-            if request.story_template_id:
-                from virtual_streamer.utils.entity_repository import get_entity_repository
-                repo = get_entity_repository()
-                story_template = await repo.get_story_template(request.story_template_id)
-                if story_template is None:
-                    raise ValueError(f"Story template '{request.story_template_id}' not found")
-                collection = story_template["collection"]
-                logger.info(
-                    f"[Job {job_id}] Using story template: {request.story_template_id}, "
-                    f"collection: {collection}"
-                )
-
-            if request.title:
-                # Step 1: Run StoryGeneratorAgent
-                logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
-                story_output = await run_story_generator(
-                    request.title, story_template_id=request.story_template_id
-                )
-                logger.info(
-                    f"[Job {job_id}] Story generated: {story_output.title} "
-                    f"with {len(story_output.dialog)} dialog lines"
-                )
-                # Extract sentences from story output
-                sentences = story_output.dialog
-
-            elif request.story_text:
-                # Parse story_text as DialogLines
-                # For now, treat story_text as simple text to be split
-                from virtual_streamer.agents.story_generator.schema import (
-                    DialogLine,
-                    DialogLines,
-                )
-
-                # Simple split by newlines - each line is a dialog from "Fred"
-                lines = [
-                    DialogLine(character="Fred", text=line.strip())
-                    for line in request.story_text.split("\n")
-                    if line.strip()
-                ]
-                dialog_lines = DialogLines(lines=lines)
-                sentences = dialog_lines.model_dump()
-
-            # Validate that collection is set before video matching
-            if not collection:
-                raise ValueError(
-                    "Video collection is required. "
-                    "Provide a story_template_id with a configured collection."
-                )
-
-            # Step 2: Run SentenceVideoMatcher
-            logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
-            video_matches = await run_sentence_video_matcher(sentences, collection, config)
             logger.info(
-                f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
+                f"[Job {job_id}] Story generated: {story_output.title} "
+                f"with {len(story_output.dialog)} dialog lines"
+            )
+            # Extract sentences from story output
+            sentences = story_output.dialog
+
+        elif request.story_text:
+            # Parse story_text as DialogLines
+            # For now, treat story_text as simple text to be split
+            from virtual_streamer.agents.story_generator.schema import (
+                DialogLine,
+                DialogLines,
             )
 
-            # Step 3: Script to Video (TTS, Wav2Lip, STT via webservices)
-            logger.info(f"[Job {job_id}] Running script_to_video...")
+            # Simple split by newlines - each line is a dialog from "Fred"
+            lines = [
+                DialogLine(character="Fred", text=line.strip())
+                for line in request.story_text.split("\n")
+                if line.strip()
+            ]
+            dialog_lines = DialogLines(lines=lines)
+            sentences = dialog_lines.model_dump()
 
-            async with WebserviceClient(api_config, character_id) as client:
-                final_video_path = await script_to_video(
-                    matches=video_matches.matches,
-                    client=client,
-                    config=config,
-                    progress_callback=lambda msg: logger.info(f"[Job {job_id}] {msg}"),
-                )
+        # Step 2: Run SentenceVideoMatcher
+        logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
+        video_matches = await run_sentence_video_matcher(sentences, collection, config)
+        logger.info(
+            f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
+        )
 
-            # Upload to MinIO storage
-            logger.info(f"[Job {job_id}] Uploading to storage...")
-            storage = get_storage_client()
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            minio_video_key = f"generated_videos/{timestamp}/video_{timestamp}.mp4"
-            await storage.upload_file(final_video_path, minio_video_key)
+        # Step 3: Script to Video (TTS, Wav2Lip, STT via webservices)
+        logger.info(f"[Job {job_id}] Running script_to_video...")
 
-            # Generate presigned URL for video access
-            video_url = storage.get_url(minio_video_key)
-            logger.info(f"[Job {job_id}] Video URL generated: {video_url[:80]}...")
-
-            result = GenerationResult(
-                video_path=final_video_path,
-                config_dump_path=None,
-                story_output=story_output,
-                metadata={
-                    "sentence_count": len(video_matches.matches),
-                    "total_duration": get_length(final_video_path),
-                    "timestamp": datetime.now().isoformat(),
-                    "minio_video_key": minio_video_key,
-                    "video_url": video_url,
-                },
+        async with WebserviceClient(api_config, character_id) as client:
+            final_video_path = await script_to_video(
+                matches=video_matches.matches,
+                client=client,
+                config=config,
+                progress_callback=lambda msg: logger.info(f"[Job {job_id}] {msg}"),
             )
+
+        # Upload to MinIO storage
+        logger.info(f"[Job {job_id}] Uploading to storage...")
+        storage = get_storage_client()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        minio_video_key = f"generated_videos/{timestamp}/video_{timestamp}.mp4"
+        await storage.upload_file(final_video_path, minio_video_key)
+
+        # Generate presigned URL for video access
+        video_url = storage.get_url(minio_video_key)
+        logger.info(f"[Job {job_id}] Video URL generated: {video_url[:80]}...")
+
+        result = GenerationResult(
+            video_path=final_video_path,
+            config_dump_path=None,
+            story_output=story_output,
+            metadata={
+                "sentence_count": len(video_matches.matches),
+                "total_duration": get_length(final_video_path),
+                "timestamp": datetime.now().isoformat(),
+                "minio_video_key": minio_video_key,
+                "video_url": video_url,
+            },
+        )
 
         # Job completed successfully
         result_data = {

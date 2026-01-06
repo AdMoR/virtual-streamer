@@ -561,8 +561,8 @@ from virtual_streamer.video_generation import (
     create_html_report_from_dump
 )
 
-# From GenerationResult
-result = await generate_video_from_story(...)
+# From GenerationResult (via API response)
+# The video generation API returns a GenerationResult
 html_path = create_html_report(result, output_path="report.html")
 
 # From config dump file
@@ -727,51 +727,53 @@ VG_OUTPUT_DIR=./output
 ### Python API
 
 ```python
-import asyncio
-from virtual_streamer.video_generation import (
-    VideoGenerationConfig,
-    create_llm, create_tts, create_stt,
-    create_video_retriever, create_prompt_provider,
-    generate_story, generate_video_from_story
+import requests
+import time
+
+# Video generation is now handled through the API using ADK agents
+# and StoryTemplates for configuration.
+
+def generate_video_via_api(
+    title: str,
+    story_template_id: str,
+    api_url: str = "http://localhost:8000"
+) -> dict:
+    """Submit a video generation job and wait for completion."""
+    
+    # Submit the job
+    response = requests.post(
+        f"{api_url}/api/v1/video/submit",
+        json={
+            "title": title,
+            "story_template_id": story_template_id,
+        }
+    )
+    response.raise_for_status()
+    job_data = response.json()
+    job_id = job_data["job_id"]
+    
+    print(f"Job submitted: {job_id}")
+    
+    # Poll for completion
+    while True:
+        status_response = requests.get(f"{api_url}/api/v1/video/status/{job_id}")
+        status_data = status_response.json()
+        
+        if status_data["status"] == "completed":
+            print(f"Video created: {status_data['result']['video_path']}")
+            return status_data["result"]
+        elif status_data["status"] == "failed":
+            raise RuntimeError(f"Job failed: {status_data.get('error')}")
+        
+        print(f"Status: {status_data['status']}...")
+        time.sleep(5)
+
+
+# Example usage
+result = generate_video_via_api(
+    title="Fred découvre l'IA",
+    story_template_id="cest-pas-sorcier"
 )
-
-async def main():
-    # Load configuration
-    config = VideoGenerationConfig()
-    
-    # Create semaphore for rate limiting
-    llm_semaphore = asyncio.Semaphore(config.max_parallel_llm_calls)
-    
-    # Initialize components
-    llm = create_llm(config.llm)
-    tts = create_tts(config.tts)
-    stt = create_stt(config.stt)
-    video_retriever = create_video_retriever(config.video_retrieval)
-    prompt_provider = create_prompt_provider(config.prompt)
-    
-    # Generate story
-    story_output = await generate_story(
-        "Fred découvre l'IA",
-        llm,
-        prompt_provider,
-        config,
-        semaphore=llm_semaphore
-    )
-    
-    # Generate video
-    result = await generate_video_from_story(
-        story_output.dialog,
-        llm,
-        tts,
-        stt,
-        video_retriever,
-        config,
-        story_output=story_output
-    )
-    
-    print(f"Video created: {result.video_path}")
-
-asyncio.run(main())
 ```
 
 ---
