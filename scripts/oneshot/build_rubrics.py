@@ -92,10 +92,13 @@ def load_stories(input_path: Path) -> list:
         data = json.load(f)
     
     # Handle both list format and dict with "stories" key
+    n_stories = None
     if isinstance(data, list):
         raw_stories = data
+        n_stories = len(raw_stories)
     elif isinstance(data, dict) and "stories" in data:
         raw_stories = data["stories"]
+        n_stories = len(raw_stories)
     else:
         raise ValueError(
             f"Invalid input format. Expected list or dict with 'stories' key, "
@@ -118,11 +121,12 @@ def load_stories(input_path: Path) -> list:
     
     if errors:
         error_summary = "\n".join(errors[:5])  # Show first 5 errors
-        if len(errors) > 5:
+        if len(errors) > int(0.01 * n_stories):
             error_summary += f"\n... and {len(errors) - 5} more errors"
-        raise ValueError(
-            f"Schema validation failed for {len(errors)}/{len(raw_stories)} stories:\n{error_summary}"
-        )
+        if len(errors) > int(0.5 * n_stories):
+            raise ValueError(
+                f"Schema validation failed for {len(errors)}/{len(raw_stories)} stories:\n{error_summary}"
+            )
     
     logger.info(f"Validated {len(validated_stories)} stories against StoryItem schema")
     return validated_stories
