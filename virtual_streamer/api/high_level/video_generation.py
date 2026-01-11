@@ -588,10 +588,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             )
 
         # Upload to MinIO storage
+        # Path structure: generated_videos/{collection}/{job_id}.mp4
         logger.info(f"[Job {job_id}] Uploading to storage...")
         storage = get_storage_client()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        minio_video_key = f"generated_videos/{timestamp}/video_{timestamp}.mp4"
+        minio_video_key = f"generated_videos/{collection}/{job_id}.mp4"
         await storage.upload_file(final_video_path, minio_video_key)
 
         # Generate presigned URL for video access
