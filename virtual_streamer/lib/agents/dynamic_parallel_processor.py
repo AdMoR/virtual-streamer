@@ -29,10 +29,13 @@ Usage:
     )
 """
 
+import asyncio
 import json
 import logging
 import secrets
 from abc import ABC, abstractmethod
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
 from google.adk.agents import BaseAgent, SequentialAgent
@@ -43,6 +46,10 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Default rate limit retry configuration
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY_SECONDS = 60
 
 
 class StatefulWorker(Protocol):
@@ -434,6 +441,8 @@ class MapReduceAgent(BaseAgent):
             mapper: MapperAgent,
             aggregator_factory: AggregatorFactory,
             name: str = "map_reduce",
+            max_retries: int = DEFAULT_MAX_RETRIES,
+            retry_delay_seconds: int = DEFAULT_RETRY_DELAY_SECONDS,
     ):
         """
         Initialize the map-reduce agent.
@@ -443,20 +452,80 @@ class MapReduceAgent(BaseAgent):
             aggregator_factory: Function that takes input_keys and returns
                                a concrete AggregatorAgent
             name: Name for this agent
+            max_retries: Maximum retries on rate limit errors (default: 3)
+            retry_delay_seconds: Seconds to wait between retries (default: 60)
         """
         super().__init__(name=name, )
         self._mapper = mapper
         self._aggregator_factory = aggregator_factory
+        self._max_retries = max_retries
+        self._retry_delay_seconds = retry_delay_seconds
+
+    def _dump_state_on_failure(
+        self,
+        ctx: InvocationContext,
+        error: Exception,
+        phase_name: str,
+    ) -> Path:
+        """
+        Dump current session state to JSON file for recovery/debugging.
+        
+        Args:
+            ctx: Invocation context with session state
+            error: The exception that caused the failure
+            phase_name: Name of the phase that failed ("map" or "reduce")
+        
+        Returns:
+            Path to the dumped state file
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dump_path = Path(f"state_dump_{self.name}_{phase_name}_{timestamp}.json")
+        
+        # Collect state data
+        state_data = {}
+        try:
+            for key in ctx.session.state.keys():
+                value = ctx.session.state.get(key)
+                # Try to serialize - some values might not be JSON-serializable
+                if isinstance(value, str):
+                    state_data[key] = value
+                elif hasattr(value, 'model_dump'):
+                    state_data[key] = value.model_dump()
+                elif hasattr(value, '__dict__'):
+                    state_data[key] = str(value)
+                else:
+                    state_data[key] = str(value)
+        except Exception as e:
+            logger.warning(f"Error collecting state for dump: {e}")
+        
+        dump_content = {
+            "agent_name": self.name,
+            "phase": phase_name,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "timestamp": timestamp,
+            "state": state_data,
+        }
+        
+        with open(dump_path, "w", encoding="utf-8") as f:
+            json.dump(dump_content, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"State dumped to {dump_path}")
+        return dump_path
 
     async def _run_async_impl(self, ctx: InvocationContext):
         """
-        Run the map-reduce pipeline.
+        Run the map-reduce pipeline with rate limit retry handling.
         
         1. Run mapper (builds items from state, processes in parallel)
         2. Create aggregator with mapper's output keys
         3. Run aggregator (collects results, applies aggregation_fn)
+        
+        On rate limit errors (litellm.RateLimitError), retries up to max_retries
+        times with retry_delay_seconds between attempts. On final failure,
+        dumps state to a JSON file for debugging/recovery.
         """
-        # Phase 1: Run mapper
+        # Phase 1: Run mapper with retry
         yield Event(
             author=self.name,
             content=types.Content(
@@ -465,8 +534,19 @@ class MapReduceAgent(BaseAgent):
             ),
         )
 
-        async for event in self._mapper.run_async(ctx):
-            yield event
+        map_retries = 0
+        while map_retries <= self._max_retries:
+            try:
+                async for event in self._mapper.run_async(ctx):
+                    yield event
+                break  # Success - exit retry loop
+            except Exception as e:
+                if self._is_rate_limit_error(e) and map_retries < self._max_retries:
+                    map_retries += 1
+                    await asyncio.sleep(self._retry_delay_seconds)
+                else:
+                    dump_path = self._dump_state_on_failure(ctx, e, "map")
+                    raise
 
         # Phase 2: Create aggregator with mapper's output keys
         output_keys = self._mapper.get_output_keys()
@@ -483,7 +563,7 @@ class MapReduceAgent(BaseAgent):
 
         aggregator = self._aggregator_factory(output_keys)
 
-        # Phase 3: Run aggregator
+        # Phase 3: Run aggregator with retry
         yield Event(
             author=self.name,
             content=types.Content(
@@ -492,8 +572,19 @@ class MapReduceAgent(BaseAgent):
             ),
         )
 
-        async for event in aggregator.run_async(ctx):
-            yield event
+        reduce_retries = 0
+        while reduce_retries <= self._max_retries:
+            try:
+                async for event in aggregator.run_async(ctx):
+                    yield event
+                break  # Success - exit retry loop
+            except Exception as e:
+                if self._is_rate_limit_error(e) and reduce_retries < self._max_retries:
+                    reduce_retries += 1
+                    await asyncio.sleep(self._retry_delay_seconds)
+                else:
+                    dump_path = self._dump_state_on_failure(ctx, e, "reduce")
+                    raise
 
         yield Event(
             author=self.name,
@@ -502,6 +593,40 @@ class MapReduceAgent(BaseAgent):
                 parts=[types.Part(text="Map-reduce complete")]
             ),
         )
+
+    def _is_rate_limit_error(self, error: Exception) -> bool:
+        """
+        Check if an exception is a rate limit error.
+        
+        Handles litellm.RateLimitError and similar rate limit exceptions.
+        
+        Args:
+            error: The exception to check
+        
+        Returns:
+            True if it's a rate limit error, False otherwise
+        """
+        error_type = type(error).__name__
+        error_str = str(error).lower()
+        
+        # Check by class name
+        if error_type == "RateLimitError":
+            return True
+        
+        # Check inheritance chain for RateLimitError
+        for cls in type(error).__mro__:
+            if cls.__name__ == "RateLimitError":
+                return True
+        
+        # Check error message for rate limit indicators
+        if "rate" in error_str and "limit" in error_str:
+            return True
+        if "429" in error_str:  # HTTP 429 Too Many Requests
+            return True
+        if "quota" in error_str and "exceeded" in error_str:
+            return True
+        
+        return False
 
 
 # Keep backward compatibility alias
