@@ -1,4 +1,33 @@
+from typing import List
 from pydantic import BaseModel, Field
+
+
+# =============================================================================
+# Input Schemas for Stateful Map-Reduce Agent
+# =============================================================================
+
+
+class StoryItem(BaseModel):
+    """A single story item with title, subtitle, and body."""
+    title: str = Field(description="The title of the story/article")
+    subtitle: str = Field(description="The subtitle or summary of the story")
+    body: List[str] = Field(
+        description="The body paragraphs of the story",
+        default_factory=list,
+    )
+
+
+class StoryBatchInput(BaseModel):
+    """Input schema for the rubric builder worker - a batch of stories."""
+    stories: List[StoryItem] = Field(
+        description="Batch of stories to analyze for rubric extraction"
+    )
+
+
+# =============================================================================
+# Output Schemas
+# =============================================================================
+
 
 class RubricExample(BaseModel):
     """A self-contained example illustrating a rubric grading."""

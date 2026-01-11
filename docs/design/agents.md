@@ -10,9 +10,60 @@ All agents follow the Google ADK conventions:
 agents/
 ├── agent_name/
 │   ├── __init__.py
-│   ├── agent.py      # LlmAgent definition with tools
+│   ├── agent.py      # Agent definition (REQUIRED - all agent definitions go here)
 │   ├── prompt.py     # Prompt templates
+│   ├── schema.py     # Pydantic models for input/output (optional)
 │   └── callback.py   # Event callbacks (optional)
+```
+
+### Rules for Agent Definition
+
+1. **All agent definitions MUST be in `agent.py`** - This is the single source of truth for what the agent does
+2. **One agent folder = One logical agent** - Each agent folder represents a distinct agent capability
+3. **Factory functions go in `agent.py`** - If your agent needs a factory (e.g., `create_my_agent()`), define it in `agent.py`
+
+### Map-Reduce Agents
+
+When building a MapReduceAgent, create a **separate agent folder** that contains:
+
+```
+agents/
+├── my_worker_agent/          # The base worker agent (e.g., rubric_builder_agent)
+│   ├── agent.py              # BaseLlmAgent or LlmAgent definition
+│   ├── prompt.py             # Worker prompt
+│   └── schema.py             # Shared schemas (input/output models)
+│
+├── my_worker_map_reduce/     # The map-reduce orchestrator (separate folder!)
+│   ├── __init__.py
+│   ├── agent.py              # Contains: Mapper, Aggregator, StatefulWorker, factory function
+│   └── callback.py           # Stateful callbacks for the worker
+```
+
+**Key points for MapReduceAgent:**
+- The MapReduceAgent is a **new agent** and deserves its own folder
+- Keep Mapper, Aggregator, and StatefulWorker factory all in `agent.py`
+- Import shared schemas/prompts from the base worker agent
+- The factory function (e.g., `create_rubric_builder_map_reduce()`) is the main entry point
+
+**Example structure for `agent.py` in a map-reduce agent:**
+```python
+# agents/my_worker_map_reduce/agent.py
+
+# 1. Stateful worker factory
+def get_stateful_worker(run_id: str) -> StatefulLlmAgent:
+    ...
+
+# 2. Mapper class
+class MyMapper(MapperAgent):
+    def build_items_from_state(self, ctx): ...
+
+# 3. Aggregator class
+class MyAggregator(AggregatorAgent[OutputSchema]):
+    async def aggregation_fn(self, results): ...
+
+# 4. Main factory function
+def create_my_map_reduce_agent(...) -> MapReduceAgent:
+    ...
 ```
 
 ## Agent Hierarchy
