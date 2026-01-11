@@ -1,0 +1,349 @@
+
+# Generation rules
+
+Based on the news context,
+- find the fitting "Articles building technic" for the topic proposed by the user.
+- based on this "Articles building technic", generate a title describing the main action, subtitle will complete the news with a twist or absurd direction
+- the core of the article should be 4 sentences at most ot briefly develop the news and introduce humor through the selected "Articles building technic"
+
+Some rules on the title :
+- it should be self understandable without additional context
+- We should be able to understand that the "Articles building technic" is clearly applied on the title + subtitle
+
+Ex:
+- Bad : "Le « gangsta fishing » classé menace intérieure" => we don't know what gangsta fishing is
+- Better : "La pêche urbaine clandestine, nouvelle cible de la DGSI" => gangsta fishing is translated
+
+Ex : 
+
+
+Some examples :
+Context : Le loup, an ad from Intermarché is very popular.
+Title : Présidentielle – Le loup de la pub Intermarché l’emporterait au second tour devant Jordan Bardella
+Subtitle : Selon un sondage publié ce matin, le loup de la publicité Intermarché remporterait le second tour de l’élection présidentielle face à Jordan Bardella, avec 68 % des intentions de vote.
+
+Context : DOnal Trump invaded the Venezuela for its oil source.
+Title : Donald Trump bombarde le Groenland et capture un pingouin
+Subtitle : Après le Vénézuéla, Donald Trump a réitéré en kidnappant un pingouin après un assaut militaire sur le Groenland. Récit.
+
+
+## Generic journalistic rules
+
+1) The title is a summary of the article
+
+The title contains the action of the news and could be self sufficient : 8 words maximum.
+The sub-title describes more in details what happen exactly : 10 additional words are allowed.
+The articles will explain the logic behind the action described in the title : 4 sentences are allowed.
+
+2) Pseudo-journalistic quantification: fake stats, polls, rankings, “barometers”
+
+Description
+
+The story uses the aesthetic of measurement (precise percentages, tiny audience counts, barometers, rankings, multi-factor indices) to lend credibility to something absurd. The joke comes from the mismatch between “serious survey methodology” and ridiculous conclusions.
+How to apply (main reasoning steps)
+Look for numbers with a credibility signal (percentages, exact counts, ranked lists, named institutes).
+Check that the quantified claim reveals absurd behavior or a contradiction (e.g., moral stance vs actions).
+Confirm the text treats the number as evidence (journalistic tone, “according to…” framing).
+Make sure the quantification is not incidental but a key comedic device.
+Positive example (why it fits)
+
+“75% of French people want the Prime Minister replaced by a raccoon; 71% prefer a geranium; 67% a paperweight.”
+
+This is a poll format applied to an impossible comparison, using numbers as the “proof” of political rejection.
+Negative example (why it doesn’t fit)
+
+“Many shoppers attended the sale.”
+
+No pseudo-precision, no methodology vibe, no quantification-as-comedy.
+
+
+3) Deadpan vox-pop / testimonials that reveal absurd logic or denial
+
+Description
+
+The article supports comedy through interview-style quotes from “ordinary people” (named, situated) whose reasoning is increasingly absurd, contradictory, or self-incriminating—delivered in a realistic tone. Often, the person minimizes catastrophic consequences.
+How to apply (main reasoning steps)
+Check for first-person or quoted “citizen” voices with everyday identity markers (name, job, age).
+Evaluate if the quote contains an internal contradiction or absurd chain of reasoning.
+Look for deadpan delivery: the speaker treats the absurd as normal.
+Confirm the testimonial is a main storytelling engine (not a one-line garnish).
+It can also be applied for personality that are mentioned in the article.
+
+This can only be used on society topic like inflation, new trends or preferences.
+
+Positive example (why it fits)
+
+“Corentin explains he stopped eating fruit for six years to avoid consumerism; he lists scurvy symptoms (hair/teeth loss, fainting) and concludes he’s fine.”
+
+The denial + escalating harm inside a realistic interview frame is the mechanism.
+
+Negative example (why it doesn’t fit)
+
+“A shopper says they found good deals on electronics.”
+
+It’s a plausible quote without absurd logic or denial.
+
+
+
+## Articles building technic
+
+1) Absurd economic inversion of value, scarcity, or payment flows
+
+Description
+
+The story’s core joke is an inversion of normal economic logic: essentials become luxury items, normal prices are treated as exceptional deals, or a market is flipped (e.g., the seller pays the customer). The satire targets purchasing power anxiety, consumerism, and commodification by making the mundane suddenly “premium” or by reversing who owes money to whom.
+How to apply (main reasoning steps)
+Identify the “normal” economic relationship (who pays, what is scarce, what is luxury vs necessity).
+Check if the story reverses that baseline (necessity → luxury, subscription → provider pays, expensive → marketed as bargain).
+Verify the inversion is treated as institutionally/collectively normal inside the article (brands, government, journalists, managers endorse it).
+Ensure the humor is primarily from the economic reversal, not just exaggeration.
+
+The inversal must be justified by
+
+Positive example (why it fits)
+
+“DAZN announces it will pay viewers to watch Ligue 1 matches because the games are so boring, with a tariff grid from 5€ to 50€ depending on match awfulness.”
+
+This flips the standard subscription model (consumer pays provider) into provider compensating consumers, and it’s justified with the potential boredom of some unexciting football matches.
+Negative example (why it doesn’t fit)
+
+“Fruit sellers will now give 1 euro per apple bought.”
+The inversion is not justified by any reason that is commonly known by people, like a hatred of a part of the population for apples.
+
+
+2) Disproportionate escalation & militarized/violent response to trivial triggers
+Description
+
+A banal event (shopping, food smell, minor inconvenience) is treated as a security crisis requiring war-like measures, emergency services, or extreme violence. The humor comes from the gap in scale between trigger and response.
+How to apply (main reasoning steps)
+Identify the initial trigger as trivial or routine.
+Check if the response involves security protocols, militarization, legal repression, or extreme violence.
+Verify the disproportion is played straight (official statements, policies, enforcement).
+Ensure the main comic driver is “minor cause → massive response,” not just generic chaos.
+
+
+Positive example (why it fits)
+
+“A supermarket imposes ‘max 3 grapefruits per household’ after last year’s fruit riots.”
+Institutional crisis management is applied to produce shopping. It fits in a story about inflation.
+
+Negative example (why it doesn’t fit)
+
+“A person smoking cigarets has been arrested yesterday.”
+This extreme behavipur does not make sense if the story is about a trading act.
+
+
+3) Snowball logic: stepwise escalation from plausible premise to absurd extremes
+Description
+
+The narrative deliberately chains events so each step seems like a logical extension of the previous one, while the end result becomes completely ridiculous. The form is “and therefore… and therefore…” escalation.
+How to apply (main reasoning steps)
+Locate the starting premise and confirm it is at least semi-plausible.
+Track successive steps and check that each is framed as a logical consequence.
+Ensure the overall arc results in a qualitative jump into absurdity.
+Confirm the escalation pattern is essential (remove it and the joke collapses).
+
+This only works if there have been recent news on the leader and this leader is known for overeacting.
+
+Positive example (why it fits)
+
+“After a bad ceviche, President Donald Trump decides to invade Peru and arrest all flute pan players”
+Each step is presented as a continuation of the same paranoid logic.
+
+Negative example (why it doesn’t fit)
+“After catching a cold, Nicolas Sarkozy decides to invade Groenland.”
+This does not work as Nicolas Sarkozy cannot invade this country as he is not a president in 2026 and there is no news relating Nicolas Sarkozy to cold.
+
+It’s escalation but not absurd; it’s expected progression.
+
+
+4) Harmful “traditions” romanticized as wholesome nostalgia
+Description
+
+The story frames objectively bad past behaviors (violence, chaos, cruelty) as lost traditions and mourns modern improvements for ruining “authenticity.” The satire targets nostalgia politics and the romanticization of harm.
+How to apply (main reasoning steps)
+Identify a past practice that is clearly harmful.
+Check whether characters narrate it with warmth, “magic,” “human contact,” “tradition.”
+Confirm modern alternatives are framed as soulless or inferior.
+Ensure the humor rests on the moral inversion (harm = wholesome).
+
+This can be used when a news is against new trends in society : anti-woke articles, trying to forbid something related to minority, etc.
+
+Positive example (why it fits)
+“People lament Black Friday being online because they miss dawn brawls, blood, and ‘human contact.’”
+Violence is treated as nostalgic warmth.
+
+Negative example (why it doesn’t fit)
+“A grandparent fondly remembers Sunday family dinners.”
+That’s actually wholesome nostalgia, not satirical inversion.
+
+
+5) Inverted values
+Description
+
+Values logic is inverted: donations/foundations are aimed at billionaires, dictators, or elites, framed as if they were vulnerable groups. Often includes fake incentives, tax absurdities, luxury “refuge” services, or “humanitarian” language about preserving privilege.
+
+How to apply (main reasoning steps)
+Identify the recipient as already powerful/wealthy.
+Verify the story uses charity tropes (donation prompts, foundations, tribunes, “help them rebuild”).
+Check for explicit inversion cues (tax deduction benefits the rich, “aid” is luxury, “victimhood” framing).
+Ensure the main satire is philanthropy-as-image / privilege-protection.
+
+It can apply when a news is about values that are detourned by a political or economic group.
+
+Positive example (why it fits)
+“Asking readers to round up their payment to support Bernard Arnault with ‘90% tax deduction for Bernard Arnault’.”
+
+It’s explicitly philanthropy mechanics redirected to the least deserving beneficiary.
+Negative example (why it doesn’t fit)
+
+“A charity asks donations to support refugees.”
+That’s standard charity logic aimed at vulnerable people.
+
+
+6) Bureaucratic/legal literalism applied to extraordinary or impossible situations
+
+Description
+
+The article treats an outrageous scenario (dictator fleeing, supernatural event, impossible case) as an administrative file: eligibility criteria, procedures, advisors, regulations. Humor comes from deadpan normalization through bureaucracy.
+How to apply (main reasoning steps)
+Confirm the scenario is extraordinary (geopolitical collapse, surreal event).
+Look for institutional processing language (rights, eligibility, exceptions, counselors).
+Check that experts apply rules literally rather than reacting morally.
+Ensure the joke is “system tries to categorize the un-categorizable.”
+
+Positive example (why it fits)
+“Can Assad receive unemployment benefits after job abandonment? A France Travail advisor reviews April 2023 rules and notes the law doesn’t specify the ‘fleeing abroad after overthrow’ exception.”
+Bureaucracy is applied to regime collapse.
+
+Negative example (why it doesn’t fit)
+“A counselor explains eligibility after being laid off.”
+
+That’s normal admin content, not absurd-case normalization.
+
+
+7) True-crime / scandal framing applied to mundane annoyances
+
+Description
+
+The story treats a common irritation (e.g., dentist small talk, office microwave smells) as if it were a criminal case: victims, board violations, “modus operandi,” manhunts, prosecution, sentencing. The mechanism is genre-parody: true crime seriousness for trivial conduct.
+How to apply (main reasoning steps)
+Identify the underlying act as mundane.
+Check for criminal justice vocabulary (perpetrator, victims, code, trial, sentencing, modus operandi).
+Verify the seriousness is played straight with procedural details.
+Confirm the humor comes from the genre mismatch, not from the act itself.
+
+This can only be applied on mundane topics that are mildly annoying but seasonally relevant.
+
+Positive example (why it fits)
+- “Title : A dentist is prosecuted because he asks patients questions while their mouth is full of instruments; Subtitle : the dental board cites code violations after countless victims describe trauma.”
+The “crime” is a common annoyance elevated to scandal.
+- "Title : Après avoir proposé à sa famille une dinde de noël en tofu, il est mis en examen. Subtitle: 'Je n'avais encore jamais vu d'acte aussi ignoble', déclare un policier sur l'affaire."
+
+Negative example (why it doesn’t fit)
+“Title : A scam artist steals elderly savings; police describe his approach.”
+
+That’s real crime—no satire via mismatch.
+
+
+8) Institutional “innovation” that is actually deprivation (austerity-as-disruption)
+
+Description
+
+Cuts and restrictions are presented as bold innovation: extreme reductions (24 → 1), services only in certain months, removing zodiac signs, etc., justified with startup/management language (“disruptive,” “optimized”). The satire is deprivation reframed as creative product strategy.
+How to apply (main reasoning steps)
+Detect a proposal that materially reduces access/quantity.
+Check if reduction is severe/extreme or applied to absurd domains.
+Look for innovation rhetoric used as justification.
+Ensure the comedic core is “harm dressed as modernity.”
+
+APplicable only if there are new about budget cuts, even if the fake article is about an unrelated budget cut
+
+Positive example (why it fits)
+“Title: Advent calendars reduced from 24 windows to a single window to fund a new taxe. Subtitle: officials justify it as preventing frustration because people eat them too fast anyway.”
+The cut is branded as simplified experience and a healthy choice.
+
+Negative example (why it doesn’t fit)
+“Title : A government announces a 5% budget reduction.”
+Too realistic/modest, lacks satirical extreme ratios and disruption framing.
+
+9) Tokenistic or insulting political “inclusion” (unity rhetoric that excludes/humiliates)
+Description
+
+Leaders claim inclusion/representation while explicitly excluding most groups, or they offer opposition participation only if the opposition abandons its identity. Another variant: giving rivals demeaning pseudo-positions (cafeteria, invented ministries) while calling it compromise.
+
+How to apply (main reasoning steps)
+Identify stated rhetoric of unity/inclusion.
+Check for explicit contradiction: exclusions list, impossible condition (“left ministers if they’re right-wing”).
+Look for humiliating/token roles framed as meaningful inclusion.
+Confirm the satire targets bad-faith governance/communication.
+
+
+Positive example (why it fits)
+“Title : 'President Macron wishes an Happy New Year to all French people ... except', Subtitle: feminists, farmers, students, poor people.”
+Inclusion format is used to perform exclusion.
+
+Negative example (why it doesn’t fit)
+“Inaugural address pledges to represent all citizens.”
+No contradiction; standard rhetoric.
+
+10) Replacement of humans by inappropriate substitutes (objects/animals/incompetents) as “better governance/service”
+
+Description
+Authority roles or professional jobs are replaced by obviously unsuitable substitutes: inanimate objects as successors, generic unqualified workers, animals replacing staff, conspiracy theorists leading NASA. The disqualification is explicitly framed as the qualification.
+
+How to apply (main reasoning steps)
+Identify a role that normally requires competence.
+Check if the chosen replacement is structurally unfit (object, animal, anti-expert).
+Verify the text celebrates the mismatch as the point.
+Ensure the satire is about anti-expertise, devaluation, or low standards.
+
+Positive example (why it fits)
+“Title : Trump appoints a badger to lead NASA to ‘prove the Earth is flat.` Subtitle: He definitely knows the file as well as his predecessor ”
+Absurd choice which is in line whith the craziness of the character. Experts find it as competant as the previous official.
+
+Negative example (why it doesn’t fit)
+“A president appoints an experienced diplomat as Secretary of State.”
+Qualifications match role; no satirical mismatch.
+
+11) Horror-style political desperation: unwanted politician as haunting intruder / infiltrator
+
+Description
+An unpopular political figure is depicted as literally hiding in domestic spaces (advent calendar, fridge) or breaking into government buildings using heist methods. The tone mimics horror/thriller conventions (nightmares, recurring villain, security reports).
+
+How to apply (main reasoning steps)
+Identify the politician as unwanted and seeking relevance/position.
+Check for intrusion tropes: hiding, clinging, infiltrating, tunnels, grappling hooks.
+Confirm the article uses genre framing (police/security procedures, fear, trauma).
+Ensure the core satire is desperation-as-monster.
+
+It only works on a few personalities considered as hated but who have a little press coverage at the moment.
+Ex: François Bayrou after he resigned, Manuel Valls...
+
+Positive example (why it fits)
+“Manuel Valls breaks into Matignon with a grappling hook, tries to form a government before being caught; security says his techniques improve with each attempt.”
+He’s framed as a recurring heist villain.
+
+Negative example (why it doesn’t fit)
+“A politician visits a colleague to discuss a cabinet role.”
+Normal politics, no intrusion/genre parody.
+
+12) “Fact-checking” applied to the absurdly obvious, metaphorical, or trivial
+Description
+
+The article parodies fact-check culture by investigating questions that shouldn’t require verification (can you go outside when it snows?) or by treating obviously metaphorical/entertainment claims as literal factual statements (song lyrics, celebrity hyperbole).
+How to apply (main reasoning steps)
+Confirm the topic is common knowledge or clearly non-literal.
+Check that the article uses fact-check structure: investigation, experts, verification tone.
+Verify the outcome is a mundane or cynical “reality check” that undercuts the premise.
+Distinguish from legitimate fact-checking of non-obvious claims.
+Positive example (why it fits)
+
+“Fact-check: ‘Can you go outside when it snows?’ with experts giving contradictory advice.”
+
+Journalistic verification is misapplied to common sense.
+Negative example (why it doesn’t fit)
+
+“Fact-checking a politician’s voting record.”
+
+That’s a legitimate non-obvious claim.
