@@ -1,18 +1,18 @@
 # Story Generator Agent Configuration
 # Generates structured story from title using LLM
 
-name: story_generator
+name: rubric_builder
 
 model:
   # Use Claude Sonnet for high-quality creative writing
   provider: anthropic
-  model: claude-opus-4-5-20251101 # claude-sonnet-4-5-20250929
+  model: claude-sonnet-4-5-20250929
   temperature: 0.3  # Higher temperature for creativity
   max_tokens: 4096
 
 metadata:
   version: "1.0.0"
-  description: "Generates C'est pas Sorcier parody stories from titles"
+  description: "Generates Rubrics for a set of stories"
   owners:
     - virtual-streamer-team
   tags:
