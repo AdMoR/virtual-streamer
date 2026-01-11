@@ -1,3 +1,25 @@
+"""
+DEPRECATED: This file is deprecated and will be removed in a future version.
+
+The functionality has been migrated to:
+- virtual_streamer/streaming/twitch/chat_reader.py
+
+The new version:
+- Uses HTTP API instead of RabbitMQ
+- Configurable stream_id and story_template_id
+- Better error handling and reconnection logic
+
+To use the new Twitch reader:
+    python -m virtual_streamer.streaming.twitch.chat_reader
+"""
+import warnings
+warnings.warn(
+    "virtual_streamer.twitch.chat_reader is deprecated. "
+    "Use virtual_streamer.streaming.twitch.chat_reader instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 import json
 import os
 import re

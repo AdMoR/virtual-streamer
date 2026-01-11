@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Stream Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        #player {
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+        }
+        
+        #overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            opacity: 0.7;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            transition: opacity 0.3s ease;
+        }
+        
+        #overlay:hover {
+            opacity: 1;
+        }
+        
+        #overlay .programmation {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        #overlay .status {
+            font-size: 12px;
+            color: #aaa;
+        }
+        
+        #overlay .replay {
+            color: #ffa500;
+            font-style: italic;
+        }
+        
+        #waiting {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            display: none;
+        }
+        
+        #waiting h2 {
+            margin-bottom: 10px;
+        }
+        
+        #waiting .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        #error {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #ff4444;
+            font-size: 12px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <video id="player" autoplay></video>
+    
+    <div id="overlay">
+        <div class="programmation"></div>
+        <div class="status"></div>
+    </div>
+    
+    <div id="waiting">
+        <h2>Waiting for content...</h2>
+        <div class="spinner"></div>
+        <p>No videos available. Retrying...</p>
+    </div>
+    
+    <div id="error"></div>
+    
+    <script>
+        const player = document.getElementById('player');
+        const overlay = document.getElementById('overlay');
+        const waiting = document.getElementById('waiting');
+        const errorDiv = document.getElementById('error');
+        
+        let currentEntryId = null;
+        let retryCount = 0;
+        const MAX_RETRY_DELAY = 30000; // Max 30 seconds between retries
+        
+        function showWaiting(show) {
+            waiting.style.display = show ? 'block' : 'none';
+            player.style.opacity = show ? 0.3 : 1;
+        }
+        
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = message ? 'block' : 'none';
+        }
+        
+        function updateOverlay(data) {
+            const progDiv = overlay.querySelector('.programmation');
+            const statusDiv = overlay.querySelector('.status');
+            
+            if (data.programmation) {
+                progDiv.textContent = data.programmation.name || 'Unknown Program';
+            } else {
+                progDiv.textContent = '';
+            }
+            
+            if (data.video && data.video.is_replay) {
+                statusDiv.innerHTML = '<span class="replay">Replay</span>';
+            } else {
+                statusDiv.textContent = '';
+            }
+        }
+        
+        async function playNext() {
+            showError('');
+            
+            try {
+                const resp = await fetch('/api/next');
+                
+                if (!resp.ok) {
+                    throw new Error(`API error: ${resp.status}`);
+                }
+                
+                const data = await resp.json();
+                
+                if (data.video && data.video.url) {
+                    // We have a video to play
+                    currentEntryId = data.video.entry_id;
+                    player.src = data.video.url;
+                    
+                    // Reset retry count on success
+                    retryCount = 0;
+                    showWaiting(false);
+                    
+                    // Update overlay
+                    updateOverlay(data);
+                    
+                    // Try to play
+                    try {
+                        await player.play();
+                    } catch (playError) {
+                        console.warn('Autoplay blocked, waiting for user interaction:', playError);
+                        // On some browsers, autoplay is blocked until user interacts
+                        document.body.addEventListener('click', () => player.play(), { once: true });
+                    }
+                } else {
+                    // No video available
+                    console.log('No video available:', data.reason);
+                    showWaiting(true);
+                    
+                    // Update overlay with reason
+                    overlay.querySelector('.programmation').textContent = '';
+                    overlay.querySelector('.status').textContent = data.reason || 'Waiting...';
+                    
+                    // Retry with exponential backoff
+                    retryCount++;
+                    const delay = Math.min(1000 * Math.pow(1.5, retryCount), MAX_RETRY_DELAY);
+                    console.log(`Retrying in ${delay}ms...`);
+                    setTimeout(playNext, delay);
+                }
+            } catch (err) {
+                console.error('Error fetching next video:', err);
+                showError(`Connection error: ${err.message}`);
+                showWaiting(true);
+                
+                // Retry with exponential backoff
+                retryCount++;
+                const delay = Math.min(1000 * Math.pow(1.5, retryCount), MAX_RETRY_DELAY);
+                console.log(`Retrying in ${delay}ms...`);
+                setTimeout(playNext, delay);
+            }
+        }
+        
+        async function markPlayed() {
+            if (!currentEntryId) return;
+            
+            try {
+                await fetch(`/api/played/${currentEntryId}`, { method: 'POST' });
+                console.log(`Marked ${currentEntryId} as played`);
+            } catch (err) {
+                console.error('Error marking video as played:', err);
+                // Non-critical error, continue anyway
+            }
+        }
+        
+        // Event listeners
+        player.addEventListener('ended', async () => {
+            console.log('Video ended');
+            await markPlayed();
+            playNext();
+        });
+        
+        player.addEventListener('error', (e) => {
+            console.error('Video playback error:', e);
+            showError('Video playback error');
+            
+            // Wait a bit then try next video
+            setTimeout(() => {
+                markPlayed();
+                playNext();
+            }, 2000);
+        });
+        
+        // Handle stalled video (network issues)
+        player.addEventListener('stalled', () => {
+            console.warn('Video stalled');
+            showError('Buffering...');
+        });
+        
+        player.addEventListener('playing', () => {
+            showError('');
+            showWaiting(false);
+        });
+        
+        // Start playback
+        console.log('Video player starting...');
+        playNext();
+    </script>
+</body>
+</html>

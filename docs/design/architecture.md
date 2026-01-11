@@ -88,7 +88,7 @@ agents/
 │  apps/                                                               │
 │  ├── ai_jesus/config.yaml      → Uses: qa_responder, video_creator  │
 │  ├── fred_et_jamy/config.yaml  → Uses: story_generator, video_creator│
-│  └── obs_streamer/             → Docker compose for streaming infra │
+│  └── streaming/                → compose_streaming.yml (OBS infra)  │
 │                                                                      │
 └───────────────────────────────────┬──────────────────────────────────┘
                                     │ configure
@@ -140,6 +140,43 @@ agents/
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+### Streaming Stack (compose_streaming.yml)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ STREAMING INFRASTRUCTURE                                             │
+│                                                                      │
+│  ┌─────────────┐    ┌─────────────────────┐    ┌──────────────────┐ │
+│  │Twitch Reader│───▶│   Main API          │───▶│  MySQL (Playlists│ │
+│  │(Chat Input) │    │  /api/v1/streams/*  │    │  StreamConfig,   │ │
+│  └─────────────┘    └──────────┬──────────┘    │  Programmations) │ │
+│                                │               └────────┬─────────┘ │
+│                                ▼                        │           │
+│                    ┌─────────────────────┐              │           │
+│                    │   MinIO (Videos)    │◀─────────────┤           │
+│                    └──────────┬──────────┘              │           │
+│                               │                         │           │
+│                               ▼                         ▼           │
+│                    ┌─────────────────────┐    ┌──────────────────┐ │
+│                    │   Video Server      │◀───│ Playlist API     │ │
+│                    │   (Proxy :5000)     │    │ (next-video)     │ │
+│                    └──────────┬──────────┘    └──────────────────┘ │
+│                               │                                     │
+│                               ▼                                     │
+│                    ┌─────────────────────┐                         │
+│                    │   OBS Container     │────▶ Twitch/RTMP       │
+│                    │   (Browser Source)  │                         │
+│                    └─────────────────────┘                         │
+│                                                                      │
+│  Ports:                                                              │
+│  - 5000: Video Server (HTML player)                                 │
+│  - 5901: OBS VNC                                                    │
+│  - 6901: OBS noVNC (web)                                            │
+│  - 4455: OBS WebSocket                                              │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Data Flow Examples
@@ -178,6 +215,32 @@ agents/
 4. Scorer evaluates parody quality (optional)
 
 5. Output: Complete Fred & Jamy video
+```
+
+### Example 3: OBS Streaming with Playlist
+
+```
+1. Video Server requests next video
+   GET /api/v1/streams/ai_jesus/next-video
+
+2. API determines active programmation
+   ├── Checks current time against MediaProgrammation schedule
+   └── Returns programmation_id with highest priority
+
+3. API queries playlist for next video
+   ├── First: Get pending videos (ordered by play_order, created_at)
+   ├── Fallback: Random selection from played videos
+   └── Returns video_storage_key and entry_id
+
+4. Video Server fetches video from MinIO
+   GET /api/v1/files/stream?key={video_storage_key}
+
+5. HTML Player plays video in browser source
+
+6. On video end, mark as played
+   POST /api/v1/playlist/{entry_id}/played
+
+7. Loop back to step 1
 ```
 
 ---

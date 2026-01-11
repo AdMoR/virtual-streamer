@@ -397,6 +397,89 @@ __all__ = [
 
 ---
 
+## Streaming Models
+
+Models for the OBS streaming infrastructure. See [streaming.md](./streaming.md) for full documentation.
+
+### StreamConfig
+
+Configuration for a streaming instance (e.g., a Twitch channel).
+
+```python
+# virtual_streamer/streaming/models.py
+
+class StreamConfig(BaseModel):
+    """Configuration for a streaming instance."""
+    stream_id: str = Field(..., description="Unique identifier (e.g., 'ai_jesus')")
+    name: str = Field(..., description="Display name of the stream")
+    description: Optional[str] = Field(None, description="Optional description")
+    is_active: bool = Field(True, description="Whether the stream is active")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+```
+
+### MediaProgrammation
+
+Time-based scheduling linking to a StoryTemplate for video generation.
+
+```python
+class MediaProgrammation(BaseModel):
+    """Time-based programmation schedule."""
+    programmation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    stream_id: str = Field(..., description="Parent stream ID")
+    story_template_id: str = Field(..., description="Template for video generation")
+    name: str = Field(..., description="Display name (e.g., 'News Hour')")
+    start_time: time = Field(..., description="Daily start time (HH:MM:SS)")
+    end_time: time = Field(..., description="Daily end time (HH:MM:SS)")
+    priority: int = Field(0, description="Higher priority wins on overlap")
+    is_active: bool = Field(True, description="Whether programmation is active")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+```
+
+### PlaylistEntry
+
+An entry in a programmation's video playlist.
+
+```python
+class PlaylistStatus(str, Enum):
+    """Status of a playlist entry."""
+    PENDING = "pending"
+    PLAYING = "playing"
+    PLAYED = "played"
+    SKIPPED = "skipped"
+
+class PlaylistEntry(BaseModel):
+    """A video entry in a programmation's playlist."""
+    entry_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    programmation_id: str = Field(..., description="Parent programmation ID")
+    video_storage_key: str = Field(..., description="MinIO storage key for the video")
+    status: PlaylistStatus = Field(PlaylistStatus.PENDING, description="Playback status")
+    play_order: int = Field(0, description="Order in playlist")
+    metadata: Optional[dict] = Field(None, description="Additional metadata")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    played_at: Optional[datetime] = Field(None, description="When last played")
+```
+
+### Entity Relationship (Streaming)
+
+```
+┌─────────────┐       ┌───────────────────┐       ┌───────────────┐
+│ StreamConfig│──────<│ MediaProgrammation│──────<│ PlaylistEntry │
+└─────────────┘ 1:N   └───────────────────┘ 1:N   └───────────────┘
+      │                        │                         │
+      │ owns                   │ schedules               │ references
+      ▼                        ▼                         ▼
+   stream_id            story_template_id         video_storage_key
+                               │                         │
+                               ▼                         ▼
+                        ┌─────────────┐            ┌───────────┐
+                        │StoryTemplate│            │   MinIO   │
+                        └─────────────┘            │  (videos) │
+                                                   └───────────┘
+```
+
+---
+
 ## Storage Considerations
 
 These models can be persisted in various ways:

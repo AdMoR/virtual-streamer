@@ -107,12 +107,82 @@ OPENAI_TOKEN=xxxxxxxx
 TODO : 
 - If not AWS token, stay in local production mode
 
-## Side applications 
+## Streaming Infrastructure
 
-**OBS streaming** 
+The streaming module provides database-driven video scheduling and playback for OBS.
 
-It launches an OBS in a container. On the side there is a video server telling what to stream based on a rabbit queue.
+### Architecture Overview
+
 ```
+Twitch Chat ──▶ Main API ──▶ MySQL (Playlists) ◀── Video Server ──▶ OBS
+                    │                                    ▲
+                    └───────▶ MinIO (Videos) ───────────┘
+```
+
+### Quick Start
+
+```bash
+# 1. Setup database tables for streaming
+python scripts/setup_streaming_tables.py
+
+# 2. Seed test data (optional)
+python scripts/seed_streaming_data.py
+
+# 3. Start main services
+docker compose up -d
+
+# 4. Setup shared network
+./scripts/setup_streaming_network.sh
+
+# 5. Start streaming stack (OBS + Video Server)
+docker compose -f compose_streaming.yml up -d
+```
+
+### Key Concepts
+
+- **StreamConfig**: Represents a streaming instance (e.g., a Twitch channel)
+- **MediaProgrammation**: Time-based schedule linking to a StoryTemplate
+- **PlaylistEntry**: A video in the playlist (pending → playing → played)
+
+### Video Selection Logic
+
+1. Get the active programmation based on current time
+2. Return first pending video (by order, then creation time)
+3. If no pending videos, randomly select from already-played videos (fallback)
+
+### Access Points
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Video Player | http://localhost:5000 | HTML5 player for OBS |
+| OBS (VNC) | vnc://localhost:5901 | OBS control via VNC |
+| OBS (noVNC) | http://localhost:6901 | OBS control via browser |
+| API Docs | http://localhost:8000/docs | Full API documentation |
+
+### API Endpoints
+
+```bash
+# Create a stream
+curl -X POST http://localhost:8000/api/v1/streams \
+  -H "Content-Type: application/json" \
+  -d '{"stream_id": "my_stream", "name": "My Stream"}'
+
+# Get next video for stream
+curl http://localhost:8000/api/v1/streams/my_stream/next-video
+
+# Add video to playlist
+curl -X POST http://localhost:8000/api/v1/programmations/{id}/playlist \
+  -H "Content-Type: application/json" \
+  -d '{"video_storage_key": "generated_videos/video.mp4"}'
+```
+
+For detailed documentation, see [docs/design/streaming.md](docs/design/streaming.md).
+
+### Legacy OBS (Deprecated)
+
+The old RabbitMQ-based approach is deprecated:
+```bash
+# Old approach - DO NOT USE
 sudo docker compose -f compose_obs.yml --env-file .env up
 ``` 
 

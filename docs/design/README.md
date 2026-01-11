@@ -12,6 +12,7 @@ This folder contains the design documentation for refactoring the Virtual Stream
 | [Remote Services](./remote-services.md) | External services: Video Search, MinIO, Qdrant |
 | [API Services](./api-services.md) | ML service APIs: Wav2Lip, Face Detection, TTS, STT |
 | [Agents](./agents.md) | Google ADK agent architecture and patterns |
+| [Streaming](./streaming.md) | OBS streaming infrastructure and playlist management |
 | [Migration Plan](./migration-plan.md) | Step-by-step migration roadmap |
 
 ## Key Principles
@@ -58,6 +59,20 @@ This folder contains the design documentation for refactoring the Virtual Stream
 │ TTS:8003      │   │ S3 API:9000   │   │ Search:8003   │
 │ Wav2Lip:8001  │   │               │   │ Vectors:6333  │
 └───────────────┘   └───────────────┘   └───────────────┘
+```
+
+### Streaming Stack
+
+For OBS streaming, see [streaming.md](./streaming.md):
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    STREAMING STACK                             │
+│                                                                │
+│  Twitch Chat ──▶ Main API ──▶ MySQL ◀── Video Server ──▶ OBS  │
+│                      │                      ▲                  │
+│                      └───▶ MinIO ──────────┘                  │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ## Current State Issues

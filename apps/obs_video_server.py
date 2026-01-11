@@ -1,3 +1,28 @@
+"""
+DEPRECATED: This file is deprecated and will be removed in a future version.
+
+The functionality has been migrated to:
+- virtual_streamer/streaming/video_server/app.py (FastAPI-based video server)
+- virtual_streamer/api/low_level/playlist.py (Playlist management API)
+
+The new architecture:
+- Uses database-driven playlists instead of RabbitMQ
+- Uses MinIO presigned URLs instead of local file serving
+- Uses the main Virtual Streamer API for all logic
+
+To use the new video server:
+    docker compose -f compose_streaming.yml up video_server
+
+Or run locally:
+    python -m uvicorn virtual_streamer.streaming.video_server.app:app --port 5000
+"""
+import warnings
+warnings.warn(
+    "obs_video_server.py is deprecated. Use virtual_streamer.streaming.video_server instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 import os
 import random
 import threading

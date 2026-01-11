@@ -1,0 +1,103 @@
+# Streaming Infrastructure Docker Compose
+#
+# This compose file runs the OBS streaming stack:
+# - video_server: API proxy serving videos to OBS browser source
+# - obs: OBS Studio container for streaming
+# - twitch_reader: (optional) Twitch chat integration
+#
+# Prerequisites:
+# 1. Create the shared network: docker network create vs_streaming
+# 2. Run main services: docker compose up -d
+# 3. Connect main services to network: ./scripts/setup_streaming_network.sh
+#
+# Usage:
+#   docker compose -f compose_streaming.yml up -d
+
+version: '3.8'
+
+services:
+  video_server:
+    build:
+      context: .
+      dockerfile: docker/streaming/video_server/Dockerfile
+    container_name: streaming_video_server
+    ports:
+      - "5000:5000"
+    environment:
+      # Main API URL (must be reachable from this container)
+      - API_URL=http://virtual_streamer_api:8000
+      # Stream ID to play from
+      - STREAM_ID=${STREAM_ID:-default}
+    networks:
+      - streaming
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+
+  obs:
+    build:
+      context: .
+      dockerfile: docker/streaming/obs/Dockerfile
+    container_name: streaming_obs
+    shm_size: '256m'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      # VNC access
+      - "5901:5901"
+      # noVNC web access
+      - "6901:6901"
+      # OBS WebSocket
+      - "4455:4455"
+    environment:
+      # Browser source URL points to video_server
+      - VIDEO_SERVER_URL=http://video_server:5000
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    volumes:
+      # Optional: Mount custom OBS scenes
+      # - ./configs/streaming/obs_scenes:/config/obs-studio/basic/scenes
+      # Shared video folder (if needed for local playback)
+      - video_folder:/videos
+    networks:
+      - streaming
+    depends_on:
+      video_server:
+        condition: service_healthy
+    restart: always
+
+  # Twitch chat reader (optional - uncomment to enable)
+  # twitch_reader:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/streaming/twitch/Dockerfile
+  #   container_name: streaming_twitch_reader
+  #   environment:
+  #     - API_URL=http://virtual_streamer_api:8000
+  #     - STREAM_ID=${STREAM_ID:-default}
+  #   networks:
+  #     - streaming
+  #   env_file:
+  #     - .env
+  #   restart: always
+
+volumes:
+  video_folder:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${VIDEO_FOLDER_PATH:-/tmp/videos}
+      o: bind
+
+networks:
+  streaming:
+    external: true
+    name: vs_streaming

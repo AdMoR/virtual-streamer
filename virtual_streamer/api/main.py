@@ -22,6 +22,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from virtual_streamer.api.low_level.characters import router as characters_router
 from virtual_streamer.api.low_level.clips import router as clips_router
 from virtual_streamer.api.low_level.story_templates import router as story_templates_router
+from virtual_streamer.api.low_level.streams import router as streams_router
+from virtual_streamer.api.low_level.programmations import router as programmations_router
+from virtual_streamer.api.low_level.playlist import router as playlist_router
 from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
 from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
@@ -115,6 +118,10 @@ app.add_middleware(
 app.include_router(characters_router, prefix="/api/v1")
 app.include_router(clips_router, prefix="/api/v1")
 app.include_router(story_templates_router, prefix="/api/v1")
+# Low-level: Streaming infrastructure
+app.include_router(streams_router, prefix="/api/v1")
+app.include_router(programmations_router, prefix="/api/v1")
+app.include_router(playlist_router, prefix="/api/v1")
 
 # Medium-level: Core services
 app.include_router(tts_router, prefix="/api/v1")
@@ -154,7 +161,7 @@ async def root():
         "version": "2.0.0",
         "docs": "/docs",
         "layers": {
-            "low_level": ["characters", "clips", "story-templates"],
+            "low_level": ["characters", "clips", "story-templates", "streams", "programmations", "playlist"],
             "medium_level": ["tts", "stt", "wav2lip"],
             "high_level": ["video_generation"],
             "adk_agents": "/adk",
