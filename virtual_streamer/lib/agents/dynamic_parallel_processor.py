@@ -171,7 +171,7 @@ class MapperAgent(SequentialAgent, ABC):
         for i, item in enumerate(items):
             worker_run_id = f"{run_id}:w{i}"
             worker = self._worker_factory(worker_run_id)
-            logger.info(worker, worker_run_id)
+            logger.info(f" worker: {worker_run_id} initialized")
 
             # Get the input key and schema from the worker (type-safe!)
             input_key = worker.get_input_key()

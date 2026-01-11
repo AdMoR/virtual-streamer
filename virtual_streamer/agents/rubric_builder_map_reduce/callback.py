@@ -115,7 +115,7 @@ class InjectStoriesCallback(StateInputCallback):
         
         # Append to request contents as user message
         llm_request.contents[0].parts.append(
-            types.Part.from_text(formatted_stories)
+            types.Part.from_text(text=formatted_stories)
         )
         
         logger.info(

@@ -85,7 +85,7 @@ def get_stateful_rubric_builder(run_id: Optional[str] = None) -> StatefulLlmAgen
     output_callback = StoreRubricsCallback(run_id)
     
     return StatefulLlmAgent(
-        name="stateful_rubric_builder",
+        name="rubric_builder",
         instruction=PROMPT,
         output_schema=MapPhaseOutput,
         input_callback=input_callback,
