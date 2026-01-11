@@ -56,10 +56,13 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
+from pydantic import ValidationError
+
 from virtual_streamer.agents.rubric_builder_map_reduce import (
     create_rubric_builder_map_reduce,
     STORIES_KEY,
 )
+from virtual_streamer.agents.rubric_builder_agent.schema import StoryItem
 
 # Set up logging
 logging.basicConfig(
@@ -71,29 +74,58 @@ logger = logging.getLogger(__name__)
 
 def load_stories(input_path: Path) -> list:
     """
-    Load stories from JSON file.
+    Load and validate stories from JSON file.
+    
+    Each story is validated against the StoryItem schema to catch
+    errors early before passing to the agent.
     
     Args:
         input_path: Path to input JSON file
         
     Returns:
-        List of story dicts
+        List of validated story dicts
+        
+    Raises:
+        ValueError: If input format is invalid or stories fail validation
     """
     with open(input_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     
     # Handle both list format and dict with "stories" key
     if isinstance(data, list):
-        stories = data
+        raw_stories = data
     elif isinstance(data, dict) and "stories" in data:
-        stories = data["stories"]
+        raw_stories = data["stories"]
     else:
         raise ValueError(
             f"Invalid input format. Expected list or dict with 'stories' key, "
             f"got {type(data).__name__}"
         )
     
-    return stories
+    if not raw_stories:
+        raise ValueError("No stories found in input file")
+    
+    # Validate each story against StoryItem schema
+    validated_stories = []
+    errors = []
+    
+    for i, story_dict in enumerate(raw_stories):
+        try:
+            story = StoryItem.model_validate(story_dict)
+            validated_stories.append(story.model_dump())
+        except ValidationError as e:
+            errors.append(f"Story {i}: {e}")
+    
+    if errors:
+        error_summary = "\n".join(errors[:5])  # Show first 5 errors
+        if len(errors) > 5:
+            error_summary += f"\n... and {len(errors) - 5} more errors"
+        raise ValueError(
+            f"Schema validation failed for {len(errors)}/{len(raw_stories)} stories:\n{error_summary}"
+        )
+    
+    logger.info(f"Validated {len(validated_stories)} stories against StoryItem schema")
+    return validated_stories
 
 
 def create_rubric_agent(output_path: Path, batch_size: int):
@@ -268,6 +300,10 @@ async def main():
     
     except json.JSONDecodeError as e:
         print(f"\nError: Invalid JSON in input file: {e}", file=sys.stderr)
+        return 1
+    
+    except ValueError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
     
     except KeyboardInterrupt:
