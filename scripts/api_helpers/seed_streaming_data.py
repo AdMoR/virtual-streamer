@@ -15,9 +15,13 @@ import argparse
 import os
 import sys
 from datetime import time
+import dotenv
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+dotenv.load_dotenv()
 
 
 async def seed_data(clear: bool = False):
@@ -53,7 +57,7 @@ async def seed_data(clear: bool = False):
         prog = await store.create_programmation({
             "programmation_id": "default-prog",
             "stream_id": "default",
-            "story_template_id": "cest_pas_sorcier",  # From existing templates
+            "story_template_id": "cps",  # From existing templates
             "name": "All Day Programming",
             "start_time": time(0, 0),
             "end_time": time(23, 59),
