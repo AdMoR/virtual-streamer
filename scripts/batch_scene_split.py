@@ -12,18 +12,29 @@ Usage:
 """
 
 import argparse
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
-def is_already_processed(video_file: Path, output_path: Path) -> bool:
-    """Check if video has already been processed by looking for output files."""
-    video_name = video_file.stem
-    # Look for any file matching {video_name}-Scene-*.mp4 in output dir
-    existing_scenes = list(output_path.glob(f"{video_name}-Scene-*.mp4"))
-    return len(existing_scenes) > 0
+def get_processed_video_names(output_path: Path) -> set[str]:
+    """
+    Scan output directory once and return set of video names that have been processed.
+    
+    Parses filenames like 'video001-Scene-001.mp4' to extract 'video001'.
+    """
+    processed = set()
+    scene_pattern = re.compile(r"^(.+)-Scene-\d+\.mp4$")
+    
+    for f in output_path.iterdir():
+        if f.is_file():
+            match = scene_pattern.match(f.name)
+            if match:
+                processed.add(match.group(1))
+    
+    return processed
 
 
 def process_video(
@@ -32,8 +43,6 @@ def process_video(
     min_scene_len: float,
 ) -> tuple[Path, bool, str]:
     """Process a single video file with scenedetect."""
-    if is_already_processed(video_file, output_path):
-        return (video_file, True, "skipped (already processed)")
 
     try:
         result = subprocess.run(
@@ -122,8 +131,12 @@ Examples:
         print("No files to process.")
         sys.exit(0)
 
-    # Filter out already processed files
-    to_process = [f for f in files if not is_already_processed(f, args.output_dir)]
+    # Scan output directory once to get already processed video names
+    processed_names = get_processed_video_names(args.output_dir)
+    print(f"Found {len(processed_names)} already processed videos in output directory")
+
+    # Filter out already processed files using set lookup (O(1) per file)
+    to_process = [f for f in files if f.stem not in processed_names]
     skipped = len(files) - len(to_process)
     print(f"Skipping {skipped} already processed videos, {len(to_process)} to process")
 
