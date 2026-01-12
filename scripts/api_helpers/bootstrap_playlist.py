@@ -93,7 +93,7 @@ async def bootstrap_playlist(
     # 1. Get streaming store and MinIO client
     print(f"Connecting to MinIO bucket: {bucket}")
     store = await get_streaming_store()
-    minio = MinIOClient(bucket=bucket)
+    minio = MinIOClient(endpoint="http://localhost:9000", bucket=bucket)
     
     # 2. List videos from MinIO first
     print(f"Listing objects with prefix: {minio_prefix}")

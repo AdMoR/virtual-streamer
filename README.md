@@ -230,11 +230,34 @@ docker image push  amorvend/virtual-teacher-space:demo
 
 ```
 import os
-dir_ = "/media/amor/data/Downloads/CPS/fred_voice"
-files = [os.path.join(dir_, f) for f in os.listdir(dir_) if f.endswith("mp4")]
+from pathlib import Path
+input_dir = "/media/amor/data1/finevideo/videos"
+collection_name = os.path.basename(input_dir)
+dir_ = Path(input_dir)
+files = dir_.glob("**/*.mp4")
 import subprocess
 for f in files:
-    rez = subprocess.run(["scenedetect", "-i", f, "split-video", "-o", "/media/amor/data/Downloads/CPS/fred_voice_clips"])
+    print(str(f))
+    rez = subprocess.run(["scenedetect", "-i", f, "--min-scene-len", "2.5", "--merge-last-scene", "split-video", "-o", f"/media/amor/data1/Downloads/finevideo_clips"])
+    break
+
+```
+
+
+With webm conversion
+```
+import os
+from pathlib import Path
+dir_ = Path("/media/amor/data1/Downloads/tibo_in_shape")
+outdir = ""
+files = dir_.glob("**/*.webm")
+import subprocess
+for f in files:
+    print(str(f))
+    temp_f = f"./{os.path.basename(str(f))}.mp4"
+    rez = subprocess.run(["ffmpeg", "-i", str(f), "-y", temp_f])
+    rez = subprocess.run(["scenedetect", "-i", temp_f, "--min-scene-len", "2.5", "--merge-last-scene", "split-video", "-o", "/media/amor/data1/Downloads/tibo_in_shape_clips"])
+    break
 
 ```
 

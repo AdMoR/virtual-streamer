@@ -160,6 +160,64 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  video_server:
+    build:
+      context: .
+      dockerfile: docker/streaming/video_server/Dockerfile
+    container_name: streaming_video_server
+    ports:
+      - "5000:5000"
+    environment:
+      # Main API URL (must be reachable from this container)
+      - API_URL=http://virtual_streamer_api:8000
+      # Stream ID to play from
+      - STREAM_ID=${STREAM_ID:-default}
+    networks:
+      - tts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+
+  obs:
+    build:
+      context: .
+      dockerfile: docker/streaming/obs/Dockerfile
+    container_name: streaming_obs
+    shm_size: '256m'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      # VNC access
+      - "5901:5901"
+      # noVNC web access
+      - "6901:6901"
+      # OBS WebSocket
+      - "4455:4455"
+    environment:
+      # Browser source URL points to video_server
+      - VIDEO_SERVER_URL=http://video_server:5000
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    volumes:
+      # Optional: Mount custom OBS scenes
+      # - ./configs/streaming/obs_scenes:/config/obs-studio/basic/scenes
+      # Shared video folder (if needed for local playback)
+      - videos:/videos
+    networks:
+      - tts
+    depends_on:
+      video_server:
+        condition: service_healthy
+    restart: always
+
 volumes:
   videos:
     driver: local # Define the driver and options under the volume name
