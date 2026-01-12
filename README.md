@@ -228,20 +228,31 @@ docker image push  amorvend/virtual-teacher-space:demo
 
 ## Preprocessing a video dataset into chunks 
 
-```
-import os
-from pathlib import Path
-input_dir = "/media/amor/data1/finevideo/videos"
-collection_name = os.path.basename(input_dir)
-dir_ = Path(input_dir)
-files = dir_.glob("**/*.mp4")
-import subprocess
-for f in files:
-    print(str(f))
-    rez = subprocess.run(["scenedetect", "-i", f, "--min-scene-len", "2.5", "--merge-last-scene", "split-video", "-o", f"/media/amor/data1/Downloads/finevideo_clips"])
-    break
+Use the `batch_scene_split.py` script to split videos into scenes using PySceneDetect:
 
+```bash
+# Basic usage
+python scripts/batch_scene_split.py /path/to/videos /path/to/output
+
+# With more workers for faster processing
+python scripts/batch_scene_split.py /path/to/videos /path/to/output --workers 8
+
+# Custom minimum scene length (default: 2.5s)
+python scripts/batch_scene_split.py /path/to/videos /path/to/output --min-scene-len 3.0
+
+# Process different video formats
+python scripts/batch_scene_split.py /path/to/videos /path/to/output --pattern "**/*.mkv"
+
+# Dry run to see what would be processed
+python scripts/batch_scene_split.py /path/to/videos /path/to/output --dry-run
 ```
+
+Features:
+- Multi-threaded processing with configurable worker count
+- Skips already processed videos (detects existing `{video_name}-Scene-*.mp4` files)
+- Progress tracking with success/failure indicators
+
+Requires: `pip install scenedetect[opencv]`
 
 
 With webm conversion
