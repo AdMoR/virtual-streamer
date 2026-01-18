@@ -72,6 +72,22 @@ from .comfyui_client import (
     generate_video,
 )
 
+from .ltx_prompt_builder import (
+    build_ltx_prompt,
+    build_ltx_prompt_detailed,
+    build_negative_prompt,
+    build_prompts_from_story,
+)
+
+from .story_to_video import (
+    story_to_video,
+    title_to_video,
+    concatenate_videos,
+    generate_segment,
+    SegmentResult,
+    StoryVideoResult,
+)
+
 __all__ = [
     # Configuration
     "VideoGenerationConfig",
@@ -113,6 +129,18 @@ __all__ = [
     "VideoGenerationParams",
     "VideoGenerationResult",
     "generate_video",
+    # LTX prompt builder
+    "build_ltx_prompt",
+    "build_ltx_prompt_detailed",
+    "build_negative_prompt",
+    "build_prompts_from_story",
+    # Story to video pipeline
+    "story_to_video",
+    "title_to_video",
+    "concatenate_videos",
+    "generate_segment",
+    "SegmentResult",
+    "StoryVideoResult",
 ]
 
 __version__ = "1.3.0"

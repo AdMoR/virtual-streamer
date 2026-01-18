@@ -3,15 +3,21 @@ ComfyUI Video Generator - Streamlit App
 
 A web interface for generating videos using LTX-2 through ComfyUI.
 
+Features:
+- Single Prompt Mode: Generate a single video from a text prompt
+- Story Mode: Generate a full story video with multiple scenes
+
 Run with:
     streamlit run apps/comfyui_video_app.py
 """
 
 import asyncio
+import json
 import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import streamlit as st
 
@@ -24,6 +30,15 @@ from virtual_streamer.video_generation.comfyui_client import (
     ComfyUIConfig,
     VideoGenerationParams,
     VideoGenerationResult,
+)
+from virtual_streamer.video_generation.config import DialogLine, StoryOutput
+from virtual_streamer.video_generation.story_to_video import (
+    story_to_video,
+    StoryVideoResult,
+)
+from virtual_streamer.video_generation.ltx_prompt_builder import (
+    build_ltx_prompt,
+    build_prompts_from_story,
 )
 
 
@@ -79,6 +94,10 @@ def init_session_state():
         "generation_in_progress": False,
         "progress": 0.0,
         "status_message": "",
+        # Story mode state
+        "story_output": None,
+        "story_video_result": None,
+        "story_prompts_preview": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -116,6 +135,35 @@ async def generate_video_async(
             output_dir=output_dir,
             progress_callback=progress_callback
         )
+    
+    return result
+
+
+async def generate_story_video_async(
+    story_output: StoryOutput,
+    config: ComfyUIConfig,
+    video_params: VideoGenerationParams,
+    output_dir: str,
+    progress_placeholder,
+    status_placeholder,
+    style_suffix: str = "Cinematic quality, smooth motion, natural lighting.",
+) -> StoryVideoResult:
+    """Generate video from story with progress updates."""
+    
+    def progress_callback(current: int, total: int, message: str):
+        progress = current / max(total, 1)
+        st.session_state.progress = progress
+        st.session_state.status_message = message
+        progress_placeholder.progress(progress, text=f"[{current}/{total}] {message}")
+    
+    result = await story_to_video(
+        story_output=story_output,
+        comfyui_config=config,
+        video_params=video_params,
+        output_dir=output_dir,
+        progress_callback=progress_callback,
+        style_suffix=style_suffix,
+    )
     
     return result
 
@@ -281,6 +329,19 @@ def render_main_content(config_values: dict):
     Generate AI videos from text prompts using the LTX-2 model through ComfyUI.
     """)
     
+    # Create tabs for different modes
+    tab1, tab2 = st.tabs(["📝 Single Prompt", "📖 Story Mode"])
+    
+    with tab1:
+        render_single_prompt_tab(config_values)
+    
+    with tab2:
+        render_story_mode_tab(config_values)
+
+
+def render_single_prompt_tab(config_values: dict):
+    """Render the single prompt generation tab."""
+    
     # Prompt inputs
     col1, col2 = st.columns([2, 1])
     
@@ -397,6 +458,277 @@ def render_main_content(config_values: dict):
     if st.session_state.last_result:
         st.divider()
         render_video_result(st.session_state.last_result)
+
+
+def render_story_mode_tab(config_values: dict):
+    """Render the story mode generation tab."""
+    
+    st.markdown("""
+    ### Story-to-Video Generation
+    
+    Create a multi-scene video from a story. Each dialog line becomes a video segment
+    with synchronized audio, then all segments are concatenated into a final video.
+    """)
+    
+    # Story input method
+    input_method = st.radio(
+        "Input Method",
+        options=["Manual Dialog Lines", "Generate from Title"],
+        horizontal=True,
+        help="Choose how to create the story"
+    )
+    
+    story_output = None
+    
+    if input_method == "Manual Dialog Lines":
+        st.markdown("#### Define Dialog Lines")
+        st.caption("Add dialog lines with character, text, and scene description.")
+        
+        # Initialize dialog lines in session state
+        if "manual_dialog_lines" not in st.session_state:
+            st.session_state.manual_dialog_lines = [
+                {"character_id": "narrator", "text": "", "scene_description": ""}
+            ]
+        
+        # Render dialog line inputs
+        lines_to_remove = []
+        for i, line in enumerate(st.session_state.manual_dialog_lines):
+            with st.expander(f"Scene {i+1}", expanded=True):
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    line["character_id"] = st.text_input(
+                        "Character",
+                        value=line.get("character_id", "narrator"),
+                        key=f"char_{i}",
+                        help="Character ID (e.g., 'narrator', 'fred', 'jamy')"
+                    )
+                with col2:
+                    line["text"] = st.text_area(
+                        "Dialog Text",
+                        value=line.get("text", ""),
+                        key=f"text_{i}",
+                        height=80,
+                        help="What the character says (will be used for audio)"
+                    )
+                line["scene_description"] = st.text_area(
+                    "Scene Description",
+                    value=line.get("scene_description", ""),
+                    key=f"scene_{i}",
+                    height=80,
+                    help="Visual description of the scene (what should be shown)"
+                )
+                if st.button("🗑️ Remove", key=f"remove_{i}"):
+                    lines_to_remove.append(i)
+        
+        # Remove marked lines
+        for i in reversed(lines_to_remove):
+            st.session_state.manual_dialog_lines.pop(i)
+            st.rerun()
+        
+        # Add new line button
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.button("➕ Add Scene"):
+                st.session_state.manual_dialog_lines.append(
+                    {"character_id": "narrator", "text": "", "scene_description": ""}
+                )
+                st.rerun()
+        
+        # Build StoryOutput from manual lines
+        if st.session_state.manual_dialog_lines:
+            valid_lines = [
+                DialogLine(
+                    character_id=line["character_id"],
+                    text=line["text"],
+                    scene_description=line["scene_description"]
+                )
+                for line in st.session_state.manual_dialog_lines
+                if line["text"].strip() and line["scene_description"].strip()
+            ]
+            if valid_lines:
+                story_output = StoryOutput(
+                    title="Manual Story",
+                    story_plan="Manually created dialog lines",
+                    dialog=valid_lines
+                )
+    
+    else:  # Generate from Title
+        st.markdown("#### Generate Story from Title")
+        
+        title = st.text_input(
+            "Story Title/Topic",
+            placeholder="e.g., 'How does artificial intelligence work?'",
+            help="The AI will generate a story with dialog lines based on this title"
+        )
+        
+        story_template_id = st.text_input(
+            "Story Template ID (optional)",
+            placeholder="e.g., 'cest_pas_sorcier'",
+            help="ID of a story template to use for generation style"
+        )
+        
+        if st.button("🎭 Generate Story", disabled=not title):
+            with st.spinner("Generating story..."):
+                try:
+                    # Import the story generator
+                    from virtual_streamer.api.high_level.video_generation import run_story_generator
+                    
+                    story_output = run_async(
+                        run_story_generator(
+                            title=title,
+                            story_template_id=story_template_id if story_template_id else None
+                        )
+                    )
+                    st.session_state.story_output = story_output
+                    st.success(f"✅ Story generated: {story_output.title}")
+                except Exception as e:
+                    st.error(f"❌ Story generation failed: {str(e)}")
+                    st.exception(e)
+        
+        # Use stored story output
+        if st.session_state.story_output:
+            story_output = st.session_state.story_output
+    
+    # Preview prompts
+    if story_output:
+        st.divider()
+        st.markdown("### 📋 Story Preview")
+        
+        st.markdown(f"**Title:** {story_output.title}")
+        st.markdown(f"**Scenes:** {len(story_output.dialog)}")
+        
+        # Generate and show prompts
+        prompts = build_prompts_from_story(
+            story_output,
+            style_suffix=config_values.get("style_suffix", "Cinematic quality, smooth motion.")
+        )
+        
+        with st.expander("View LTX-2 Prompts", expanded=False):
+            for i, p in enumerate(prompts):
+                st.markdown(f"**Scene {i+1}** ({p['character_id']})")
+                st.code(p["prompt"], language=None)
+                st.caption(f"Dialog: {p['dialog_line'].text[:100]}...")
+                st.divider()
+        
+        # Style suffix input
+        style_suffix = st.text_input(
+            "Style Suffix",
+            value="Cinematic quality, smooth motion, natural lighting.",
+            help="Added to each prompt for consistent style"
+        )
+        
+        st.divider()
+        
+        # Generate video button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            generate_story_clicked = st.button(
+                "🎬 Generate Story Video",
+                type="primary",
+                use_container_width=True,
+                disabled=st.session_state.generation_in_progress
+            )
+        
+        # Progress and status area
+        progress_placeholder = st.empty()
+        status_placeholder = st.empty()
+        
+        if generate_story_clicked:
+            st.session_state.generation_in_progress = True
+            
+            try:
+                # Create config and params
+                config = ComfyUIConfig(
+                    server_url=config_values["server_url"],
+                    timeout=600.0
+                )
+                
+                video_params = VideoGenerationParams(
+                    prompt="",  # Will be set per segment
+                    width=config_values["width"],
+                    height=config_values["height"],
+                    duration_seconds=config_values["duration"],
+                    fps=config_values["fps"],
+                    steps=config_values["steps"],
+                    cfg_scale=config_values["cfg_scale"],
+                    seed=config_values["seed"],
+                    enable_audio=config_values["enable_audio"],
+                )
+                
+                # Ensure output directory exists
+                output_dir = config_values["output_dir"]
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+                
+                # Generate story video
+                with st.spinner("Generating story video..."):
+                    result = run_async(
+                        generate_story_video_async(
+                            story_output=story_output,
+                            config=config,
+                            video_params=video_params,
+                            output_dir=output_dir,
+                            progress_placeholder=progress_placeholder,
+                            status_placeholder=status_placeholder,
+                            style_suffix=style_suffix,
+                        )
+                    )
+                
+                st.session_state.story_video_result = result
+                status_placeholder.success(f"✅ Story video generated successfully!")
+                
+            except Exception as e:
+                status_placeholder.error(f"❌ Generation failed: {str(e)}")
+                st.exception(e)
+            
+            finally:
+                st.session_state.generation_in_progress = False
+        
+        # Display story video result
+        if st.session_state.story_video_result:
+            st.divider()
+            render_story_video_result(st.session_state.story_video_result)
+
+
+def render_story_video_result(result: StoryVideoResult):
+    """Render the generated story video result."""
+    st.markdown("## 🎥 Generated Story Video")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Video player
+        if Path(result.final_video_path).exists():
+            st.video(result.final_video_path)
+        else:
+            st.warning(f"Video file not found: {result.final_video_path}")
+    
+    with col2:
+        # Video info
+        st.markdown("### Video Info")
+        st.markdown(f"**Title:** {result.story_title}")
+        st.markdown(f"**Duration:** {result.total_duration_seconds:.2f}s")
+        st.markdown(f"**Segments:** {len(result.segments)}")
+        
+        # Download button
+        if Path(result.final_video_path).exists():
+            with open(result.final_video_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ Download Video",
+                    data=f,
+                    file_name=Path(result.final_video_path).name,
+                    mime="video/mp4",
+                    use_container_width=True
+                )
+    
+    # Segment details
+    with st.expander("📊 Segment Details", expanded=False):
+        for seg in result.segments:
+            st.markdown(f"**Segment {seg.index + 1}** ({seg.dialog_line.character_id})")
+            st.caption(f"Duration: {seg.duration_seconds:.2f}s")
+            st.caption(f"Dialog: {seg.dialog_line.text[:100]}...")
+            if Path(seg.video_path).exists():
+                st.video(seg.video_path)
+            st.divider()
 
 
 def render_video_result(result: VideoGenerationResult):

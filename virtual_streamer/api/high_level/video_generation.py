@@ -4,10 +4,15 @@ High-level API: Video Generation Application
 Provides complete video generation workflow from story/title to final video.
 This is a high-level application that orchestrates ADK agents and webservices.
 
-Architecture:
+Architecture (Traditional Pipeline):
     1. StoryGeneratorAgent (ADK) - generates story with DialogLines from title
     2. SentenceVideoMatcher (ADK) - matches each dialog line to a video
     3. script_to_video - TTS/Wav2Lip/STT via webservice + local video combination
+
+Architecture (LTX-2 Pipeline):
+    1. StoryGeneratorAgent (ADK) - generates story with DialogLines from title
+    2. story_to_video - LTX-2 text-to-video for each dialog line (video + audio)
+    3. Concatenate segments into final video
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -49,6 +54,14 @@ from virtual_streamer.video_generation import (
     VideoGenerationConfig,
     create_video_retriever,
     GenerationResult,
+)
+from virtual_streamer.video_generation.comfyui_client import (
+    ComfyUIConfig,
+    VideoGenerationParams,
+)
+from virtual_streamer.video_generation.story_to_video import (
+    story_to_video,
+    StoryVideoResult,
 )
 
 # Local video processing utilities
@@ -503,6 +516,47 @@ class VideoGenerationResponse(BaseModel):
     message: str
 
 
+class LTXVideoGenerationRequest(BaseModel):
+    """Request model for LTX-2 video generation."""
+
+    # Input (mutually exclusive: title or story_text)
+    title: Optional[str] = None
+    story_text: Optional[str] = None
+
+    # Story template (required - defines characters, prompt)
+    story_template_id: str
+
+    # ComfyUI server configuration
+    comfyui_server_url: str = "http://localhost:8188"
+    comfyui_timeout: float = 600.0
+
+    # Video generation parameters
+    video_width: int = 1280
+    video_height: int = 720
+    video_duration_seconds: float = 5.0
+    video_fps: int = 24
+    video_steps: int = 20
+    video_cfg_scale: float = 4.0
+    video_seed: int = -1
+    enable_audio: bool = True
+
+    # Output configuration
+    output_dir: Optional[str] = None
+    style_suffix: str = "Cinematic quality, smooth motion, natural lighting."
+
+    # LLM configuration (for ADK agents)
+    llm_provider: Optional[str] = "anthropic"
+    llm_model: Optional[str] = "claude-sonnet-4-5-20250929"
+
+
+class LTXVideoGenerationResponse(BaseModel):
+    """Response model for LTX-2 video generation."""
+
+    job_id: str
+    status: str
+    message: str
+
+
 # ============================================================================
 # Background Task
 # ============================================================================
@@ -633,6 +687,128 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         traceback.print_exc()
 
 
+async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequest):
+    """Background task to run LTX-2 video generation."""
+    job_store = await get_global_job_store()
+    try:
+        # Update job status to running
+        await job_store.update_job(job_id, status="running")
+
+        # Validate inputs - require title or story_text
+        inputs = [request.title, request.story_text]
+        if sum(x is not None for x in inputs) != 1:
+            raise ValueError(
+                "Exactly one of title or story_text must be provided"
+            )
+
+        # Build ComfyUI configuration
+        comfyui_config = ComfyUIConfig(
+            server_url=request.comfyui_server_url,
+            timeout=request.comfyui_timeout,
+        )
+
+        # Build video generation parameters
+        video_params = VideoGenerationParams(
+            prompt="",  # Will be set per segment
+            width=request.video_width,
+            height=request.video_height,
+            duration_seconds=request.video_duration_seconds,
+            fps=request.video_fps,
+            steps=request.video_steps,
+            cfg_scale=request.video_cfg_scale,
+            seed=request.video_seed,
+            enable_audio=request.enable_audio,
+        )
+
+        output_dir = request.output_dir or f"./output/ltx_{job_id}"
+
+        story_output = None
+
+        if request.title:
+            # Step 1: Run StoryGeneratorAgent
+            logger.info(f"[LTX Job {job_id}] Running StoryGeneratorAgent...")
+            story_output = await run_story_generator(
+                request.title, story_template_id=request.story_template_id
+            )
+            logger.info(
+                f"[LTX Job {job_id}] Story generated: {story_output.title} "
+                f"with {len(story_output.dialog)} dialog lines"
+            )
+
+        elif request.story_text:
+            # Parse story_text via story generator
+            story_output = await run_story_generator(
+                request.story_text, story_template_id=request.story_template_id
+            )
+
+        # Step 2: Run story_to_video (LTX-2 pipeline)
+        logger.info(f"[LTX Job {job_id}] Running story_to_video with LTX-2...")
+
+        def progress_callback(current: int, total: int, message: str):
+            logger.info(f"[LTX Job {job_id}] Progress: {current}/{total} - {message}")
+
+        result: StoryVideoResult = await story_to_video(
+            story_output=story_output,
+            comfyui_config=comfyui_config,
+            video_params=video_params,
+            output_dir=output_dir,
+            progress_callback=progress_callback,
+            style_suffix=request.style_suffix,
+        )
+
+        logger.info(
+            f"[LTX Job {job_id}] Video generation complete: {result.final_video_path}"
+        )
+
+        # Upload to MinIO storage
+        logger.info(f"[LTX Job {job_id}] Uploading to storage...")
+        storage = get_storage_client()
+        minio_video_key = f"generated_videos/ltx/{job_id}.mp4"
+        await storage.upload_file(result.final_video_path, minio_video_key)
+
+        # Generate presigned URL for video access
+        video_url = storage.get_url(minio_video_key)
+        logger.info(f"[LTX Job {job_id}] Video URL generated: {video_url[:80]}...")
+
+        # Build result data
+        result_data = {
+            "video_path": result.final_video_path,
+            "story_title": result.story_title,
+            "total_duration_seconds": result.total_duration_seconds,
+            "segment_count": len(result.segments),
+            "segments": [
+                {
+                    "index": seg.index,
+                    "video_path": seg.video_path,
+                    "duration_seconds": seg.duration_seconds,
+                    "character_id": seg.dialog_line.character_id,
+                    "text": seg.dialog_line.text,
+                    "scene_description": seg.dialog_line.scene_description,
+                }
+                for seg in result.segments
+            ],
+            "metadata": {
+                "timestamp": datetime.now().isoformat(),
+                "minio_video_key": minio_video_key,
+                "video_url": video_url,
+                "pipeline": "ltx-2",
+            },
+            "story_output": story_output.model_dump() if story_output else None,
+        }
+
+        # Job completed successfully
+        await job_store.update_job(job_id, status="completed", result=result_data)
+
+    except Exception as e:
+        # Job failed
+        await job_store.update_job(job_id, status="failed", error=str(e))
+
+        import traceback
+
+        logger.error(f"LTX video generation job {job_id} failed:")
+        traceback.print_exc()
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -721,6 +897,46 @@ async def delete_job(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     return {"message": "Job deleted successfully"}
+
+
+@router.post("/generate-ltx", response_model=LTXVideoGenerationResponse)
+async def generate_video_ltx(
+    request: LTXVideoGenerationRequest, background_tasks: BackgroundTasks
+):
+    """
+    Generate video from title using LTX-2 for video+audio.
+
+    This endpoint uses the LTX-2 text-to-video model via ComfyUI to generate
+    video segments with synchronized audio. The pipeline:
+
+    1. StoryGeneratorAgent generates a story with DialogLines from the title
+    2. For each DialogLine, LTX-2 generates a video segment with audio
+    3. All segments are concatenated into the final video
+
+    This is an alternative to the traditional pipeline that uses TTS + Wav2Lip.
+    LTX-2 generates both video and audio together, resulting in more natural
+    lip-sync and scene coherence.
+
+    Args:
+        request: LTXVideoGenerationRequest with title and configuration
+
+    Returns:
+        LTXVideoGenerationResponse with job_id for tracking
+    """
+    job_store = await get_global_job_store()
+
+    # Create job
+    job_id = str(uuid.uuid4())
+    await job_store.create_job(job_id, {**request.model_dump(), "pipeline": "ltx-2"})
+
+    # Start background task
+    background_tasks.add_task(_run_ltx_video_generation, job_id, request)
+
+    return LTXVideoGenerationResponse(
+        job_id=job_id,
+        status="pending",
+        message="LTX-2 video generation job submitted successfully",
+    )
 
 
 @router.get("/health")
