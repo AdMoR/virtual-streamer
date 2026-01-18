@@ -30,3 +30,4 @@ aiofiles
 boto3
 python-multipart
 aiomysql
+feedparser>=6.0.0

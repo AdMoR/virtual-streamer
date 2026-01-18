@@ -312,3 +312,79 @@ class StoryTemplate(StoryTemplateBase):
                 "updated_at": "2025-01-05T12:00:00Z",
             }
         }
+
+
+# --- News/Article Models ---
+
+
+class NewsSource(str, Enum):
+    """Supported news sources."""
+    LE_MONDE = "le_monde"
+    FRANCE_INFO = "france_info"
+    GOOGLE_NEWS_FR = "google_news_fr"
+    BFM_TV = "bfm_tv"
+    TWENTY_MINUTES = "20_minutes"
+
+
+class ArticleContent(BaseModel):
+    """Full article content stored in object storage."""
+    title: str
+    summary: str
+    link: str
+    categories: List[str] = Field(default_factory=list)
+    author: Optional[str] = None
+
+
+class ArticleMetadata(BaseModel):
+    """Lightweight metadata stored in SQLite."""
+    id: str = Field(..., description="SHA256 hash of link URL")
+    title: str = Field(..., description="Headline for quick display")
+    source: NewsSource
+    published_at: datetime
+    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    object_storage_key: str = Field(..., description="Path to content in object storage")
+    used_in_story: Optional[str] = Field(default=None, description="Story ID if used")
+
+
+class NewsArticle(BaseModel):
+    """Combined article with metadata + content."""
+    metadata: ArticleMetadata
+    content: ArticleContent
+
+    @property
+    def title(self) -> str:
+        return self.content.title
+
+    @property
+    def summary(self) -> str:
+        return self.content.summary
+
+    class Config:
+        orm_mode = True
+
+
+class NewsContext(BaseModel):
+    """Enriched context for story generation."""
+    article_id: str
+    title: str
+    summary: str
+    source: str
+    published_at: datetime
+    prompt_context: str = Field(..., description="Formatted context string for LLM")
+
+    @classmethod
+    def from_article(cls, article: NewsArticle) -> "NewsContext":
+        """Create a NewsContext from a NewsArticle."""
+        prompt = f"""Titre: {article.title}
+Résumé: {article.summary}
+Source: {article.metadata.source.value}
+Date: {article.metadata.published_at.strftime('%d/%m/%Y %H:%M')}"""
+
+        return cls(
+            article_id=article.metadata.id,
+            title=article.title,
+            summary=article.summary,
+            source=article.metadata.source.value,
+            published_at=article.metadata.published_at,
+            prompt_context=prompt,
+        )

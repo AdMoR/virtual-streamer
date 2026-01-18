@@ -114,6 +114,41 @@ class VideoProcessingConfig(BaseModel):
     fontsize: int = Field(default=14, gt=0, description="Subtitle font size")
 
 
+class NewsConfig(BaseModel):
+    """Configuration for news feed integration."""
+
+    enabled: bool = Field(
+        default=False, 
+        description="Enable news feed integration for story generation"
+    )
+    sources: list[str] = Field(
+        default_factory=lambda: [
+            "https://www.lemonde.fr/rss/une.xml",
+            "https://www.francetvinfo.fr/titres.rss",
+            "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr",
+        ],
+        description="List of RSS feed URLs to fetch news from",
+    )
+    db_path: str = Field(
+        default="./data/news_articles.db",
+        description="Path to SQLite database for article metadata",
+    )
+    storage_prefix: str = Field(
+        default="articles",
+        description="Object storage prefix for article content",
+    )
+    fetch_interval_minutes: int = Field(
+        default=30,
+        gt=0,
+        description="How often to fetch new articles (in minutes)",
+    )
+    max_article_age_hours: int = Field(
+        default=24,
+        gt=0,
+        description="Maximum age of articles to consider for story generation",
+    )
+
+
 class VideoGenerationConfig(BaseSettings):
     """Main configuration for video generation workflow.
 
@@ -192,6 +227,7 @@ class VideoGenerationConfig(BaseSettings):
     video_processing: VideoProcessingConfig = Field(
         default_factory=VideoProcessingConfig
     )
+    news: NewsConfig = Field(default_factory=NewsConfig)
 
     # Video search and matching
     max_search_attempts: int = Field(

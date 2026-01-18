@@ -15,7 +15,7 @@ from typing import Optional
 
 from google.adk.agents.readonly_context import ReadonlyContext
 
-from virtual_streamer.agents.common.state_keys import TITLE, STORY_TEMPLATE_ID
+from virtual_streamer.agents.common.state_keys import TITLE, STORY_TEMPLATE_ID, NEWS_CONTEXT
 from virtual_streamer.lib.providers.instruction import InstructionProvider
 
 logger = logging.getLogger(__name__)
@@ -250,6 +250,9 @@ class StoryInstructionProvider(InstructionProvider):
     
     Otherwise:
         - Uses default hardcoded C'est pas Sorcier prompt
+    
+    If news_context is provided in state:
+        - Appends news article context to inspire the story
     """
 
     async def __call__(self, ctx: ReadonlyContext) -> str:
@@ -272,10 +275,41 @@ class StoryInstructionProvider(InstructionProvider):
         if template_id:
             logger.info(f"Using story template: {template_id}")
             prompt = await load_template_and_build_prompt(template_id, title)
-            if prompt:
-                return prompt
-            else:
+            if prompt is None:
                 logger.warning(f"Template '{template_id}' not found, falling back to default")
+                prompt = format_story_prompt(title)
+        else:
+            # Fallback to default prompt
+            prompt = format_story_prompt(title)
         
-        # Fallback to default prompt
-        return format_story_prompt(title)
+        # Optionally append news context
+        news_context = ctx.state.get(NEWS_CONTEXT)
+        if news_context:
+            logger.info("Adding news context to story generation prompt")
+            prompt = self._append_news_context(prompt, news_context)
+        
+        return prompt
+
+    def _append_news_context(self, base_prompt: str, news_context: str) -> str:
+        """
+        Append news context to the base prompt.
+        
+        Args:
+            base_prompt: The original prompt
+            news_context: Formatted news context string
+        
+        Returns:
+            Prompt with news context appended
+        """
+        news_section = f"""
+
+---
+Actualité de référence pour inspiration:
+{news_context}
+---
+
+Utilise cette actualité comme point de départ pour créer une parodie humoristique.
+Le titre de l'actualité peut servir de base pour le scénario, mais adapte-le 
+au style et au ton des personnages."""
+
+        return base_prompt + news_section

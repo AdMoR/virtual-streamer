@@ -8,4 +8,5 @@ Modules:
 - streams: Stream configuration management
 - programmations: Media programmation scheduling
 - playlist: Playlist and video playback management
+- articles: News article management (RSS feed fetching and storage)
 """

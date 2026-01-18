@@ -36,6 +36,20 @@ VIDEO_COLLECTION = "video_collection"
 CONFIG = "config"
 """dict: Serialized VideoGenerationConfig with all settings."""
 
+NEWS_ARTICLE_ID = "news_article_id"
+"""str: ID of the news article used for story generation (optional)."""
+
+NEWS_CONTEXT = "news_context"
+"""str: Formatted news context string for prompt enrichment (optional).
+
+When set, this provides additional context from a news article to inform
+story generation. Format:
+    Titre: {headline}
+    Résumé: {summary}
+    Source: {source}
+    Date: {published_date}
+"""
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # STORY GENERATION STATE (after StoryGeneratorAgent)
 # ═══════════════════════════════════════════════════════════════════════════════
