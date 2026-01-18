@@ -6,12 +6,15 @@ streamlit>=1.28.0
 
 # HTTP client for API calls
 requests>=2.31.0
+httpx>=0.25.0
+
+# WebSocket client for ComfyUI progress tracking
+websockets>=12.0
 
 # Already in main requirements.txt but listed here for reference:
 # - fastapi
 # - uvicorn
 # - pydantic
-# - httpx
 
 
 

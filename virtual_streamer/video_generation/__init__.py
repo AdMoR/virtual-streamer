@@ -64,6 +64,14 @@ from .visualizer import (
     create_html_report_from_dump,
 )
 
+from .comfyui_client import (
+    ComfyUIClient,
+    ComfyUIConfig,
+    VideoGenerationParams,
+    VideoGenerationResult,
+    generate_video,
+)
+
 __all__ = [
     # Configuration
     "VideoGenerationConfig",
@@ -99,6 +107,12 @@ __all__ = [
     # Visualizer functions
     "create_html_report",
     "create_html_report_from_dump",
+    # ComfyUI client
+    "ComfyUIClient",
+    "ComfyUIConfig",
+    "VideoGenerationParams",
+    "VideoGenerationResult",
+    "generate_video",
 ]
 
 __version__ = "1.3.0"
