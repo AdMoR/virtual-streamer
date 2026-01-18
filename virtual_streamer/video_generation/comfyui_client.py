@@ -137,75 +137,282 @@ class VideoGenerationResult(BaseModel):
     prompt_id: str = Field(description="ComfyUI prompt ID for tracking")
 
 
-# Default LTX-2 workflow template
-# This is a simplified template - in production, export from ComfyUI in API format
+# Default LTX-2 workflow template (exported from ComfyUI in API format)
+# This workflow includes audio generation and 2x spatial upscaling
 LTX2_WORKFLOW_TEMPLATE: Dict[str, Any] = {
-    "3": {
-        "class_type": "LTXVLoader",
+    "75": {
         "inputs": {
-            "ckpt_name": "ltxv-13b-0.9.7-dev.safetensors",
-            "dtype": "bfloat16"
-        }
+            "filename_prefix": "video/LTX-2",
+            "format": "mp4",
+            "codec": "auto",
+            "video": ["92:97", 0]
+        },
+        "class_type": "SaveVideo",
+        "_meta": {"title": "Save Video"}
     },
-    "6": {
-        "class_type": "CLIPTextEncode",
+    "92:9": {
         "inputs": {
-            "text": "{prompt}",
-            "clip": ["3", 1]
-        }
+            "steps": 20,
+            "max_shift": 2.05,
+            "base_shift": 0.95,
+            "stretch": True,
+            "terminal": 0.1,
+            "latent": ["92:56", 0]
+        },
+        "class_type": "LTXVScheduler",
+        "_meta": {"title": "LTXVScheduler"}
     },
-    "7": {
-        "class_type": "CLIPTextEncode",
+    "92:60": {
         "inputs": {
-            "text": "{negative_prompt}",
-            "clip": ["3", 1]
-        }
+            "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+            "ckpt_name": "ltx-2-19b-dev-fp8.safetensors",
+            "device": "default"
+        },
+        "class_type": "LTXAVTextEncoderLoader",
+        "_meta": {"title": "LTXV Audio Text Encoder Loader"}
     },
-    "10": {
-        "class_type": "EmptyLTXVLatentVideo",
+    "92:73": {
+        "inputs": {"sigmas": "0.909375, 0.725, 0.421875, 0.0"},
+        "class_type": "ManualSigmas",
+        "_meta": {"title": "ManualSigmas"}
+    },
+    "92:76": {
+        "inputs": {"model_name": "ltx-2-spatial-upscaler-x2-1.0.safetensors"},
+        "class_type": "LatentUpscaleModelLoader",
+        "_meta": {"title": "Load Latent Upscale Model"}
+    },
+    "92:81": {
         "inputs": {
-            "width": "{width}",
-            "height": "{height}",
-            "length": "{frame_count}",
+            "positive": ["92:22", 0],
+            "negative": ["92:22", 1],
+            "latent": ["92:80", 0]
+        },
+        "class_type": "LTXVCropGuides",
+        "_meta": {"title": "LTXVCropGuides"}
+    },
+    "92:82": {
+        "inputs": {
+            "cfg": 1,
+            "model": ["92:68", 0],
+            "positive": ["92:81", 0],
+            "negative": ["92:81", 1]
+        },
+        "class_type": "CFGGuider",
+        "_meta": {"title": "CFGGuider"}
+    },
+    "92:90": {
+        "inputs": {
+            "upscale_method": "lanczos",
+            "scale_by": 0.5,
+            "image": ["92:89", 0]
+        },
+        "class_type": "ImageScaleBy",
+        "_meta": {"title": "Upscale Image By"}
+    },
+    "92:91": {
+        "inputs": {"image": ["92:90", 0]},
+        "class_type": "GetImageSize",
+        "_meta": {"title": "Get Image Size"}
+    },
+    "92:51": {
+        "inputs": {
+            "frames_number": ["92:62", 0],
+            "frame_rate": ["92:99", 0],
+            "batch_size": 1,
+            "audio_vae": ["92:48", 0]
+        },
+        "class_type": "LTXVEmptyLatentAudio",
+        "_meta": {"title": "LTXV Empty Latent Audio"}
+    },
+    "92:22": {
+        "inputs": {
+            "frame_rate": ["92:102", 0],
+            "positive": ["92:3", 0],
+            "negative": ["92:4", 0]
+        },
+        "class_type": "LTXVConditioning",
+        "_meta": {"title": "LTXVConditioning"}
+    },
+    "92:43": {
+        "inputs": {
+            "width": ["92:91", 0],
+            "height": ["92:91", 1],
+            "length": ["92:62", 0],
             "batch_size": 1
-        }
+        },
+        "class_type": "EmptyLTXVLatentVideo",
+        "_meta": {"title": "EmptyLTXVLatentVideo"}
     },
-    "13": {
-        "class_type": "KSampler",
+    "92:56": {
         "inputs": {
-            "seed": "{seed}",
-            "steps": "{steps}",
-            "cfg": "{cfg_scale}",
-            "sampler_name": "euler",
-            "scheduler": "normal",
-            "denoise": 1.0,
-            "model": ["3", 0],
-            "positive": ["6", 0],
-            "negative": ["7", 0],
-            "latent_image": ["10", 0]
-        }
+            "video_latent": ["92:43", 0],
+            "audio_latent": ["92:51", 0]
+        },
+        "class_type": "LTXVConcatAVLatent",
+        "_meta": {"title": "LTXVConcatAVLatent"}
     },
-    "17": {
-        "class_type": "VAEDecode",
+    "92:4": {
         "inputs": {
-            "samples": ["13", 0],
-            "vae": ["3", 2]
-        }
+            "text": "blurry, low quality, still frame, frames, watermark, overlay, titles, has blurbox, has subtitles",
+            "clip": ["92:60", 0]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {"title": "CLIP Text Encode (Prompt)"}
     },
-    "19": {
-        "class_type": "VHS_VideoCombine",
+    "92:89": {
+        "inputs": {"width": 1280, "height": 720, "batch_size": 1, "color": 0},
+        "class_type": "EmptyImage",
+        "_meta": {"title": "EmptyImage"}
+    },
+    "92:62": {
+        "inputs": {"value": 121},
+        "class_type": "PrimitiveInt",
+        "_meta": {"title": "Length"}
+    },
+    "92:41": {
         "inputs": {
-            "frame_rate": "{fps}",
-            "loop_count": 0,
-            "filename_prefix": "ltx2_output",
-            "format": "video/h264-mp4",
-            "pix_fmt": "yuv420p",
-            "crf": 19,
-            "save_metadata": True,
-            "pingpong": False,
-            "save_output": True,
-            "images": ["17", 0]
-        }
+            "noise": ["92:11", 0],
+            "guider": ["92:47", 0],
+            "sampler": ["92:8", 0],
+            "sigmas": ["92:9", 0],
+            "latent_image": ["92:56", 0]
+        },
+        "class_type": "SamplerCustomAdvanced",
+        "_meta": {"title": "SamplerCustomAdvanced"}
+    },
+    "92:67": {
+        "inputs": {"noise_seed": 0},
+        "class_type": "RandomNoise",
+        "_meta": {"title": "RandomNoise"}
+    },
+    "92:11": {
+        "inputs": {"noise_seed": 10},
+        "class_type": "RandomNoise",
+        "_meta": {"title": "RandomNoise"}
+    },
+    "92:80": {
+        "inputs": {"av_latent": ["92:41", 0]},
+        "class_type": "LTXVSeparateAVLatent",
+        "_meta": {"title": "LTXVSeparateAVLatent"}
+    },
+    "92:83": {
+        "inputs": {
+            "video_latent": ["92:84", 0],
+            "audio_latent": ["92:80", 1]
+        },
+        "class_type": "LTXVConcatAVLatent",
+        "_meta": {"title": "LTXVConcatAVLatent"}
+    },
+    "92:84": {
+        "inputs": {
+            "samples": ["92:81", 2],
+            "upscale_model": ["92:76", 0],
+            "vae": ["92:1", 2]
+        },
+        "class_type": "LTXVLatentUpsampler",
+        "_meta": {"title": "spatial"}
+    },
+    "92:70": {
+        "inputs": {
+            "noise": ["92:67", 0],
+            "guider": ["92:82", 0],
+            "sampler": ["92:66", 0],
+            "sigmas": ["92:73", 0],
+            "latent_image": ["92:83", 0]
+        },
+        "class_type": "SamplerCustomAdvanced",
+        "_meta": {"title": "SamplerCustomAdvanced"}
+    },
+    "92:3": {
+        "inputs": {
+            "text": "A cheerful puppet girl with yarn hair",
+            "clip": ["92:60", 0]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {"title": "CLIP Text Encode (Prompt)"}
+    },
+    "92:97": {
+        "inputs": {
+            "fps": ["92:102", 0],
+            "images": ["92:98", 0],
+            "audio": ["92:96", 0]
+        },
+        "class_type": "CreateVideo",
+        "_meta": {"title": "Create Video"}
+    },
+    "92:48": {
+        "inputs": {"ckpt_name": "ltx-2-19b-dev-fp8.safetensors"},
+        "class_type": "LTXVAudioVAELoader",
+        "_meta": {"title": "LTXV Audio VAE Loader"}
+    },
+    "92:94": {
+        "inputs": {"av_latent": ["92:70", 1]},
+        "class_type": "LTXVSeparateAVLatent",
+        "_meta": {"title": "LTXVSeparateAVLatent"}
+    },
+    "92:98": {
+        "inputs": {
+            "tile_size": 512,
+            "overlap": 64,
+            "temporal_size": 4096,
+            "temporal_overlap": 8,
+            "samples": ["92:94", 0],
+            "vae": ["92:1", 2]
+        },
+        "class_type": "VAEDecodeTiled",
+        "_meta": {"title": "VAE Decode (Tiled)"}
+    },
+    "92:96": {
+        "inputs": {
+            "samples": ["92:94", 1],
+            "audio_vae": ["92:48", 0]
+        },
+        "class_type": "LTXVAudioVAEDecode",
+        "_meta": {"title": "LTXV Audio VAE Decode"}
+    },
+    "92:47": {
+        "inputs": {
+            "cfg": 4,
+            "model": ["92:1", 0],
+            "positive": ["92:22", 0],
+            "negative": ["92:22", 1]
+        },
+        "class_type": "CFGGuider",
+        "_meta": {"title": "CFGGuider"}
+    },
+    "92:102": {
+        "inputs": {"value": 24.0},
+        "class_type": "PrimitiveFloat",
+        "_meta": {"title": "Frame Rate(float)"}
+    },
+    "92:99": {
+        "inputs": {"value": 24},
+        "class_type": "PrimitiveInt",
+        "_meta": {"title": "Frame Rate(int)"}
+    },
+    "92:68": {
+        "inputs": {
+            "lora_name": "ltx-2-19b-distilled-lora-384.safetensors",
+            "strength_model": 1,
+            "model": ["92:1", 0]
+        },
+        "class_type": "LoraLoaderModelOnly",
+        "_meta": {"title": "LoraLoaderModelOnly"}
+    },
+    "92:8": {
+        "inputs": {"sampler_name": "euler_ancestral"},
+        "class_type": "KSamplerSelect",
+        "_meta": {"title": "KSamplerSelect"}
+    },
+    "92:66": {
+        "inputs": {"sampler_name": "euler_ancestral"},
+        "class_type": "KSamplerSelect",
+        "_meta": {"title": "KSamplerSelect"}
+    },
+    "92:1": {
+        "inputs": {"ckpt_name": "ltx-2-19b-dev-fp8.safetensors"},
+        "class_type": "CheckpointLoaderSimple",
+        "_meta": {"title": "Load Checkpoint"}
     }
 }
 
@@ -261,6 +468,42 @@ class ComfyUIClient:
             await self._client.aclose()
             self._client = None
     
+    @staticmethod
+    def load_workflow_from_file(workflow_path: str) -> Dict[str, Any]:
+        """
+        Load a workflow from a JSON file (API format).
+        
+        Args:
+            workflow_path: Path to the workflow JSON file
+            
+        Returns:
+            Workflow dict ready for use as template
+        """
+        path = Path(workflow_path)
+        with open(path) as f:
+            data = json.load(f)
+        
+        # If it's a UI format workflow with embedded API prompt, extract it
+        if "extra" in data and "prompt" in data.get("extra", {}):
+            return data["extra"]["prompt"]
+        
+        # If it has "prompt" at top level (wrapped API format), extract it
+        if "prompt" in data and isinstance(data["prompt"], dict):
+            # Check if it looks like API format (keys are node IDs)
+            prompt = data["prompt"]
+            if prompt and all(isinstance(v, dict) for v in prompt.values()):
+                return prompt
+        
+        # Otherwise assume it's already in API format (dict of node IDs)
+        # Node IDs are typically strings like "1", "92:3", etc.
+        if data and all(isinstance(v, dict) and "class_type" in v for v in data.values()):
+            return data
+        
+        raise ValueError(
+            f"Could not parse workflow from {workflow_path}. "
+            "Please export in API format from ComfyUI (enable Dev Mode first)."
+        )
+    
     def _build_workflow(self, params: VideoGenerationParams) -> Dict[str, Any]:
         """
         Build workflow JSON from template and parameters.
@@ -271,38 +514,51 @@ class ComfyUIClient:
         Returns:
             Workflow dict ready for submission
         """
-        # Deep copy the template
-        workflow = json.loads(json.dumps(self.workflow_template))
+        import copy
+        workflow = copy.deepcopy(self.workflow_template)
         
-        # Parameter substitutions
-        substitutions = {
-            "{prompt}": params.prompt,
-            "{negative_prompt}": params.negative_prompt,
-            "{width}": params.width,
-            "{height}": params.height,
-            "{frame_count}": params.frame_count,
-            "{fps}": params.fps,
-            "{steps}": params.steps,
-            "{cfg_scale}": params.cfg_scale,
-            "{seed}": params.seed if params.seed >= 0 else int(uuid.uuid4().int % (2**32)),
-        }
+        # Generate seed if random
+        seed = params.seed if params.seed >= 0 else int(uuid.uuid4().int % (2**32))
         
-        # Recursively substitute values
-        def substitute(obj: Any) -> Any:
-            if isinstance(obj, str):
-                for key, value in substitutions.items():
-                    if obj == key:
-                        return value
-                    elif key in obj:
-                        obj = obj.replace(key, str(value))
-                return obj
-            elif isinstance(obj, dict):
-                return {k: substitute(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [substitute(item) for item in obj]
-            return obj
+        # Inject prompt text (node 92:3)
+        if "92:3" in workflow:
+            workflow["92:3"]["inputs"]["text"] = params.prompt
         
-        return substitute(workflow)
+        # Inject negative prompt (node 92:4)
+        if "92:4" in workflow:
+            workflow["92:4"]["inputs"]["text"] = params.negative_prompt or \
+                "blurry, low quality, still frame, frames, watermark, overlay, titles"
+        
+        # Inject resolution - width/height (node 92:89 EmptyImage)
+        if "92:89" in workflow:
+            workflow["92:89"]["inputs"]["width"] = params.width
+            workflow["92:89"]["inputs"]["height"] = params.height
+        
+        # Inject frame count (node 92:62 PrimitiveInt)
+        if "92:62" in workflow:
+            workflow["92:62"]["inputs"]["value"] = params.frame_count
+        
+        # Inject seed for both noise nodes
+        if "92:11" in workflow:
+            workflow["92:11"]["inputs"]["noise_seed"] = seed
+        if "92:67" in workflow:
+            workflow["92:67"]["inputs"]["noise_seed"] = seed
+        
+        # Inject frame rate (both float and int nodes)
+        if "92:102" in workflow:
+            workflow["92:102"]["inputs"]["value"] = float(params.fps)
+        if "92:99" in workflow:
+            workflow["92:99"]["inputs"]["value"] = params.fps
+        
+        # Inject CFG scale (node 92:47)
+        if "92:47" in workflow:
+            workflow["92:47"]["inputs"]["cfg"] = params.cfg_scale
+        
+        # Inject steps (node 92:9 LTXVScheduler)
+        if "92:9" in workflow:
+            workflow["92:9"]["inputs"]["steps"] = params.steps
+        
+        return workflow
     
     async def queue_prompt(self, workflow: Dict[str, Any]) -> str:
         """
@@ -505,7 +761,21 @@ class ComfyUIClient:
         
         outputs = history.get("outputs", {})
         for node_id, node_output in outputs.items():
-            # Look for video/gif output
+            # Look for video output from SaveVideo node
+            if "video" in node_output:
+                video_info = node_output["video"]
+                if isinstance(video_info, dict):
+                    filename = video_info.get("filename")
+                    subfolder = video_info.get("subfolder", "")
+                    if filename:
+                        video_path = await self.download_output(
+                            filename=filename,
+                            subfolder=subfolder,
+                            output_dir=output_dir
+                        )
+                        break
+            
+            # Look for video/gif output (VHS_VideoCombine style)
             if "gifs" in node_output:
                 for gif_info in node_output["gifs"]:
                     filename = gif_info.get("filename")
@@ -530,11 +800,24 @@ class ComfyUIClient:
                             output_dir=output_dir
                         )
                         break
+            
+            # Look for videos list output
+            if "videos" in node_output:
+                for vid_info in node_output["videos"]:
+                    filename = vid_info.get("filename")
+                    subfolder = vid_info.get("subfolder", "")
+                    if filename:
+                        video_path = await self.download_output(
+                            filename=filename,
+                            subfolder=subfolder,
+                            output_dir=output_dir
+                        )
+                        break
         
         if not video_path:
             raise RuntimeError(
                 f"No video output found in history for prompt {prompt_id}. "
-                f"Outputs: {list(outputs.keys())}"
+                f"Available outputs: {json.dumps(outputs, indent=2)}"
             )
         
         if progress_callback:

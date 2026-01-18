@@ -100,7 +100,8 @@ async def generate_video_async(
     params: VideoGenerationParams,
     output_dir: str,
     progress_placeholder,
-    status_placeholder
+    status_placeholder,
+    custom_workflow: dict = None
 ) -> VideoGenerationResult:
     """Generate video with progress updates."""
     
@@ -109,7 +110,7 @@ async def generate_video_async(
         st.session_state.status_message = message
         progress_placeholder.progress(progress, text=message)
     
-    async with ComfyUIClient(config) as client:
+    async with ComfyUIClient(config, workflow_template=custom_workflow) as client:
         result = await client.generate_video(
             params=params,
             output_dir=output_dir,
@@ -147,6 +148,33 @@ def render_sidebar():
         
         st.divider()
         
+        # Custom workflow
+        st.markdown("### Workflow")
+        uploaded_workflow = st.file_uploader(
+            "Custom Workflow (optional)",
+            type=["json"],
+            help="Upload a workflow exported from ComfyUI in API format"
+        )
+        
+        custom_workflow = None
+        if uploaded_workflow:
+            try:
+                import json
+                workflow_data = json.load(uploaded_workflow)
+                custom_workflow = ComfyUIClient.load_workflow_from_file.__func__(
+                    None, uploaded_workflow.name
+                ) if hasattr(workflow_data, 'keys') else workflow_data
+                # Try to parse it directly
+                if "extra" in workflow_data and "prompt" in workflow_data.get("extra", {}):
+                    custom_workflow = workflow_data["extra"]["prompt"]
+                elif all(isinstance(v, dict) and "class_type" in v for v in workflow_data.values()):
+                    custom_workflow = workflow_data
+                st.success("✅ Workflow loaded!")
+            except Exception as e:
+                st.error(f"❌ Failed to load workflow: {e}")
+        
+        st.divider()
+        
         # Video settings
         st.markdown("### Video Settings")
         
@@ -154,15 +182,15 @@ def render_sidebar():
         with col1:
             width = st.selectbox(
                 "Width",
-                options=[512, 640, 768, 896, 1024],
-                index=2,
+                options=[640, 768, 896, 1024, 1280, 1920],
+                index=4,  # Default to 1280
                 help="Video width (multiple of 32)"
             )
         with col2:
             height = st.selectbox(
                 "Height",
-                options=[320, 384, 448, 512, 576, 640, 768],
-                index=3,
+                options=[384, 448, 512, 576, 640, 720, 1080],
+                index=5,  # Default to 720
                 help="Video height (multiple of 32)"
             )
         
@@ -239,6 +267,7 @@ def render_sidebar():
             "seed": seed,
             "enable_audio": enable_audio,
             "output_dir": output_dir,
+            "custom_workflow": custom_workflow,
         }
 
 
@@ -343,7 +372,8 @@ def render_main_content(config_values: dict):
                         params=params,
                         output_dir=output_dir,
                         progress_placeholder=progress_placeholder,
-                        status_placeholder=status_placeholder
+                        status_placeholder=status_placeholder,
+                        custom_workflow=config_values.get("custom_workflow")
                     )
                 )
             
