@@ -157,6 +157,11 @@ with st.sidebar:
             help="Directory to save generated videos",
         )
         verbose = st.checkbox("Verbose Output", value=False)
+        enable_blueprint_dump = st.checkbox(
+            "Enable Blueprint Dump",
+            value=False,
+            help="Upload debug artifacts (TTS audio, videos, subtitles) to MinIO storage for debugging",
+        )
 
 # Main content tabs
 tab1, tab2, tab3 = st.tabs(["📝 Create New Video", "📊 Job Status", "📋 Recent Jobs"])
@@ -183,6 +188,7 @@ with tab1:
         "output_dir": output_dir,
         "max_parallel_llm_calls": max_parallel_llm_calls,
         "verbose": verbose,
+        "enable_blueprint_dump": enable_blueprint_dump,
     }
 
     if input_method == "Title (Generate Story)":

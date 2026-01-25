@@ -422,3 +422,33 @@ class ConfigDump(BaseModel):
         with open(path, "r") as f:
             data = json.load(f)
         return cls(**data)
+
+
+class GenerationBlueprint(BaseModel):
+    """Blueprint capturing all generation parameters before video creation.
+    
+    Used for debugging purposes - captures the full state of story output,
+    video matches, and planned TTS before actual video generation begins.
+    Uploaded to MinIO at: debug/{api_endpoint}/{story_template_id}/{job_id}/blueprint.json
+    """
+
+    timestamp: str = Field(description="ISO timestamp when blueprint was created")
+    job_id: str = Field(description="Unique job identifier")
+    api_endpoint: str = Field(
+        description="API endpoint used, e.g., 'video-generation' or 'generate-ltx'"
+    )
+    story_template_id: str = Field(description="Story template ID used for generation")
+    story_output: StoryOutput = Field(description="Generated story with dialog lines")
+    video_matches: List[Dict[str, Any]] = Field(
+        description="Serialized DialogLineMatch list with video paths and ratings"
+    )
+    planned_tts: List[Dict[str, Any]] = Field(
+        description="Planned TTS entries - text per character for audio generation"
+    )
+    collection: Optional[str] = Field(
+        default=None, description="Video collection used for matching"
+    )
+
+    def get_storage_path(self) -> str:
+        """Get the MinIO storage path for this blueprint."""
+        return f"debug/{self.api_endpoint}/{self.story_template_id}/{self.job_id}/blueprint.json"

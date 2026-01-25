@@ -31,6 +31,7 @@ from .config import (
     StoryOutput,
     GenerationResult,
     ConfigDump,
+    GenerationBlueprint,
 )
 
 from .interfaces import (
@@ -100,6 +101,7 @@ __all__ = [
     "StoryOutput",
     "GenerationResult",
     "ConfigDump",
+    "GenerationBlueprint",
     # Interfaces
     "LLMInterface",
     "TTSInterface",

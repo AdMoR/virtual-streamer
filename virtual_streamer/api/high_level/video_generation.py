@@ -54,6 +54,7 @@ from virtual_streamer.video_generation import (
     VideoGenerationConfig,
     create_video_retriever,
     GenerationResult,
+    GenerationBlueprint,
 )
 from virtual_streamer.video_generation.comfyui_client import (
     ComfyUIConfig,
@@ -386,6 +387,7 @@ async def script_to_video(
     client: WebserviceClient,
     config: VideoGenerationConfig,
     progress_callback: Optional[callable] = None,
+    debug_upload_prefix: Optional[str] = None,
 ) -> str:
     """
     Convert matched dialog lines to final video using webservices.
@@ -403,12 +405,17 @@ async def script_to_video(
         client: WebserviceClient for API calls
         config: Video generation configuration
         progress_callback: Optional callback for progress updates
+        debug_upload_prefix: Optional MinIO prefix for uploading debug artifacts
+            (e.g., "debug/video-generation/template_id/job_id")
 
     Returns:
         Path to final concatenated video
     """
     os.makedirs(config.output_dir, exist_ok=True)
     os.makedirs(config.temp_dir, exist_ok=True)
+
+    # Get storage client if debug upload is enabled
+    storage = get_storage_client() if debug_upload_prefix else None
 
     video_segments = []
 
@@ -431,6 +438,12 @@ async def script_to_video(
             )
             logger.info(f"  Audio generated: {audio_path}")
 
+            # Upload TTS audio if debug enabled
+            if storage and debug_upload_prefix:
+                tts_key = f"{debug_upload_prefix}/tts/segment_{i}.wav"
+                await storage.upload_file(audio_path, tts_key)
+                logger.info(f"  [DEBUG] Uploaded TTS: {tts_key}")
+
             # Step 2: Generate lip-synced video via Wav2Lip API
             logger.info(f"  [2/4] Generating Wav2Lip video...")
             wav2lip_output_dir = os.path.join(config.temp_dir, f"wav2lip_{i}")
@@ -442,14 +455,33 @@ async def script_to_video(
             )
             logger.info(f"  Lip-synced video: {lip_synced_video}")
 
+            # Upload Wav2Lip video if debug enabled
+            if storage and debug_upload_prefix:
+                wav2lip_key = f"{debug_upload_prefix}/wav2lip/segment_{i}.mp4"
+                await storage.upload_file(lip_synced_video, wav2lip_key)
+                logger.info(f"  [DEBUG] Uploaded Wav2Lip: {wav2lip_key}")
+
             # Step 3: Combine video and audio
             logger.info(f"  [3/4] Combining video and audio...")
             combined_path = os.path.join(config.temp_dir, f"combined_{i}.mp4")
             combine_video_and_short_audio(lip_synced_video, audio_path, combined_path)
 
+            # Upload combined video if debug enabled
+            if storage and debug_upload_prefix:
+                combined_key = f"{debug_upload_prefix}/combined/segment_{i}.mp4"
+                await storage.upload_file(combined_path, combined_key)
+                logger.info(f"  [DEBUG] Uploaded combined: {combined_key}")
+
             # Step 4: Generate subtitles and add to video
             logger.info(f"  [4/4] Adding subtitles...")
             srt_path = await client.transcribe_to_srt(audio_path)
+
+            # Upload subtitles if debug enabled
+            if storage and debug_upload_prefix:
+                srt_key = f"{debug_upload_prefix}/subtitles/segment_{i}.srt"
+                await storage.upload_file(srt_path, srt_key)
+                logger.info(f"  [DEBUG] Uploaded subtitles: {srt_key}")
+
             segment_path = os.path.join(config.temp_dir, f"segment_{i}.mp4")
             add_subtitle_from_srt(
                 combined_path,
@@ -500,6 +532,9 @@ class VideoGenerationRequest(BaseModel):
     output_dir: Optional[str] = None
     max_parallel_llm_calls: int = 5
     verbose: bool = False
+
+    # Debug options
+    enable_blueprint_dump: bool = False  # Upload debug artifacts to MinIO
 
 
 class JobStatusResponse(BaseModel):
@@ -655,6 +690,40 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
         )
 
+        # Determine debug upload prefix if blueprint dump is enabled
+        debug_upload_prefix = None
+        if request.enable_blueprint_dump:
+            debug_upload_prefix = f"debug/video-generation/{request.story_template_id}/{job_id}"
+            logger.info(f"[Job {job_id}] Blueprint dump enabled, prefix: {debug_upload_prefix}")
+
+            # Create and upload generation blueprint
+            planned_tts = [
+                {
+                    "segment_index": i,
+                    "character_id": match.dialog_line.character_id,
+                    "text": match.dialog_line.text,
+                    "scene_description": match.dialog_line.scene_description,
+                }
+                for i, match in enumerate(video_matches.matches)
+            ]
+
+            blueprint = GenerationBlueprint(
+                timestamp=datetime.now().isoformat(),
+                job_id=job_id,
+                api_endpoint="video-generation",
+                story_template_id=request.story_template_id,
+                story_output=story_output,
+                video_matches=[match.model_dump() for match in video_matches.matches],
+                planned_tts=planned_tts,
+                collection=collection,
+            )
+
+            # Upload blueprint to MinIO
+            storage = get_storage_client()
+            blueprint_key = blueprint.get_storage_path()
+            await storage.put_json(blueprint_key, blueprint.model_dump())
+            logger.info(f"[Job {job_id}] Blueprint uploaded: {blueprint_key}")
+
         # Step 3: Script to Video (TTS, Wav2Lip, STT via webservices)
         logger.info(f"[Job {job_id}] Running script_to_video...")
 
@@ -664,6 +733,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 client=client,
                 config=config,
                 progress_callback=lambda msg: logger.info(f"[Job {job_id}] {msg}"),
+                debug_upload_prefix=debug_upload_prefix,
             )
 
         # Upload to MinIO storage
@@ -677,17 +747,25 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         video_url = storage.get_url(minio_video_key)
         logger.info(f"[Job {job_id}] Video URL generated: {video_url[:80]}...")
 
+        # Build metadata
+        metadata = {
+            "sentence_count": len(video_matches.matches),
+            "total_duration": get_length(final_video_path),
+            "timestamp": datetime.now().isoformat(),
+            "minio_video_key": minio_video_key,
+            "video_url": video_url,
+        }
+
+        # Add debug info if blueprint dump was enabled
+        if debug_upload_prefix:
+            metadata["debug_upload_prefix"] = debug_upload_prefix
+            metadata["blueprint_key"] = f"{debug_upload_prefix}/blueprint.json"
+
         result = GenerationResult(
             video_path=final_video_path,
             config_dump_path=None,
             story_output=story_output,
-            metadata={
-                "sentence_count": len(video_matches.matches),
-                "total_duration": get_length(final_video_path),
-                "timestamp": datetime.now().isoformat(),
-                "minio_video_key": minio_video_key,
-                "video_url": video_url,
-            },
+            metadata=metadata,
         )
 
         # Job completed successfully
