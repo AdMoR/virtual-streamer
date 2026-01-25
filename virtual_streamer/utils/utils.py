@@ -187,7 +187,7 @@ def combine_part_in_concat_file(
     return out_path
 
 
-def add_subtitle_from_srt(video_path, srt_path, output_path, fontsize=14) -> str:
+def add_subtitle_from_srt(video_path, srt_path, output_path, fontsize=14, target_fps=30) -> str:
     # 2 - Add the title
     args = [
         "ffmpeg",
@@ -195,7 +195,7 @@ def add_subtitle_from_srt(video_path, srt_path, output_path, fontsize=14) -> str
         "-i",
         video_path,
         "-vf",
-        f"subtitles={srt_path}:force_style='fontcolor=white,fontsize={fontsize},x=(w-text_w)/2,y=7*(h-text_h)/8,box=1,boxcolor=black@0.5,boxborderw=1'",
+        f"fps={target_fps},subtitles={srt_path}:force_style='fontcolor=white,fontsize={fontsize},x=(w-text_w)/2,y=7*(h-text_h)/8,box=1,boxcolor=black@0.5,boxborderw=1'",
         "-c:v",
         "h264_nvenc",
         "-qp",
@@ -206,6 +206,8 @@ def add_subtitle_from_srt(video_path, srt_path, output_path, fontsize=14) -> str
         "3000k",
         "-maxrate",
         "10000k",
+        "-vsync",
+        "cfr",           # Force constant frame rate output
         "-codec:a",
         "copy",
         output_path,
