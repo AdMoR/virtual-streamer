@@ -44,7 +44,7 @@ def combine_video_and_audio(vfile_path, afile_path, out_path):
     )
 
 
-def combine_video_and_short_audio(vfile_path, afile_path, out_path):
+def combine_video_and_short_audio(vfile_path, afile_path, out_path, target_fps=30):
     duration = get_length(afile_path)
     return subprocess.check_call(
         [
@@ -54,8 +54,8 @@ def combine_video_and_short_audio(vfile_path, afile_path, out_path):
             vfile_path,
             "-i",
             afile_path,
-            "-s",
-            "720x480",
+            "-vf",
+            f"fps={target_fps},scale=720:480",  # Normalize fps and resolution
             "-map",
             "0:v:0",
             "-map",
@@ -64,6 +64,12 @@ def combine_video_and_short_audio(vfile_path, afile_path, out_path):
             str(duration),
             "-c:v",
             "h264_nvenc",
+            "-c:a",
+            "aac",           # Explicit audio encoding for consistency
+            "-ar",
+            "44100",         # Normalize audio sample rate
+            "-vsync",
+            "cfr",           # Force constant frame rate output
             out_path,
         ]
     )
