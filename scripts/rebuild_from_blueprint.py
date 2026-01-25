@@ -250,7 +250,7 @@ Examples:
     )
     parser.add_argument(
         "--minio-endpoint",
-        default=None,
+        default="http://localhost:9000",
         help="MinIO endpoint URL (default: from MINIO_ENDPOINT env var)",
     )
     parser.add_argument(
