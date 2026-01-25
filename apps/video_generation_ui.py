@@ -336,7 +336,6 @@ with tab2:
                                 st.markdown("### 📹 Generated Video")
                                 # Download and display video
                                 local_path = f"/tmp/{os.path.basename(video_url)}"
-                                client = MinIOClient(bucket=bucket)
                                 bucket_path = video_url.split("/")[1].lstrip("/")
                                 run_async_in_threads(client.download_file(bucket_path, local_path))
                                 if local_path:

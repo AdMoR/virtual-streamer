@@ -382,6 +382,9 @@ class StoryOutput(BaseModel):
                     "text (spoken text), and scene_description (visual description for video search)."
     )
 
+    def get_character_names(self):
+        return [x.character_id for x in self.dialog]
+
 
 class GenerationResult(BaseModel):
     """Model for video generation results."""

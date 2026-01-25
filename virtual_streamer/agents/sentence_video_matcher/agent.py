@@ -32,6 +32,7 @@ from virtual_streamer.agents.sentence_video_matcher.schema import (
 from virtual_streamer.agents.sentence_video_matcher.utils import _select_best
 from virtual_streamer.video_generation.interfaces import VideoRetrieverInterface
 from virtual_streamer.agents.common.state_keys import VIDEO_COLLECTION
+from virtual_streamer.video_server.models import Character
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class SentenceVideoMapper(MapperAgent):
         self,
         video_retriever: VideoRetrieverInterface,
         max_candidates: int = 1,
+        character_map: Dict[str, Character] | None = None,
         name: str = "sentence_video_mapper",
     ):
         """
@@ -71,6 +73,7 @@ class SentenceVideoMapper(MapperAgent):
         )
         self._video_retriever = video_retriever
         self._max_candidates = max_candidates
+        self._character_map = character_map
     
     def build_items_from_state(self, ctx: InvocationContext) -> List[Dict[str, Any]]:
         """
@@ -109,10 +112,12 @@ class SentenceVideoMapper(MapperAgent):
         items = []
         for line_id, dialog_line in enumerate(dialog_lines):
             # Search using scene_description for video embedding search
+            character = self._character_map.get(dialog_line.character_id, None)
+            tags = [character.video_search_tag] if character and character.video_search_tag else []
             search_results = self._video_retriever.search(
                 query=dialog_line.scene_description,
                 collection=collection,
-                tags=[dialog_line.character_id],
+                tags=tags,
                 top_k=self._max_candidates,
             )
             
@@ -216,6 +221,7 @@ class SentenceVideoAggregator(AggregatorAgent[VideoMatchResult]):
 def create_sentence_video_matcher(
     video_retriever: VideoRetrieverInterface,
     max_candidates: int,
+character_map: Dict[str, Character ],
 ) -> MapReduceAgent:
     """
     Factory function to create a SentenceVideoMatcher agent.
@@ -223,6 +229,7 @@ def create_sentence_video_matcher(
     Args:
         video_retriever: Interface for searching video clips
         max_candidates: Maximum candidate videos per dialog line
+        character_map: map character id -> character
     
     Returns:
         Configured MapReduceAgent for sentence-video matching
@@ -230,6 +237,7 @@ def create_sentence_video_matcher(
     mapper = SentenceVideoMapper(
         video_retriever=video_retriever,
         max_candidates=max_candidates,
+        character_map=character_map,
         name="sentence_video_mapper",
     )
     

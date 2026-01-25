@@ -508,6 +508,13 @@ class VideoSearchRetriever(VideoRetrieverInterface):
         search_tags = tags
         if search_tags is None and self.config.character_filter:
             search_tags = [self.config.character_filter]
+
+        print(f"""
+            query={query},
+            collection={collection},
+            top_k={top_k},
+            tags={search_tags},
+        """)
         
         return self.client.search(
             query=query,

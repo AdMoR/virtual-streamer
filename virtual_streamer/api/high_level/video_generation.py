@@ -73,6 +73,7 @@ from virtual_streamer.utils.utils import (
 )
 from virtual_streamer.utils.job_store import get_global_job_store
 from virtual_streamer.utils.minio_client import get_storage_client
+from virtual_streamer.video_server.models import Character, VoiceSample
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +292,7 @@ async def run_story_generator(
 async def run_sentence_video_matcher(
     sentences: List[Any],
     collection: str,
+    character_map: Dict[str, Character],
     config: VideoGenerationConfig,
 ) -> SentenceVideoMatcherOutput:
     """
@@ -299,6 +301,7 @@ async def run_sentence_video_matcher(
     Args:
         sentences: List of sentences/dialog lines to match
         collection: Qdrant collection name for video search (from StoryTemplate)
+        character_map: Dictionary mapping characters id to full character definition
         config: Video generation configuration
 
     Returns:
@@ -311,6 +314,7 @@ async def run_sentence_video_matcher(
     video_matcher = create_sentence_video_matcher(
         video_retriever=video_retriever,
         max_candidates=config.max_video_candidates,
+        character_map=character_map
     )
 
     # Create session service and runner
@@ -606,7 +610,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         if request.title:
             # Step 1: Run StoryGeneratorAgent
             logger.info(f"[Job {job_id}] Running StoryGeneratorAgent...")
-            story_output = await run_story_generator(
+            story_output: StoryOutput = await run_story_generator(
                 request.title, story_template_id=request.story_template_id
             )
             logger.info(
@@ -619,13 +623,34 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         elif request.story_text:
             # Parse story_text as DialogLines
             # For now, treat story_text as simple text to be split
-            story_output = await run_story_generator(
+            story_output: StoryOutput = await run_story_generator(
                 request.story_text, story_template_id=request.story_template_id
             )
 
         # Step 2: Run SentenceVideoMatcher
+        characters = {cid: await repo.get_character(cid) for cid in story_output.get_character_names()}
+        characters = {
+            cid: Character(
+            character_id=character_data["character_id"],
+            name=character_data["name"],
+            description=character_data.get("description"),
+            video_clip_path=character_data.get("video_clip_path", ""),
+            voice_samples=[
+                VoiceSample(
+                    sample_storage_path=s["sample_storage_path"],
+                    transcript=s["transcript"],
+                )
+                for s in character_data.get("voice_samples", [])
+            ],
+            video_search_tag=character_data.get("video_search_tag"),
+            identity_images=character_data.get("identity_images", []),
+            created_at=character_data.get("created_at"),
+            updated_at=character_data.get("updated_at"),
+            )
+            for cid, character_data in characters.items()
+        }
         logger.info(f"[Job {job_id}] Running SentenceVideoMatcher...")
-        video_matches = await run_sentence_video_matcher(sentences, collection, config)
+        video_matches = await run_sentence_video_matcher(sentences, collection, characters, config)
         logger.info(
             f"[Job {job_id}] Video matching complete: {len(video_matches.matches)} matches"
         )

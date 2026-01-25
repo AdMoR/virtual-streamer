@@ -8,6 +8,7 @@ using VideoPrism embeddings stored in Qdrant.
 import os
 from dataclasses import dataclass
 from typing import Optional
+import logging
 
 import requests
 
@@ -181,6 +182,7 @@ class VideoSearchClient:
         response.raise_for_status()
 
         results_data = response.json()["results"]
+        logging.info(f"Search results number : {len(results_data)}")
         return [VideoSearchResult.from_dict(r) for r in results_data]
 
     def search_raw(

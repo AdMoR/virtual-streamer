@@ -838,7 +838,7 @@ class ComfyUIClient:
 async def generate_video(
     prompt: str,
     output_dir: str = "./output",
-    server_url: str = "http://localhost:8188",
+    server_url: str = "http://100.114.182.89:8188",
     **kwargs
 ) -> VideoGenerationResult:
     """
