@@ -69,7 +69,7 @@ video_processing:
 # -------------------------------------
 # Configure LTX-2 text-to-video generation (used for T2V pipeline and fallback)
 ltx:
-  server_url: http://localhost:8081  # LTX Video API server URL
+  server_url: http://gx10-cbc5:8081  # LTX Video API server URL
   timeout: 600.0  # Request timeout in seconds
   width: 1280
   height: 720

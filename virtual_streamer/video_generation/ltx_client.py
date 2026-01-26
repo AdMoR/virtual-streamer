@@ -34,7 +34,7 @@ class LTXVideoConfig(BaseModel):
     """Configuration for LTX Video API server connection."""
     
     server_url: str = Field(
-        default="http://localhost:8081",
+        default="http://gx10-cbc5:8081",
         description="Base URL of the LTX Video API server"
     )
     timeout: float = Field(
@@ -513,7 +513,7 @@ ComfyUIClient = LTXVideoClient
 async def generate_video(
     prompt: str,
     output_dir: str = "./output",
-    server_url: str = "http://localhost:8081",
+    server_url: str = "http://gx10-cbc5:8081",
     **kwargs
 ) -> VideoGenerationResult:
     """

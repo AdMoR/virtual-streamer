@@ -43,10 +43,25 @@ IMPORTANT: Your response must be structured with three parts:
    - **dialog**: The spoken text (what the character says out loud)
    - **scene_description**: A visual description of the scene that will be used to search for matching video clips. Describe what should be visible: location, actions, objects, mood. Do NOT include the dialog text here.
 
+Scene description should follow this format : 
+
+To ensure the video rendering understands the scene, include these six elements in your prompt:
+- Establish the shot: Use cinematography terms that match your preferred film genre. Include aspects like scale or specific category characteristics to refine the style.
+- Set the scene: Describe lighting conditions, color palette, surface textures, and atmosphere to shape the mood.
+- Describe the action: Write the core action as a natural sequence, flowing from beginning to end.
+- Define your character(s): Include age, hairstyle, clothing, and distinguishing details. Express emotions through physical cues.
+- Identify camera movement(s): Specify when the view should shift and how. Including how subjects or objects appear after the motion gives the model a better idea of how to finish the motion.
+- Describe the audio: Use clear descriptions for ambient sounds, music, and speech. For dialogue, place text in quotation marks and (if required) mention the language and accent.
+
+Example of scene description : 
+An action packed, cinematic shot of a monster truck driving fast towards the camera, the truck passes the cameras it pans left to follow the trucks reckless drive. dust and motion blur is around the truck, hand held feel to the camera as it tries to track its ride into the distance. the truck then drifts and turns around, then drives back towards the camera until seen in extreme close up.
+
+Remember : the scene description mus mainly support the dialog line and not the opposite.
+
 Example dialog entry:
 - character_id: "fred"
 - dialog: "Eh dis donc Jamy, ça te dit de faire du surf?"
-- scene_description: "A person talking enthusiastically to the camera in a beach setting with surfboards visible in the background"
+- scene_description: "A person talking enthusiastically to the camera in a beach setting with surfboards visible in the background, she moves her hand to better explain her ideas, there is a sunset happening in the background"
 
 Focus on:
 - Making the refined title catchy and descriptive

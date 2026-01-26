@@ -622,7 +622,7 @@ class VideoGenerationRequest(BaseModel):
 
     # LTX fallback configuration
     enable_ltx_fallback: bool = False  # Use LTX-2 for non-CONTEXTUAL matches
-    ltx_server_url: str = "http://localhost:8081"
+    ltx_server_url: str = "http://gx10-cbc5:8081"
     ltx_timeout: float = 600.0
 
 

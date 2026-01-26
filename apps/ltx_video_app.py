@@ -176,7 +176,7 @@ def render_sidebar():
         st.markdown("### Server")
         server_url = st.text_input(
             "LTX Video API Server URL",
-            value="http://localhost:8081",
+            value="http://gx10-cbc5:8081",
             help="URL of the LTX Video API server"
         )
         
