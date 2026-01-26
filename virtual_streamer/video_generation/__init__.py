@@ -65,12 +65,20 @@ from .visualizer import (
     create_html_report_from_dump,
 )
 
-from .comfyui_client import (
-    ComfyUIClient,
-    ComfyUIConfig,
+from .ltx_client import (
+    # LTX Video API client
+    LTXVideoClient,
+    LTXVideoConfig,
+    LTXJobRequest,
+    LTXJobResponse,
+    LTXJobStatusResponse,
+    JobStatus,
     VideoGenerationParams,
     VideoGenerationResult,
     generate_video,
+    # Backward compatibility aliases
+    ComfyUIClient,
+    ComfyUIConfig,
 )
 
 from .ltx_prompt_builder import (
@@ -125,12 +133,19 @@ __all__ = [
     # Visualizer functions
     "create_html_report",
     "create_html_report_from_dump",
-    # ComfyUI client
-    "ComfyUIClient",
-    "ComfyUIConfig",
+    # LTX Video API client
+    "LTXVideoClient",
+    "LTXVideoConfig",
+    "LTXJobRequest",
+    "LTXJobResponse",
+    "LTXJobStatusResponse",
+    "JobStatus",
     "VideoGenerationParams",
     "VideoGenerationResult",
     "generate_video",
+    # Backward compatibility aliases
+    "ComfyUIClient",
+    "ComfyUIConfig",
     # LTX prompt builder
     "build_ltx_prompt",
     "build_ltx_prompt_detailed",

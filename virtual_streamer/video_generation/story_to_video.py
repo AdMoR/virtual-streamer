@@ -25,9 +25,9 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from virtual_streamer.video_generation.config import DialogLine, StoryOutput
-from virtual_streamer.video_generation.comfyui_client import (
-    ComfyUIClient,
-    ComfyUIConfig,
+from virtual_streamer.video_generation.ltx_client import (
+    LTXVideoClient,
+    LTXVideoConfig,
     VideoGenerationParams,
     VideoGenerationResult,
 )
@@ -126,7 +126,7 @@ def concatenate_videos(
 
 
 async def generate_segment(
-    client: ComfyUIClient,
+    client: LTXVideoClient,
     dialog_line: DialogLine,
     index: int,
     output_dir: str,
@@ -191,7 +191,7 @@ async def generate_segment(
 
 async def story_to_video(
     story_output: StoryOutput,
-    comfyui_config: Optional[ComfyUIConfig] = None,
+    comfyui_config: Optional[LTXVideoConfig] = None,
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
@@ -230,14 +230,14 @@ async def story_to_video(
         print(f"Final video: {result.final_video_path}")
     """
     # Use defaults if not provided
-    config = comfyui_config or ComfyUIConfig()
+    config = comfyui_config or LTXVideoConfig()
     params = video_params or VideoGenerationParams(
         prompt="",  # Will be overwritten per segment
         duration_seconds=5.0,
-        width=1280,
-        height=720,
+        width=1024,
+        height=768,
         fps=24,
-        steps=20,
+        steps=8,
         cfg_scale=4.0,
     )
     
@@ -252,7 +252,7 @@ async def story_to_video(
     
     logger.info(f"Starting story-to-video for '{story_output.title}' with {total_lines} dialog lines")
     
-    async with ComfyUIClient(config) as client:
+    async with LTXVideoClient(config) as client:
         for i, dialog_line in enumerate(story_output.dialog):
             if progress_callback:
                 progress_callback(i, total_lines, f"Generating segment {i+1}/{total_lines}")
@@ -305,7 +305,7 @@ async def story_to_video(
 async def title_to_video(
     title: str,
     story_template_id: Optional[str] = None,
-    comfyui_config: Optional[ComfyUIConfig] = None,
+    comfyui_config: Optional[LTXVideoConfig] = None,
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,

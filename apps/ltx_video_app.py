@@ -1,14 +1,14 @@
 """
-ComfyUI Video Generator - Streamlit App
+LTX Video Generator - Streamlit App
 
-A web interface for generating videos using LTX-2 through ComfyUI.
+A web interface for generating videos using the LTX Video API.
 
 Features:
 - Single Prompt Mode: Generate a single video from a text prompt
 - Story Mode: Generate a full story video with multiple scenes
 
 Run with:
-    streamlit run apps/comfyui_video_app.py
+    streamlit run apps/ltx_video_app.py
 """
 
 import asyncio

@@ -56,8 +56,8 @@ from virtual_streamer.video_generation import (
     GenerationResult,
     GenerationBlueprint,
 )
-from virtual_streamer.video_generation.comfyui_client import (
-    ComfyUIConfig,
+from virtual_streamer.video_generation.ltx_client import (
+    LTXVideoConfig,
     VideoGenerationParams,
 )
 from virtual_streamer.video_generation.story_to_video import (
@@ -804,8 +804,8 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                 "Exactly one of title or story_text must be provided"
             )
 
-        # Build ComfyUI configuration
-        comfyui_config = ComfyUIConfig(
+        # Build LTX Video API configuration
+        comfyui_config = LTXVideoConfig(
             server_url=request.comfyui_server_url,
             timeout=request.comfyui_timeout,
         )
