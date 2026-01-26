@@ -65,6 +65,25 @@ video_processing:
   bitrate: 3000k
   fontsize: 14
 
+# LTX-2 Video Generation Configuration
+# -------------------------------------
+# Configure LTX-2 text-to-video generation (used for T2V pipeline and fallback)
+ltx:
+  server_url: http://localhost:8081  # LTX Video API server URL
+  timeout: 600.0  # Request timeout in seconds
+  width: 1280
+  height: 720
+  duration_seconds: 5.0
+  fps: 24
+  steps: 8
+  cfg_scale: 4.0
+  style_suffix: "Cinematic quality, smooth motion, natural lighting."
+
+# LTX Fallback Behavior
+# ---------------------
+# When enabled, uses LTX-2 to generate video for dialog lines with non-CONTEXTUAL matches
+enable_ltx_fallback: false
+
 # Search and Matching Parameters
 # -------------------------------
 # Maximum attempts for finding alternative search keywords

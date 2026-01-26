@@ -56,7 +56,9 @@ from virtual_streamer.video_generation import (
     GenerationResult,
     GenerationBlueprint,
 )
+from virtual_streamer.video_generation.config import LTXConfig
 from virtual_streamer.video_generation.ltx_client import (
+    LTXVideoClient,
     LTXVideoConfig,
     VideoGenerationParams,
 )
@@ -64,6 +66,7 @@ from virtual_streamer.video_generation.story_to_video import (
     story_to_video,
     StoryVideoResult,
 )
+from virtual_streamer.video_generation.ltx_prompt_builder import build_negative_prompt
 
 # Local video processing utilities
 from virtual_streamer.utils.utils import (
@@ -378,6 +381,63 @@ async def run_sentence_video_matcher(
 
 
 # ============================================================================
+# LTX Fallback Video Generation
+# ============================================================================
+
+
+async def generate_ltx_fallback_video(
+    scene_description: str,
+    ltx_config: LTXConfig,
+    output_dir: str,
+    segment_index: int,
+) -> str:
+    """
+    Generate a video segment using LTX-2 text-to-video.
+
+    Used as fallback when video matching returns non-CONTEXTUAL ratings.
+
+    Args:
+        scene_description: Visual description of the scene (from DialogLine)
+        ltx_config: LTX configuration with server URL and video params
+        output_dir: Directory to save the generated video
+        segment_index: Segment index for naming the output file
+
+    Returns:
+        Path to the generated video file
+    """
+    # Build the LTX Video API config
+    api_config = LTXVideoConfig(
+        server_url=ltx_config.server_url,
+        timeout=ltx_config.timeout,
+    )
+
+    # Build video generation params from scene description
+    prompt = f"{scene_description} {ltx_config.style_suffix}"
+    params = VideoGenerationParams(
+        prompt=prompt,
+        negative_prompt=build_negative_prompt(),
+        width=ltx_config.width,
+        height=ltx_config.height,
+        duration_seconds=ltx_config.duration_seconds,
+        fps=ltx_config.fps,
+        steps=ltx_config.steps,
+        cfg_scale=ltx_config.cfg_scale,
+    )
+
+    # Generate video
+    segment_dir = os.path.join(output_dir, f"ltx_segment_{segment_index:03d}")
+    os.makedirs(segment_dir, exist_ok=True)
+
+    async with LTXVideoClient(api_config) as ltx_client:
+        result = await ltx_client.generate_video(
+            params=params,
+            output_dir=segment_dir,
+        )
+
+    return result.video_path
+
+
+# ============================================================================
 # Script to Video Function
 # ============================================================================
 
@@ -386,6 +446,8 @@ async def script_to_video(
     matches: List[DialogLineMatch],
     client: WebserviceClient,
     config: VideoGenerationConfig,
+    ltx_config: Optional[LTXConfig] = None,
+    enable_ltx_fallback: bool = False,
     progress_callback: Optional[callable] = None,
     debug_upload_prefix: Optional[str] = None,
 ) -> str:
@@ -394,7 +456,7 @@ async def script_to_video(
 
     For each match:
     1. Generate audio via TTS API
-    2. Generate lip-synced video via Wav2Lip API
+    2. Generate lip-synced video via Wav2Lip API (or LTX-2 if fallback enabled)
     3. Generate subtitles via STT API
     4. Combine video + audio + subtitles locally
 
@@ -404,6 +466,8 @@ async def script_to_video(
         matches: List of DialogLineMatch from SentenceVideoMatcher
         client: WebserviceClient for API calls
         config: Video generation configuration
+        ltx_config: Optional LTX configuration for fallback video generation
+        enable_ltx_fallback: If True, use LTX-2 for non-CONTEXTUAL matches
         progress_callback: Optional callback for progress updates
         debug_upload_prefix: Optional MinIO prefix for uploading debug artifacts
             (e.g., "debug/video-generation/template_id/job_id")
@@ -421,7 +485,6 @@ async def script_to_video(
 
     for i, match in enumerate(matches):
         dialog = match.dialog_line.text
-        video_path = match.video_path
 
         if progress_callback:
             progress_callback(f"Processing segment {i+1}/{len(matches)}: {dialog[:50]}...")
@@ -429,6 +492,27 @@ async def script_to_video(
         logger.info(f"Processing segment {i+1}/{len(matches)}: {dialog[:50]}...")
 
         try:
+            # Check if we need to generate video via LTX fallback
+            if match.needs_generation and enable_ltx_fallback and ltx_config:
+                logger.info(
+                    f"  [FALLBACK] Generating video via LTX-2 (rating: {match.rating.value})..."
+                )
+                video_path = await generate_ltx_fallback_video(
+                    scene_description=match.dialog_line.scene_description,
+                    ltx_config=ltx_config,
+                    output_dir=config.temp_dir,
+                    segment_index=i,
+                )
+                logger.info(f"  [FALLBACK] LTX video generated: {video_path}")
+
+                # Upload LTX video if debug enabled
+                if storage and debug_upload_prefix:
+                    ltx_key = f"{debug_upload_prefix}/ltx_fallback/segment_{i}.mp4"
+                    await storage.upload_file(video_path, ltx_key)
+                    logger.info(f"  [DEBUG] Uploaded LTX fallback: {ltx_key}")
+            else:
+                video_path = match.video_path
+
             # Step 1: Generate audio via TTS API
             logger.info(f"  [1/4] Generating TTS audio...")
             audio_path = await client.generate_tts(
@@ -535,6 +619,11 @@ class VideoGenerationRequest(BaseModel):
 
     # Debug options
     enable_blueprint_dump: bool = False  # Upload debug artifacts to MinIO
+
+    # LTX fallback configuration
+    enable_ltx_fallback: bool = False  # Use LTX-2 for non-CONTEXTUAL matches
+    ltx_server_url: str = "http://localhost:8081"
+    ltx_timeout: float = 600.0
 
 
 class JobStatusResponse(BaseModel):
@@ -727,11 +816,24 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         # Step 3: Script to Video (TTS, Wav2Lip, STT via webservices)
         logger.info(f"[Job {job_id}] Running script_to_video...")
 
+        # Build LTX config for fallback if enabled
+        ltx_config = None
+        if request.enable_ltx_fallback:
+            ltx_config = LTXConfig(
+                server_url=request.ltx_server_url,
+                timeout=request.ltx_timeout,
+            )
+            logger.info(
+                f"[Job {job_id}] LTX fallback enabled, server: {request.ltx_server_url}"
+            )
+
         async with WebserviceClient(api_config) as client:
             final_video_path = await script_to_video(
                 matches=video_matches.matches,
                 client=client,
                 config=config,
+                ltx_config=ltx_config,
+                enable_ltx_fallback=request.enable_ltx_fallback,
                 progress_callback=lambda msg: logger.info(f"[Job {job_id}] {msg}"),
                 debug_upload_prefix=debug_upload_prefix,
             )

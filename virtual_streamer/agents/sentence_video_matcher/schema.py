@@ -26,6 +26,11 @@ class DialogLineMatch(BaseModel):
     grade: int = Field(description="Numeric grade for ranking", ge=0, le=10)
     reasoning: str = Field(description="Explanation of the rating")
 
+    @property
+    def needs_generation(self) -> bool:
+        """True if video should be generated via LTX-2 (rating is not CONTEXTUAL)."""
+        return self.rating != ContextualRating.CONTEXTUAL
+
 
 class SentenceVideoMatcherOutput(BaseModel):
     """Output from SentenceVideoMatcherAgent."""

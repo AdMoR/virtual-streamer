@@ -149,6 +149,29 @@ class NewsConfig(BaseModel):
     )
 
 
+class LTXConfig(BaseModel):
+    """Configuration for LTX-2 video generation (reusable for T2V pipeline and fallback)."""
+
+    server_url: str = Field(
+        default="http://localhost:8081",
+        description="LTX Video API server URL",
+    )
+    timeout: float = Field(
+        default=600.0,
+        description="Request timeout in seconds",
+    )
+    width: int = Field(default=1280, description="Video width")
+    height: int = Field(default=720, description="Video height")
+    duration_seconds: float = Field(default=5.0, description="Video duration in seconds")
+    fps: int = Field(default=24, description="Frames per second")
+    steps: int = Field(default=8, description="Number of inference steps")
+    cfg_scale: float = Field(default=4.0, description="CFG scale for guidance")
+    style_suffix: str = Field(
+        default="Cinematic quality, smooth motion, natural lighting.",
+        description="Style suffix appended to prompts",
+    )
+
+
 class VideoGenerationConfig(BaseSettings):
     """Main configuration for video generation workflow.
 
@@ -228,6 +251,13 @@ class VideoGenerationConfig(BaseSettings):
         default_factory=VideoProcessingConfig
     )
     news: NewsConfig = Field(default_factory=NewsConfig)
+    ltx: LTXConfig = Field(default_factory=LTXConfig)
+
+    # LTX fallback behavior
+    enable_ltx_fallback: bool = Field(
+        default=False,
+        description="Enable LTX-2 video generation for non-CONTEXTUAL matches",
+    )
 
     # Video search and matching
     max_search_attempts: int = Field(
