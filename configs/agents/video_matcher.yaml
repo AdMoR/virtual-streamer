@@ -9,6 +9,7 @@ model:
   model: claude-haiku-4-5-20251001
   temperature: 0.3  # Lower temperature for consistent judgements
   max_tokens: 512
+  # api_base: http://localhost:8080
 
 metadata:
   version: "1.0.0"

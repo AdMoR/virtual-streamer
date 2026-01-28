@@ -164,7 +164,7 @@ class BaseLlmAgent(LlmAgent):
             f"(version: {agent_config.metadata.version})"
         )
 
-    def _build_model(self, agent_config) -> LiteLlm:
+    def _build_model(self, agent_config: AgentConfig) -> LiteLlm:
         """Build the LiteLlm model wrapper with configuration parameters.
 
         Creates a LiteLlm instance that provides a unified interface for
@@ -193,7 +193,7 @@ class BaseLlmAgent(LlmAgent):
         model_config = agent_config.model
 
         # Get the model string (handles provider prefix logic)
-        model_string = model_config.get_model_string()
+        model_string: str = model_config.get_model_string()
 
         # Get only explicitly set parameters (exclude None values)
         llm_kwargs = model_config.parameters.get_non_null_params()

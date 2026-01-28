@@ -55,6 +55,10 @@ class LlmParameters(BaseModel):
         default=None,
         description="GPT-5+: reasoning effort level (minimal, low, medium, high)",
     )
+    api_base: Optional[str] = Field(
+        default=None,
+        description="Custom API base URL",
+    )
 
     def get_non_null_params(self) -> Dict[str, Any]:
         """Get only the parameters that are explicitly set (non-None).
