@@ -29,6 +29,7 @@ services:
       # TTS Service
       - FISH_TTS_HOST=tts
       - FISH_TTS_PORT=8003
+      - OPENAI_API_KEY= # we call a local server
       # Directories
       - DATA_DIR=/data
       - TEMP_DIR=/tmp/virtual_streamer

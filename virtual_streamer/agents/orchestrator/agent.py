@@ -148,7 +148,7 @@ def create_root_agent() -> SequentialAgent:
 
     return get_video_generation_orchestrator(
         video_retriever=video_retriever,
-        max_video_candidates=2,
+        max_video_candidates=5,
     )
 
 
