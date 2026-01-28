@@ -20,16 +20,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code into the container
-# Copy the specific service and its dependencies (utils, models)
 COPY ./virtual_streamer ./virtual_streamer
-# Copy any other top-level files needed if entity_webservice.py imports them directly
-# COPY ./other_needed_file.py .
 
 # Expose the port the app runs on
 EXPOSE 8002
 
 # Define the command to run the application using Uvicorn
-# Run the FastAPI app located at virtual_streamer/video_server/entity_webservice.py
-# The module path is virtual_streamer.video_server.entity_webservice
-# The FastAPI app instance is named 'app'
-CMD ["uvicorn", "virtual_streamer.video_server.entity_webservice:app", "--host", "0.0.0.0", "--port", "8002"]
+# Run the unified API app located at virtual_streamer/api/main.py
+CMD ["uvicorn", "virtual_streamer.api.main:app", "--host", "0.0.0.0", "--port", "8002"]

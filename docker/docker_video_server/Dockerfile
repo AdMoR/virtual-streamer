@@ -1,18 +1,20 @@
-FROM python:3.9
+FROM python:3.9-slim
 
 ENV WORKDIR /src
 RUN mkdir -p $WORKDIR
 WORKDIR $WORKDIR
 
-RUN apt update && apt install ffmpeg -y
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
-COPY ./requirements_cpu.txt .
-RUN pip install -r requirements_cpu.txt
+COPY ./requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./virtual_streamer .
+COPY ./virtual_streamer ./virtual_streamer
 COPY ./setup.py .
 RUN pip install -e .
 
-COPY ./apps/obs_video_server.py .
+# Expose the port the video server runs on
+EXPOSE 5000
 
-ENTRYPOINT ["python3", "obs_video_server.py"]
+# Run the streaming video server using Uvicorn
+CMD ["uvicorn", "virtual_streamer.streaming.video_server.app:app", "--host", "0.0.0.0", "--port", "5000"]

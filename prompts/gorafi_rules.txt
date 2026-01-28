@@ -14,7 +14,7 @@ Ex:
 - Bad : "Le « gangsta fishing » classé menace intérieure" => we don't know what gangsta fishing is
 - Better : "La pêche urbaine clandestine, nouvelle cible de la DGSI" => gangsta fishing is translated
 
-Ex : 
+Ex :
 
 
 Some examples :
