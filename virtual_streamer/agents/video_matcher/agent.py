@@ -28,7 +28,7 @@ Example:
 import logging
 from typing import Optional
 
-from virtual_streamer.lib.agents import StatefulLlmAgent
+from virtual_streamer.lib.agents import StatefulLlmAgent, BaseLlmAgent
 from virtual_streamer.agents.video_matcher.prompt import JUDGE_PROMPT
 from virtual_streamer.agents.video_matcher.callback import (
     InjectVisionFrameCallback,
@@ -82,5 +82,14 @@ def get_video_matcher(run_id: Optional[str] = None) -> StatefulLlmAgent:
     )
 
 
+def get_test_video_matcher():
+    return BaseLlmAgent(
+        name="video_matcher",
+        instruction=JUDGE_PROMPT,
+        before_model_callback=InjectVisionFrameCallback(),
+        output_schema=VideoJudgementOutput,
+    )
+
+
 # Default agent instance for ADK CLI usage
-root_agent = get_video_matcher()
+root_agent = get_test_video_matcher()

@@ -38,7 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
-from google.adk.agents import BaseAgent, SequentialAgent
+from google.adk.agents import BaseAgent, SequentialAgent, ParallelAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from google.genai import types
@@ -207,7 +207,7 @@ class MapperAgent(SequentialAgent, ABC):
         )
 
         # Create parallel agent with workers and run
-        parallel = SequentialAgent(
+        parallel = ParallelAgent(
             name=f"parallel_{run_id}",
             sub_agents=self._workers  # type: ignore (workers are agents),
 

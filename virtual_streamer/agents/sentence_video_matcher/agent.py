@@ -55,7 +55,7 @@ class SentenceVideoMapper(MapperAgent):
     def __init__(
         self,
         video_retriever: VideoRetrieverInterface,
-        max_candidates: int = 1,
+        max_candidates: int,
         character_map: Dict[str, Character] | None = None,
         name: str = "sentence_video_mapper",
     ):
