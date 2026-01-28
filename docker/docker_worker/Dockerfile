@@ -96,9 +96,7 @@ RUN mkdir -p /data/out_video_folder \
 COPY ./checkpoints/ ./checkpoints
 COPY ./models ./models
 COPY ./face_detection ./face_detection
-COPY ./webservice.py .
 COPY ./README.md .
-COPY ./webservice_prod.py .
 COPY ./virtual_streamer ./virtual_streamer
 COPY ./configs ./configs
 
@@ -118,6 +116,3 @@ CMD ["uv", "run", "python", "-m", "uvicorn", "virtual_streamer.api.main:app", \
      "--port", "8000", \
      "--workers", "1", \
      "--log-level", "info"]
-
-# Default command to run the webservice with Gunicorn and the production config
-#CMD ["uv", "run", "fastapi", "run", "/src/webservice.py"]

@@ -86,6 +86,39 @@ services:
   #     - .env
   #   restart: always
 
+  # Virtual Streamer Agent
+  # ADK-based agent that monitors Twitch chat and controls video generation
+  virtual_streamer_agent:
+    build:
+      context: .
+      dockerfile: docker/streaming/virtual_streamer_agent/Dockerfile
+    container_name: streaming_virtual_streamer_agent
+    environment:
+      # API connection
+      - API_URL=http://virtual_streamer_api:8000
+      - STREAM_ID=${STREAM_ID:-default}
+      - PROGRAMMATION_ID=${PROGRAMMATION_ID:-default}
+      # Tools configuration
+      - TOOLS_CONFIG=/app/configs/virtual_streamer_tools.yaml
+      # Agent loop settings
+      - LOOP_INTERVAL=${AGENT_LOOP_INTERVAL:-5}
+      - MAX_CHAT_MESSAGES=${MAX_CHAT_MESSAGES:-100}
+      # Twitch credentials (required for chat integration)
+      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
+      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
+      - TWITCH_REFRESH_TOKEN=${TWITCH_REFRESH_TOKEN}
+      - TWITCH_CHANNEL=${TWITCH_CHANNEL}
+      # LLM provider
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      # Mount configs for potential hot-reload
+      - ./configs:/app/configs:ro
+    networks:
+      - streaming
+    env_file:
+      - .env
+    restart: unless-stopped
+
 volumes:
   video_folder:
     driver: local

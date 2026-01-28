@@ -1,0 +1,20 @@
+# Virtual Streamer Agent Configuration
+#
+# This file configures the LLM settings for the Virtual Streamer Agent.
+# The agent controls a Twitch channel by responding to viewers and
+# creating videos based on chat interactions.
+
+name: virtual_streamer
+
+model:
+  provider: anthropic
+  model: anthropic/claude-sonnet-4-5-20250929
+  parameters:
+    temperature: 0.7
+    max_output_tokens: 1024
+
+metadata:
+  version: "1.0.0"
+  description: "Virtual Streamer agent for Twitch broadcasting control"
+  owners:
+    - virtual_streamer_team

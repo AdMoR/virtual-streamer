@@ -1,0 +1,98 @@
+# Virtual Streamer Agent - Tools Configuration
+#
+# This file defines the tools available to the Virtual Streamer Agent.
+# Tools can be enabled/disabled, have default parameters pre-filled,
+# and be restricted to certain hours of the day.
+
+tools:
+  # ==========================================================================
+  # Core Communication Tools
+  # ==========================================================================
+  
+  - name: send_twitch_message
+    enabled: true
+    module: virtual_streamer.agents.virtual_streamer.tools.send_message
+    function: send_twitch_message
+    description: |
+      Envoie un message dans le chat Twitch.
+      Utilise cet outil pour répondre aux viewers ou annoncer quelque chose.
+      Le message sera tronqué à 500 caractères si nécessaire.
+
+  # ==========================================================================
+  # Video Creation Tools - Scenario Variants
+  # ==========================================================================
+  
+  # C'est pas Sorcier style parody videos
+  - name: create_cest_pas_sorcier_video
+    enabled: true
+    module: virtual_streamer.agents.virtual_streamer.tools.create_video
+    function: create_video
+    description: |
+      Crée une vidéo parodie style "C'est pas Sorcier" sur un sujet donné.
+      Fred et Jamy expliquent le sujet de manière humoristique.
+      La vidéo sera automatiquement ajoutée à la queue de diffusion.
+    defaults:
+      story_template_id: "cest_pas_sorcier"
+    availability:
+      enabled_hours: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+      timezone: "Europe/Paris"
+
+  # Gorafi style satirical news (evening only)
+  - name: create_gorafi_video
+    enabled: false  # Disabled by default - enable when template is ready
+    module: virtual_streamer.agents.virtual_streamer.tools.create_video
+    function: create_video
+    description: |
+      Crée une vidéo satirique style "Le Gorafi" sur un sujet d'actualité.
+      Un ton parodique et absurde pour commenter l'actualité.
+    defaults:
+      story_template_id: "gorafi"
+    availability:
+      enabled_hours: [18, 19, 20, 21, 22, 23]
+      timezone: "Europe/Paris"
+
+  # Generic video creation (requires template_id)
+  - name: create_video
+    enabled: false  # Disabled - prefer scenario-specific tools
+    module: virtual_streamer.agents.virtual_streamer.tools.create_video
+    function: create_video
+    description: |
+      Crée une vidéo avec un template spécifique.
+      Nécessite de spécifier le story_template_id.
+
+  # ==========================================================================
+  # Moderation Tools (Future - Disabled)
+  # ==========================================================================
+  
+  - name: timeout_user
+    enabled: false
+    module: virtual_streamer.agents.virtual_streamer.tools.moderation
+    function: timeout_user
+    description: |
+      Exclut temporairement un utilisateur du chat.
+      À utiliser uniquement en cas de comportement inapproprié grave.
+
+  # ==========================================================================
+  # Stream Control Tools (Future - Disabled)
+  # ==========================================================================
+  
+  - name: change_stream_title
+    enabled: false
+    module: virtual_streamer.agents.virtual_streamer.tools.stream_control
+    function: change_title
+    description: |
+      Change le titre du stream sur Twitch.
+      Permet d'adapter le titre au contenu actuellement diffusé.
+
+# =============================================================================
+# Global Settings
+# =============================================================================
+
+settings:
+  # Maximum number of tools to expose to the LLM
+  # Too many tools can confuse the model and increase token usage
+  max_tools: 10
+  
+  # How often to re-check tool availability (in seconds)
+  # Tools with time-based availability are re-evaluated at this interval
+  availability_check_interval: 60
