@@ -12,6 +12,11 @@ from virtual_streamer.lib.agents import BaseLlmAgent
 from virtual_streamer.agents.virtual_streamer_agent.prompt import (
     VirtualStreamerInstructionProvider
 )
+from virtual_streamer.agents.virtual_streamer_agent.context import (
+    MockProcessingQueueContextProvider,
+    MockSystemStatusContextProvider,
+    MockChatMessageContextProvider,
+)
 from google.adk.models.lite_llm import LiteLlm
 
 logger = logging.getLogger(__name__)
@@ -91,31 +96,53 @@ def get_virtual_streamer_agent(
     )
 
 
-def get_virtual_streamer_agent_dummy_tools(
-) -> VirtualStreamerAgent:
+def get_virtual_streamer_agent_dummy_tools() -> VirtualStreamerAgent:
     """
-    Factory function to create a Virtual Streamer Agent.
-
-    Args:
-        tools: List of tools to provide to the agent. If None, an empty list is used.
-        max_chat_messages: Maximum chat messages to include in context
+    Factory function to create a Virtual Streamer Agent with mock tools and context providers.
+    
+    This creates a fully functional test agent with:
+    - Mock tools that simulate video creation and chat messaging
+    - Mock context providers for queue, system status, and chat messages
+    
+    Useful for:
+    - Local development and testing
+    - ADK web interface testing
+    - Integration testing without real infrastructure
 
     Returns:
-        Configured VirtualStreamerAgent instance
+        Configured VirtualStreamerAgent instance with mock tools and context
     """
-    def create_video(title: str):
-        return None
+    # Mock tools that simulate real behavior
+    def create_video(title: str) -> dict:
+        """Create a video with the given title. Returns job info."""
+        return {
+            "success": True,
+            "job_id": "mock-job-123",
+            "title": title,
+            "message": f"Video '{title}' creation started",
+        }
 
-    def answer_chat_message(msg: str):
-        return None
+    def send_twitch_message(message: str) -> dict:
+        """Send a message to Twitch chat. Returns confirmation."""
+        return {
+            "success": True,
+            "message": message,
+            "sent_at": "now",
+        }
 
-    tools = [
-        create_video, answer_chat_message,
-    ]
+    tools = [create_video, send_twitch_message]
+
+    # Mock context providers with default test data
+    queue_provider = MockProcessingQueueContextProvider()
+    system_provider = MockSystemStatusContextProvider()
+    chat_provider = MockChatMessageContextProvider()
+    chat_provider.load_default_conversation()
+
+    context_providers = [queue_provider, system_provider, chat_provider]
 
     return VirtualStreamerAgent(
         tools=tools,
-        context_providers=[]
+        context_providers=context_providers,
     )
 
 
