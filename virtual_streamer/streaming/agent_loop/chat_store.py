@@ -11,7 +11,7 @@ from collections import deque
 from datetime import datetime
 from typing import Deque, List, Optional
 
-from virtual_streamer.agents.virtual_streamer.schema import ChatMessage
+from virtual_streamer.agents.virtual_streamer_agent.schema import ChatMessage
 
 logger = logging.getLogger(__name__)
 

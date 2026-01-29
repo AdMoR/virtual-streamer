@@ -33,16 +33,6 @@ from virtual_streamer.agents.virtual_streamer_agent.context.providers import (
     QueueInfoProvider,
     WorkloadProvider,
 )
-from virtual_streamer.agents.virtual_streamer_agent.context.mock_providers import (
-    MockContextProviders,
-    MockQueueInfoProvider,
-    MockWorkloadProvider,
-    MockChatStore,
-    MockQueueConfig,
-    MockWorkloadConfig,
-    MockChatConfig,
-    MockChatMessage,
-)
 
 __all__ = [
     # Protocol
@@ -59,14 +49,4 @@ __all__ = [
     "KeepLastN",
     "QueueInfoProvider",
     "WorkloadProvider",
-    
-    # Legacy - Mock providers
-    "MockContextProviders",
-    "MockQueueInfoProvider",
-    "MockWorkloadProvider",
-    "MockChatStore",
-    "MockQueueConfig",
-    "MockWorkloadConfig",
-    "MockChatConfig",
-    "MockChatMessage",
 ]
