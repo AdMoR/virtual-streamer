@@ -38,7 +38,10 @@ from virtual_streamer.agents.virtual_streamer_agent.context.chat_provider import
     MockChatMessageContextProvider,
 )
 from virtual_streamer.agents.virtual_streamer_agent.prompt import (
-    VirtualStreamerInstructionProvider,
+    VIRTUAL_STREAMER_SYSTEM_PROMPT,
+)
+from virtual_streamer.agents.virtual_streamer_agent.callbacks import (
+    InjectContextCallback,
 )
 from virtual_streamer.lib.agents import BaseLlmAgent
 
@@ -187,7 +190,7 @@ class VirtualStreamerTestRunner:
         self.agent: Optional[BaseLlmAgent] = None
         self.adk_runner: Optional[Runner] = None
         self.session_service: Optional[InMemorySessionService] = None
-        self.instruction_provider: Optional[VirtualStreamerInstructionProvider] = None
+        self.context_callback: Optional[InjectContextCallback] = None
         
         # Last prompt sent to agent (for debugging)
         self._last_prompt: Optional[str] = None
@@ -205,17 +208,15 @@ class VirtualStreamerTestRunner:
         tools = self.tool_factory.get_tools()
         logger.info(f"Loaded {len(tools)} mock tools")
         
-        # Create instruction provider with mock providers
-        self.instruction_provider = VirtualStreamerInstructionProvider(
-            context_providers=self.context_providers,
-            tools=tools,
-        )
+        # Create callback to inject context as tool response
+        self.context_callback = InjectContextCallback(self.context_providers)
         
-        # Create agent with the instruction provider
+        # Create agent with static prompt and context callback
         self.agent = BaseLlmAgent(
             name="virtual_streamer",
-            instruction=self.instruction_provider,
+            instruction=VIRTUAL_STREAMER_SYSTEM_PROMPT,
             tools=tools,
+            before_model_callback=self.context_callback,
             output_schema=None,
         )
         

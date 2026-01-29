@@ -1,8 +1,16 @@
 """
 System prompts for the Virtual Streamer Agent.
 
-Contains the main instruction prompt, helper functions for building
-dynamic context sections, and the VirtualStreamerInstructionProvider.
+Contains:
+- VIRTUAL_STREAMER_SYSTEM_PROMPT: Static behavior rules and guidelines
+- Context formatting functions (used by context providers)
+- VirtualStreamerInstructionProvider: Legacy instruction provider (for reference)
+
+Architecture Note:
+The agent now uses a BeforeModelCallback to inject dynamic context as tool
+responses, separate from the static system prompt. The InstructionProvider
+is kept for backward compatibility but the agent uses VIRTUAL_STREAMER_SYSTEM_PROMPT
+directly.
 """
 
 import logging
@@ -210,12 +218,16 @@ def build_full_context(
 
 
 # =============================================================================
-# Instruction Provider
+# Instruction Provider (Legacy)
 # =============================================================================
 
 class VirtualStreamerInstructionProvider(InstructionProvider):
     """
-    Instruction provider that composes prompts from multiple context providers.
+    Legacy instruction provider that composes prompts from multiple context providers.
+    
+    NOTE: The main agent now uses InjectContextCallback instead, which injects
+    context as tool response messages. This class is kept for backward compatibility
+    and alternative use cases.
     
     Each provider renders its own section, which are concatenated after
     the static system prompt.

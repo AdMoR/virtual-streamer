@@ -9,13 +9,16 @@ import logging
 from typing import Any, List, Optional
 
 from virtual_streamer.lib.agents import BaseLlmAgent
-from virtual_streamer.agents.virtual_streamer_agent.prompt import (
-    VirtualStreamerInstructionProvider
-)
 from virtual_streamer.agents.virtual_streamer_agent.context import (
     MockProcessingQueueContextProvider,
     MockSystemStatusContextProvider,
     MockChatMessageContextProvider,
+)
+from virtual_streamer.agents.virtual_streamer_agent.callbacks import (
+    InjectContextCallback,
+)
+from virtual_streamer.agents.virtual_streamer_agent.prompt import (
+    VIRTUAL_STREAMER_SYSTEM_PROMPT,
 )
 from google.adk.models.lite_llm import LiteLlm
 
@@ -35,6 +38,10 @@ class VirtualStreamerAgent(BaseLlmAgent):
     - Creates videos based on requests or proactively
     - Manages the video queue to ensure fresh content
     
+    Architecture:
+    - Static system prompt: Behavior rules and guidelines (in instruction)
+    - Dynamic context: Injected as tool response via BeforeModelCallback
+    
     Tools are injected at construction time via the ToolFactory.
     """
     
@@ -48,24 +55,28 @@ class VirtualStreamerAgent(BaseLlmAgent):
         
         Args:
             tools: List of tool functions available to the agent
-            max_chat_messages: Maximum chat messages to include in context
+            context_providers: List of context providers for dynamic state
         """
-        instruction_provider = VirtualStreamerInstructionProvider(
-            context_providers=context_providers,
-            tools=tools,
-        )
+        # Create callback to inject context as tool response
+        context_callback = InjectContextCallback(context_providers)
         
+        # Use static system prompt for behavior rules
+        # Dynamic context is injected by the callback as a tool response
         super().__init__(
             name="virtual_streamer",
-            instruction=instruction_provider,
+            instruction=VIRTUAL_STREAMER_SYSTEM_PROMPT,
             tools=tools,
+            before_model_callback=context_callback,
             # No output_schema - agent uses tools directly
             output_schema=None,
         )
         
+        # Store providers for inspection
+        self._context_providers = context_providers
+        
         logger.info(
-            f"VirtualStreamerAgent initialized with {len(tools)} tools: "
-            f"{[getattr(t, '__name__', str(t)) for t in tools]}"
+            f"VirtualStreamerAgent initialized with {len(tools)} tools and "
+            f"{len(context_providers)} context providers"
         )
 
 
