@@ -8,22 +8,22 @@ context information into a format suitable for the agent's state.
 import logging
 from typing import Any, Dict, List, Optional
 
-from virtual_streamer.agents.virtual_streamer.schema import (
+from virtual_streamer.agents.virtual_streamer_agent.schema import (
     ChatMessage,
     QueueInfo,
     SystemStatus,
 )
-from virtual_streamer.agents.virtual_streamer.context.conversation import (
+from virtual_streamer.agents.virtual_streamer_agent.context.conversation import (
     ConversationManager,
     ConversationManagerStrategy,
     KeepLastN,
 )
-from virtual_streamer.agents.virtual_streamer.context.providers import (
+from virtual_streamer.agents.virtual_streamer_agent.context.providers import (
     ContextProviders,
     QueueInfoProvider,
     WorkloadProvider,
 )
-from virtual_streamer.agents.virtual_streamer.agent import (
+from virtual_streamer.agents.common.state_keys import (
     STATE_QUEUE_INFO,
     STATE_SYSTEM_STATUS,
     STATE_CHAT_MESSAGES,

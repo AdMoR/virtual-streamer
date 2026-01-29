@@ -36,7 +36,7 @@ class VirtualStreamerAgent(BaseLlmAgent):
     def __init__(
         self,
         tools: List[Any],
-        max_chat_messages: int = 100,
+        context_providers: List[Any],
     ):
         """
         Initialize the Virtual Streamer Agent.
@@ -46,8 +46,8 @@ class VirtualStreamerAgent(BaseLlmAgent):
             max_chat_messages: Maximum chat messages to include in context
         """
         instruction_provider = VirtualStreamerInstructionProvider(
+            context_providers=context_providers,
             tools=tools,
-            max_chat_messages=max_chat_messages
         )
         
         super().__init__(
@@ -70,7 +70,6 @@ class VirtualStreamerAgent(BaseLlmAgent):
 
 def get_virtual_streamer_agent(
     tools: Optional[List[Any]] = None,
-    max_chat_messages: int = 100,
 ) -> VirtualStreamerAgent:
     """
     Factory function to create a Virtual Streamer Agent.
@@ -88,7 +87,7 @@ def get_virtual_streamer_agent(
     
     return VirtualStreamerAgent(
         tools=tools,
-        max_chat_messages=max_chat_messages,
+        context_providers=[]
     )
 
 
@@ -116,7 +115,7 @@ def get_virtual_streamer_agent_dummy_tools(
 
     return VirtualStreamerAgent(
         tools=tools,
-        max_chat_messages=100,
+        context_providers=[]
     )
 
 
