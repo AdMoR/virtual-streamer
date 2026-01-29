@@ -133,6 +133,7 @@ class BaseLlmAgent(LlmAgent):
         """
         # Load configuration
         agent_config = get_config_for_agent(name)
+        print("Agent config:", agent_config)
 
         # Build LiteLlm model with parameters from config
         model = self._build_model(agent_config)

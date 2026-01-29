@@ -213,7 +213,7 @@ class VirtualStreamerTestRunner:
         
         # Create agent with the instruction provider
         self.agent = BaseLlmAgent(
-            name="virtual_streamer_test",
+            name="virtual_streamer",
             instruction=self.instruction_provider,
             tools=tools,
             output_schema=None,
@@ -225,6 +225,11 @@ class VirtualStreamerTestRunner:
             agent=self.agent,
             app_name=self.config.app_name,
             session_service=self.session_service,
+        )
+        await self.session_service.create_session(
+            app_name=self.config.app_name,
+            user_id=self.config.user_id,
+            session_id=self.config.session_id,
         )
         
         logger.info("Test runner set up complete")

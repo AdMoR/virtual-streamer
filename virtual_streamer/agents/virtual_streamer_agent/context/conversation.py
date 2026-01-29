@@ -9,7 +9,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List
 
-from virtual_streamer.agents.virtual_streamer.schema import ChatMessage
+from virtual_streamer.agents.virtual_streamer_agent.schema import ChatMessage
 
 logger = logging.getLogger(__name__)
 

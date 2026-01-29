@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import httpx
 
-from virtual_streamer.agents.virtual_streamer.schema import (
+from virtual_streamer.agents.virtual_streamer_agent.schema import (
     QueueInfo,
     SystemStatus,
     WorkloadStatus,
