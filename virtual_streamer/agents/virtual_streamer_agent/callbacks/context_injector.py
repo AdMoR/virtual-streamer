@@ -63,7 +63,7 @@ class InjectContextCallback(BeforeModelCallback):
     async def __call__(
         self,
         callback_context: CallbackContext,
-        request: LlmRequest,
+        llm_request: LlmRequest,
     ) -> Optional[types.Content]:
         """
         Inject context as a tool response before the LLM call.
@@ -76,7 +76,7 @@ class InjectContextCallback(BeforeModelCallback):
             None to continue to LLM call (we never skip)
         """
         if not self.context_providers:
-            logger.debug("No context providers configured, skipping injection")
+            logger.warning("No context providers configured, skipping injection")
             return None
         
         try:
@@ -84,10 +84,10 @@ class InjectContextCallback(BeforeModelCallback):
             context_data = await self._render_providers()
             
             # Format as tool response and inject
-            tool_response_content = self._format_as_tool_response(context_data)
-            request.contents.append(tool_response_content)
+            tool_response_part = self._format_as_tool_response(context_data)
+            llm_request.contents[-1].parts.append(tool_response_part)
             
-            logger.debug(
+            logger.warning(
                 f"Injected context from {len(self.context_providers)} providers "
                 f"as '{self.tool_name}' tool response"
             )
@@ -139,7 +139,4 @@ class InjectContextCallback(BeforeModelCallback):
         )
         
         # Wrap in Content with role='user' (required for tool responses in LLM history)
-        return types.Content(
-            role='user',
-            parts=[response_part],
-        )
+        return response_part
