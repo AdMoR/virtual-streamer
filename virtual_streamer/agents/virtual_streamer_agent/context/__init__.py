@@ -2,12 +2,28 @@
 Context management for the Virtual Streamer Agent.
 
 This module provides:
-- ContextBuilder: Assembles context from various sources
-- ConversationManager: Manages chat history with configurable strategies
-- Providers: Fetch queue info, system status, etc.
-- Mock providers for testing
+- ContextProviderProtocol: Interface for composable context providers
+- Mock providers for testing (queue, system, chat)
+- Legacy providers (ContextBuilder, ConversationManager)
 """
 
+# Protocol
+from virtual_streamer.agents.virtual_streamer_agent.context.protocol import (
+    ContextProviderProtocol,
+)
+
+# Composable Mock Providers (new pattern)
+from virtual_streamer.agents.virtual_streamer_agent.context.queue_provider import (
+    MockProcessingQueueContextProvider,
+)
+from virtual_streamer.agents.virtual_streamer_agent.context.system_provider import (
+    MockSystemStatusContextProvider,
+)
+from virtual_streamer.agents.virtual_streamer_agent.context.chat_provider import (
+    MockChatMessageContextProvider,
+)
+
+# Legacy imports (for backward compatibility)
 from virtual_streamer.agents.virtual_streamer_agent.context.builder import ContextBuilder
 from virtual_streamer.agents.virtual_streamer_agent.context.conversation import (
     ConversationManagerStrategy,
@@ -29,12 +45,22 @@ from virtual_streamer.agents.virtual_streamer_agent.context.mock_providers impor
 )
 
 __all__ = [
+    # Protocol
+    "ContextProviderProtocol",
+    
+    # Composable Mock Providers (new pattern)
+    "MockProcessingQueueContextProvider",
+    "MockSystemStatusContextProvider",
+    "MockChatMessageContextProvider",
+    
+    # Legacy - ContextBuilder
     "ContextBuilder",
     "ConversationManagerStrategy",
     "KeepLastN",
     "QueueInfoProvider",
     "WorkloadProvider",
-    # Mock providers for testing
+    
+    # Legacy - Mock providers
     "MockContextProviders",
     "MockQueueInfoProvider",
     "MockWorkloadProvider",

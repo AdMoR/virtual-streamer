@@ -1,12 +1,13 @@
 """
 Test Runner for the Virtual Streamer Agent.
 
-This module provides a test harness that uses mock tools and context providers
-to test agent behavior without requiring real infrastructure.
+This module provides a test harness that uses mock tools and composable
+context providers to test agent behavior without requiring real infrastructure.
 """
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -15,10 +16,6 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from virtual_streamer.agents.virtual_streamer_agent import (
-    VirtualStreamerAgent,
-    get_virtual_streamer_agent,
-)
 from virtual_streamer.agents.virtual_streamer_agent.schema import (
     ChatMessage,
     WorkloadStatus,
@@ -28,13 +25,22 @@ from virtual_streamer.agents.virtual_streamer_agent.tools.mock import (
     MockToolFactoryConfig,
     ToolCall,
 )
-from virtual_streamer.agents.virtual_streamer_agent.context.mock_providers import (
-    MockContextProviders,
-    MockChatConfig,
-    MockChatMessage,
-    MockQueueConfig,
-    MockWorkloadConfig,
+from virtual_streamer.agents.virtual_streamer_agent.context.protocol import (
+    ContextProviderProtocol,
 )
+from virtual_streamer.agents.virtual_streamer_agent.context.queue_provider import (
+    MockProcessingQueueContextProvider,
+)
+from virtual_streamer.agents.virtual_streamer_agent.context.system_provider import (
+    MockSystemStatusContextProvider,
+)
+from virtual_streamer.agents.virtual_streamer_agent.context.chat_provider import (
+    MockChatMessageContextProvider,
+)
+from virtual_streamer.agents.virtual_streamer_agent.prompt import (
+    VirtualStreamerInstructionProvider,
+)
+from virtual_streamer.lib.agents import BaseLlmAgent
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +116,8 @@ class TestRunnerConfig:
     # Mock tool configuration
     tool_factory_config: MockToolFactoryConfig = field(default_factory=MockToolFactoryConfig)
     
-    # Mock context configuration
-    queue_config: Optional[MockQueueConfig] = None
-    workload_config: Optional[MockWorkloadConfig] = None
-    chat_config: Optional[MockChatConfig] = None
+    # Whether to load default conversation on init
+    load_default_conversation: bool = True
 
 
 # =============================================================================
@@ -124,17 +128,14 @@ class VirtualStreamerTestRunner:
     """
     Test harness for the Virtual Streamer Agent.
     
-    This runner:
-    - Uses mock tools instead of real API calls
-    - Provides configurable context (queue, workload, chat)
-    - Logs all tool calls and agent events
-    - Supports injecting chat messages and running iterations
+    This runner uses composable mock context providers that each handle
+    fetching and rendering their own section of the prompt.
     
     Usage:
         runner = VirtualStreamerTestRunner()
         await runner.setup()
         
-        # Configure environment
+        # Configure environment through individual providers
         runner.set_workload(WorkloadStatus.LOW)
         runner.set_queue_pending(2)
         
@@ -158,27 +159,41 @@ class VirtualStreamerTestRunner:
         """
         self.config = config or TestRunnerConfig()
         
-        # Mock components
+        # Mock tool factory
         self.tool_factory = MockToolFactory(self.config.tool_factory_config)
-        self.context_providers = MockContextProviders(
-            queue_config=self.config.queue_config,
-            workload_config=self.config.workload_config,
-            chat_config=self.config.chat_config,
+        
+        # Create composable mock context providers
+        self.queue_provider = MockProcessingQueueContextProvider()
+        self.system_provider = MockSystemStatusContextProvider()
+        self.chat_provider = MockChatMessageContextProvider(
+            max_messages=self.config.max_chat_messages
         )
+        
+        # Load default conversation for realistic testing
+        if self.config.load_default_conversation:
+            self.chat_provider.load_default_conversation()
+        
+        # Collect providers in order they should appear in prompt
+        self.context_providers: List[ContextProviderProtocol] = [
+            self.queue_provider,
+            self.system_provider,
+            self.chat_provider,
+        ]
         
         # Event logging
         self.event_log = AgentEventLog()
         
         # Agent and runner (created in setup)
-        self.agent: Optional[VirtualStreamerAgent] = None
+        self.agent: Optional[BaseLlmAgent] = None
         self.adk_runner: Optional[Runner] = None
         self.session_service: Optional[InMemorySessionService] = None
+        self.instruction_provider: Optional[VirtualStreamerInstructionProvider] = None
         
         # Last prompt sent to agent (for debugging)
         self._last_prompt: Optional[str] = None
-        self._last_context: Optional[Dict[str, Any]] = None
+        self._last_user_message: Optional[str] = None
         
-        logger.info("VirtualStreamerTestRunner initialized")
+        logger.info("VirtualStreamerTestRunner initialized with composable providers")
     
     async def setup(self) -> None:
         """
@@ -190,10 +205,18 @@ class VirtualStreamerTestRunner:
         tools = self.tool_factory.get_tools()
         logger.info(f"Loaded {len(tools)} mock tools")
         
-        # Create agent
-        self.agent = get_virtual_streamer_agent(
+        # Create instruction provider with mock providers
+        self.instruction_provider = VirtualStreamerInstructionProvider(
+            context_providers=self.context_providers,
             tools=tools,
-            max_chat_messages=self.config.max_chat_messages,
+        )
+        
+        # Create agent with the instruction provider
+        self.agent = BaseLlmAgent(
+            name="virtual_streamer_test",
+            instruction=self.instruction_provider,
+            tools=tools,
+            output_schema=None,
         )
         
         # Create session service and runner
@@ -207,36 +230,38 @@ class VirtualStreamerTestRunner:
         logger.info("Test runner set up complete")
     
     # -------------------------------------------------------------------------
-    # Context Configuration Shortcuts
+    # Context Configuration - Convenience methods that delegate to providers
     # -------------------------------------------------------------------------
     
     def set_workload(self, status: WorkloadStatus) -> None:
         """Set the workload status."""
-        self.context_providers.set_workload(status)
+        self.system_provider.set_workload(status)
     
     def set_queue_pending(self, count: int) -> None:
-        """Set the pending video count."""
-        self.context_providers.set_queue_pending(count)
+        """Set the pending video count (updates both queue and system providers)."""
+        self.queue_provider.set_pending_count(count)
+        self.system_provider.set_queue_pending(count)
     
     def set_queue_played(self, count: int) -> None:
         """Set the played video count."""
-        self.context_providers.set_queue_played(count)
+        self.queue_provider.set_played_count(count)
     
     def set_next_videos(self, videos: List[str]) -> None:
         """Set the next videos list."""
-        self.context_providers.set_next_videos(videos)
+        self.queue_provider.set_next_videos(videos)
     
     def set_replay_mode(self, is_replaying: bool) -> None:
         """Set whether in replay mode."""
-        self.context_providers.set_replay_mode(is_replaying)
+        self.queue_provider.set_replay_mode(is_replaying)
     
     def set_active_jobs(self, count: int) -> None:
-        """Set active job count."""
-        self.context_providers.set_active_jobs(count)
+        """Set active job count (updates both queue and system providers)."""
+        self.queue_provider.set_active_jobs(count)
+        self.system_provider.set_active_jobs(count)
     
     def set_chat_time_offset(self, minutes: float) -> None:
         """Set time offset for chat messages (simulates old conversation)."""
-        self.context_providers.set_chat_time_offset(minutes)
+        self.chat_provider.set_time_offset(minutes)
     
     # -------------------------------------------------------------------------
     # Chat Management
@@ -259,15 +284,19 @@ class VirtualStreamerTestRunner:
         Returns:
             The created ChatMessage
         """
-        return self.context_providers.add_chat_message(username, message, is_mention)
+        return self.chat_provider.add_message(username, message, is_mention)
     
     def get_chat_messages(self) -> List[ChatMessage]:
-        """Get all chat messages."""
-        return self.context_providers.get_chat_messages()
+        """Get all dynamic chat messages."""
+        return self.chat_provider.get_messages()
     
     def clear_chat_history(self) -> None:
         """Clear dynamic chat messages."""
-        self.context_providers.clear_chat_history()
+        self.chat_provider.clear()
+    
+    def has_mentions(self) -> bool:
+        """Check if there are any mention messages."""
+        return self.chat_provider.has_mentions()
     
     # -------------------------------------------------------------------------
     # Running the Agent
@@ -289,18 +318,16 @@ class VirtualStreamerTestRunner:
             - response: Agent's text response (if any)
             - tool_calls: List of tool calls made
             - events: List of events during this iteration
+            - user_message: The user message that was sent
+            - prompt: The full prompt that was generated
         """
         if self.adk_runner is None:
             await self.setup()
         
-        # Build context
-        context = await self.context_providers.build_context()
-        self._last_context = context
-        
         # Build user message if not provided
         if user_message is None:
-            user_message = self._build_user_message(context)
-        self._last_prompt = user_message
+            user_message = self._build_user_message()
+        self._last_user_message = user_message
         
         logger.info(f"Running iteration with message: {user_message[:100]}...")
         
@@ -310,7 +337,7 @@ class VirtualStreamerTestRunner:
         initial_tool_count = len(self.tool_factory.get_tool_calls())
         
         try:
-            # Run the agent
+            # Run the agent (context providers will render prompt dynamically)
             async for event in self.adk_runner.run_async(
                 user_id=self.config.user_id,
                 session_id=self.config.session_id,
@@ -318,7 +345,6 @@ class VirtualStreamerTestRunner:
                     parts=[types.Part(text=user_message)],
                     role="user",
                 ),
-                state=context,
             ):
                 # Log and process events
                 event_type = type(event).__name__
@@ -361,31 +387,49 @@ class VirtualStreamerTestRunner:
             "user_message": user_message,
         }
     
-    def _build_user_message(self, context: Dict[str, Any]) -> str:
-        """Build user message based on context."""
+    def _build_user_message(self) -> str:
+        """Build user message based on current provider state."""
         parts = []
         
         # Check for mentions
-        from virtual_streamer.agents.common.state_keys import STATE_CHAT_MESSAGES, STATE_QUEUE_INFO
-        
-        messages = context.get(STATE_CHAT_MESSAGES, [])
-        queue_info = context.get(STATE_QUEUE_INFO)
-        
-        mentions = [m for m in messages if isinstance(m, ChatMessage) and m.is_mention]
-        
-        if mentions:
+        if self.chat_provider.has_mentions():
+            messages = self.chat_provider.get_messages()
+            mentions = [m for m in messages if m.is_mention]
             recent_mentions = mentions[-3:]
+            
             parts.append("Nouveaux messages qui te mentionnent:")
             for m in recent_mentions:
                 parts.append(f"- @{m.username}: {m.message}")
         
-        if queue_info and queue_info.pending_count < 3:
-            parts.append(f"\n⚠️ La queue est presque vide ({queue_info.pending_count} vidéos pending)")
+        # Check queue status
+        pending = self.queue_provider.get_pending_count()
+        if pending < 3:
+            parts.append(f"\n⚠️ La queue est presque vide ({pending} vidéos pending)")
         
         if not parts:
             parts.append("Vérifie l'état du stream et du chat.")
         
         return "\n".join(parts)
+    
+    async def get_current_prompt(self) -> str:
+        """
+        Get the current full prompt that would be sent to the agent.
+        
+        Useful for debugging and inspection.
+        
+        Returns:
+            The rendered prompt string
+        """
+        if self.instruction_provider is None:
+            await self.setup()
+        
+        # Create a dummy context since our providers don't use it
+        class DummyContext:
+            state = {}
+        
+        prompt = await self.instruction_provider(DummyContext())
+        self._last_prompt = prompt
+        return prompt
     
     # -------------------------------------------------------------------------
     # Inspection Methods
@@ -412,12 +456,12 @@ class VirtualStreamerTestRunner:
         return self.event_log.get_recent_events(n)
     
     def get_last_prompt(self) -> Optional[str]:
-        """Get the last prompt sent to the agent."""
+        """Get the last prompt that was rendered."""
         return self._last_prompt
     
-    def get_last_context(self) -> Optional[Dict[str, Any]]:
-        """Get the last context used."""
-        return self._last_context
+    def get_last_user_message(self) -> Optional[str]:
+        """Get the last user message sent to the agent."""
+        return self._last_user_message
     
     # -------------------------------------------------------------------------
     # Reset Methods
@@ -428,9 +472,15 @@ class VirtualStreamerTestRunner:
         self.tool_factory.clear_history()
         self.event_log.clear()
     
+    def reset_providers(self) -> None:
+        """Reset all providers to their default state."""
+        self.queue_provider.reset_to_defaults()
+        self.system_provider.reset_to_defaults()
+        self.chat_provider.reset_to_defaults()
+        logger.info("All providers reset to defaults")
+    
     def reset_session(self) -> None:
         """Reset the session (creates new session ID)."""
-        import uuid
         self.config.session_id = f"test_session_{uuid.uuid4().hex[:8]}"
         logger.info(f"Session reset to: {self.config.session_id}")
 

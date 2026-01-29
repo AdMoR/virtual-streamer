@@ -21,15 +21,6 @@ from virtual_streamer.agents.virtual_streamer_agent.test_runner import (
     VirtualStreamerTestRunner,
     TestRunnerConfig,
 )
-from virtual_streamer.agents.virtual_streamer_agent.context.mock_providers import (
-    MockChatConfig,
-    MockChatMessage,
-    MockQueueConfig,
-    MockWorkloadConfig,
-)
-from virtual_streamer.agents.virtual_streamer_agent.tools.mock import (
-    MockToolFactoryConfig,
-)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -132,24 +123,15 @@ def init_session_state():
 def get_or_create_runner() -> VirtualStreamerTestRunner:
     """Get or create the test runner."""
     if st.session_state.runner is None:
-        config = TestRunnerConfig(
-            queue_config=MockQueueConfig(
-                pending_count=st.session_state.queue_pending,
-                played_count=st.session_state.queue_played,
-                is_replaying=st.session_state.is_replaying,
-                active_jobs=st.session_state.active_jobs,
-                next_videos=st.session_state.next_videos.split("\n") if st.session_state.next_videos else [],
-            ),
-            workload_config=MockWorkloadConfig(
-                workload=WorkloadStatus(st.session_state.workload),
-                active_jobs=st.session_state.active_jobs,
-                queue_pending=st.session_state.queue_pending,
-            ),
-            chat_config=MockChatConfig(messages=[]),
-        )
+        # Create runner with default config
+        config = TestRunnerConfig(load_default_conversation=True)
         st.session_state.runner = VirtualStreamerTestRunner(config)
+        
         # Run setup in async context
         asyncio.run(st.session_state.runner.setup())
+        
+        # Apply initial state from session
+        update_runner_context()
     
     return st.session_state.runner
 
@@ -297,7 +279,7 @@ def render_sidebar():
             st.session_state.iteration_count = 0
             if st.session_state.runner:
                 st.session_state.runner.clear_history()
-                st.session_state.runner.clear_chat_history()
+                st.session_state.runner.reset_providers()
             st.rerun()
 
 
@@ -452,30 +434,17 @@ def render_logs_panel():
         if last_prompt:
             st.code(last_prompt, language=None)
         else:
-            st.info("No prompt sent yet.")
+            st.info("No prompt rendered yet.")
         
         st.markdown("---")
-        st.markdown("**Last Context State**")
+        st.markdown("**Preview Current Prompt**")
         
-        last_context = runner.get_last_context()
-        
-        if last_context:
-            # Format context for display
-            context_display = {}
-            for key, value in last_context.items():
-                if hasattr(value, 'model_dump'):
-                    context_display[key] = value.model_dump()
-                elif isinstance(value, list):
-                    context_display[key] = [
-                        v.model_dump() if hasattr(v, 'model_dump') else v
-                        for v in value
-                    ]
-                else:
-                    context_display[key] = value
-            
-            st.json(context_display)
-        else:
-            st.info("No context available yet.")
+        if st.button("🔄 Generate Prompt Preview"):
+            try:
+                prompt = asyncio.run(runner.get_current_prompt())
+                st.code(prompt, language=None)
+            except Exception as e:
+                st.error(f"Error generating prompt: {e}")
     
     with tab3:
         st.markdown("**Recent Agent Events**")

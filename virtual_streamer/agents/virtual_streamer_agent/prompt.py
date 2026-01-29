@@ -1,16 +1,26 @@
 """
 System prompts for the Virtual Streamer Agent.
 
-Contains the main instruction prompt and helper functions for building
-dynamic context sections.
+Contains the main instruction prompt, helper functions for building
+dynamic context sections, and the VirtualStreamerInstructionProvider.
 """
 
-from typing import List
+import logging
+from typing import Callable, List, Optional
+
+from google.adk.agents.readonly_context import ReadonlyContext
+
+from virtual_streamer.lib.providers.instruction import InstructionProvider
 from virtual_streamer.agents.virtual_streamer_agent.schema import (
     ChatMessage,
     QueueInfo,
     SystemStatus,
 )
+from virtual_streamer.agents.virtual_streamer_agent.context.protocol import (
+    ContextProviderProtocol,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -197,3 +207,95 @@ def build_full_context(
     ]
     
     return "\n".join(sections)
+
+
+# =============================================================================
+# Instruction Provider
+# =============================================================================
+
+class VirtualStreamerInstructionProvider(InstructionProvider):
+    """
+    Instruction provider that composes prompts from multiple context providers.
+    
+    Each provider renders its own section, which are concatenated after
+    the static system prompt.
+    
+    Usage:
+        from virtual_streamer.agents.virtual_streamer_agent.context import (
+            MockProcessingQueueContextProvider,
+            MockSystemStatusContextProvider,
+            MockChatMessageContextProvider,
+        )
+        
+        providers = [
+            MockProcessingQueueContextProvider(),
+            MockSystemStatusContextProvider(),
+            MockChatMessageContextProvider(),
+        ]
+        
+        instruction_provider = VirtualStreamerInstructionProvider(
+            context_providers=providers,
+        )
+    """
+    
+    def __init__(
+        self,
+        context_providers: List[ContextProviderProtocol],
+        tools: Optional[List[Callable]] = None,
+    ):
+        """
+        Initialize the instruction provider.
+        
+        Args:
+            context_providers: List of providers that will render prompt sections.
+                              Each provider must implement ContextProviderProtocol.
+            tools: Optional list of tools (for documentation/logging purposes)
+        """
+        self.context_providers = context_providers
+        self.tools = tools or []
+        
+        provider_names = [p.name for p in context_providers]
+        logger.info(f"VirtualStreamerInstructionProvider initialized with providers: {provider_names}")
+    
+    async def __call__(self, context: ReadonlyContext) -> str:
+        """
+        Generate the full instruction by combining all provider outputs.
+        
+        Args:
+            context: ADK ReadonlyContext (not used since providers manage their own data)
+            
+        Returns:
+            Complete prompt string with system prompt and all context sections
+        """
+        # Start with static system prompt
+        sections = [VIRTUAL_STREAMER_SYSTEM_PROMPT, "", "---", ""]
+        
+        # Render each provider's section
+        for provider in self.context_providers:
+            try:
+                section = await provider.render()
+                sections.append(section)
+                sections.append("")  # Add spacing between sections
+            except Exception as e:
+                logger.error(f"Failed to render {provider.name}: {e}")
+                continue
+        
+        full_prompt = "\n".join(sections)
+        logger.debug(f"Generated prompt with {len(self.context_providers)} context sections")
+        
+        return full_prompt
+    
+    def get_provider(self, name: str) -> Optional[ContextProviderProtocol]:
+        """
+        Get a provider by name.
+        
+        Args:
+            name: Provider name to find
+            
+        Returns:
+            The provider if found, None otherwise
+        """
+        for provider in self.context_providers:
+            if provider.name == name:
+                return provider
+        return None
