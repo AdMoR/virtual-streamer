@@ -10,7 +10,7 @@ This agent uses tools defined in the tools/ submodule and builds
 context from the context/ submodule.
 """
 
-from virtual_streamer.agents.virtual_streamer.agent import (
+from virtual_streamer.agents.virtual_streamer_agent.agent import (
     VirtualStreamerAgent,
     get_virtual_streamer_agent,
 )

@@ -16,14 +16,14 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from virtual_streamer.agents.virtual_streamer import (
+from virtual_streamer.agents.virtual_streamer_agent import (
     VirtualStreamerAgent,
     get_virtual_streamer_agent,
 )
-from virtual_streamer.agents.virtual_streamer.schema import ChatMessage
-from virtual_streamer.agents.virtual_streamer.context import ContextBuilder
-from virtual_streamer.agents.virtual_streamer.tools import ToolFactory
-from virtual_streamer.agents.virtual_streamer.tools.send_message import set_message_sender
+from virtual_streamer.agents.virtual_streamer_agent.schema import ChatMessage
+from virtual_streamer.agents.virtual_streamer_agent.context import ContextBuilder
+from virtual_streamer.agents.virtual_streamer_agent.tools import ToolFactory
+from virtual_streamer.agents.virtual_streamer_agent.tools.send_message import set_message_sender
 from virtual_streamer.streaming.agent_loop.chat_store import ChatStore, create_chat_message
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,7 @@ This tool allows the agent to send messages to the Twitch chat.
 import logging
 from typing import Optional, Callable, Awaitable
 
-from virtual_streamer.agents.virtual_streamer.tools.base import register_tool
+from virtual_streamer.agents.virtual_streamer_agent.tools.base import register_tool
 
 logger = logging.getLogger(__name__)
 

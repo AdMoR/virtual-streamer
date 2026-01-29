@@ -110,6 +110,16 @@ TIMING = "timing"
 """dict: Timing metrics for each phase of the pipeline."""
 
 
+# =============================================================================
+# State Keys
+# =============================================================================
+
+# Keys for reading context from state
+STATE_QUEUE_INFO = "queue_info"
+STATE_SYSTEM_STATUS = "system_status"
+STATE_CHAT_MESSAGES = "chat_messages"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Helper functions for namespaced keys
 # ═══════════════════════════════════════════════════════════════════════════════

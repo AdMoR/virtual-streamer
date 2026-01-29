@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 
-from virtual_streamer.agents.virtual_streamer.tools.base import (
+from virtual_streamer.agents.virtual_streamer_agent.tools.base import (
     API_URL,
     STREAM_ID,
     register_tool,
