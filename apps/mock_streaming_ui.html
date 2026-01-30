@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock Streaming Test</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --bg-card: #161620;
+            --bg-input: #1e1e2a;
+            --border-color: #2a2a3a;
+            --border-accent: #3d3d50;
+            --text-primary: #e8e8ed;
+            --text-secondary: #9090a0;
+            --text-muted: #606070;
+            --accent-cyan: #00d4aa;
+            --accent-cyan-dim: #00a080;
+            --accent-purple: #a855f7;
+            --accent-orange: #f97316;
+            --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --shadow-glow: 0 0 30px rgba(0, 212, 170, 0.1);
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --transition: all 0.2s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        /* Background pattern */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(ellipse at 20% 20%, rgba(0, 212, 170, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(168, 85, 247, 0.05) 0%, transparent 50%),
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 50px,
+                    rgba(255, 255, 255, 0.01) 50px,
+                    rgba(255, 255, 255, 0.01) 51px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    transparent,
+                    transparent 50px,
+                    rgba(255, 255, 255, 0.01) 50px,
+                    rgba(255, 255, 255, 0.01) 51px
+                );
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .app-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-title .icon {
+            font-size: 2rem;
+        }
+
+        .header-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Status indicators */
+        .status-bar {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-dot.connected { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+        .status-dot.disconnected { background: var(--accent-red); }
+        .status-dot.pending { background: var(--accent-yellow); animation: pulse 1.5s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .card-body {
+            padding: 16px;
+        }
+
+        /* Form elements */
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-cyan-dim));
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-cyan);
+            background: var(--bg-input);
+        }
+
+        .btn-icon {
+            padding: 8px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .btn-icon:hover {
+            color: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+        }
+
+        .btn-sm {
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-success { background: var(--accent-green); color: white; }
+        .btn-danger { background: var(--accent-red); color: white; }
+
+        /* Chat panel */
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            margin-bottom: 16px;
+        }
+
+        .chat-message {
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            border-left: 3px solid transparent;
+            animation: slideIn 0.2s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .chat-message.user {
+            background: rgba(59, 130, 246, 0.15);
+            border-left-color: var(--accent-blue);
+        }
+
+        .chat-message.bot {
+            background: rgba(34, 197, 94, 0.15);
+            border-left-color: var(--accent-green);
+        }
+
+        .chat-message.system {
+            background: rgba(168, 85, 247, 0.15);
+            border-left-color: var(--accent-purple);
+            font-style: italic;
+        }
+
+        .chat-message .timestamp {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-family: 'IBM Plex Mono', monospace;
+            margin-right: 8px;
+        }
+
+        .chat-message .username {
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .chat-empty {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px;
+        }
+
+        /* Chat input area */
+        .chat-input-row {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .chat-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        /* Video panel */
+        .video-display {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            text-align: center;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .video-display.has-video {
+            text-align: left;
+            align-items: stretch;
+        }
+
+        .video-info {
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .video-info h4 {
+            color: var(--accent-cyan);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .video-info p {
+            margin: 6px 0;
+            font-size: 0.9rem;
+        }
+
+        .video-info code {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg-input);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .video-player-container {
+            background: #000;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        .video-player-container video {
+            width: 100%;
+            display: block;
+        }
+
+        .video-empty-icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        /* Feedback panel */
+        .feedback-panel {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .feedback-panel h4 {
+            color: var(--accent-yellow);
+            margin-bottom: 12px;
+        }
+
+        .feedback-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .feedback-buttons .btn {
+            flex: 1;
+            font-size: 1.2rem;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 4px;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            transition: var(--transition);
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-cyan);
+            background: var(--bg-tertiary);
+            border-bottom: 2px solid var(--accent-cyan);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Job list */
+        .job-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .job-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .job-item:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        .job-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .job-type {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .job-status {
+            font-size: 0.8rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .job-status.pending { background: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); }
+        .job-status.running { background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); }
+        .job-status.completed { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+        .job-status.failed { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+
+        .job-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .job-details {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .job-item.expanded .job-details {
+            display: block;
+        }
+
+        /* API logs */
+        .log-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-item {
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            margin-bottom: 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+        }
+
+        .log-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .log-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .log-status.success { background: var(--accent-green); }
+        .log-status.error { background: var(--accent-red); }
+
+        .log-method {
+            color: var(--accent-purple);
+            font-weight: 600;
+        }
+
+        .log-endpoint {
+            color: var(--text-secondary);
+        }
+
+        .log-time {
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        .log-body {
+            display: none;
+            margin-top: 8px;
+            padding: 8px;
+            background: var(--bg-input);
+            border-radius: 4px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        .log-item.expanded .log-body {
+            display: block;
+        }
+
+        /* Commands reference */
+        .commands-list {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .command-item {
+            background: var(--bg-tertiary);
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 8px;
+        }
+
+        .command-item strong {
+            color: var(--accent-cyan);
+        }
+
+        .command-item p {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-top: 4px;
+        }
+
+        /* Utility classes */
+        .text-muted { color: var(--text-muted); }
+        .text-secondary { color: var(--text-secondary); }
+        .text-success { color: var(--accent-green); }
+        .text-error { color: var(--accent-red); }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-4 { margin-bottom: 16px; }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-accent);
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--text-muted);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 10, 15, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .loading-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .loading-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 32px 48px;
+            text-align: center;
+        }
+
+        .loading-box .spinner {
+            width: 32px;
+            height: 32px;
+            border-width: 3px;
+        }
+
+        .loading-box p {
+            margin-top: 16px;
+            color: var(--text-secondary);
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1001;
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 14px 20px;
+            margin-top: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            animation: toastIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toast.success { border-left: 3px solid var(--accent-green); }
+        .toast.error { border-left: 3px solid var(--accent-red); }
+        .toast.info { border-left: 3px solid var(--accent-blue); }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <div class="header-title">
+                    <span class="icon">📺</span>
+                    <h1>Mock Streaming Test</h1>
+                </div>
+                <p class="header-subtitle">Test Twitch + Video Server interactions without real credentials</p>
+            </div>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-dot" id="apiStatus"></span>
+                    <span id="apiStatusText">Checking...</span>
+                </div>
+                <div class="status-item">
+                    💬 <span id="chatCount">0</span> messages
+                </div>
+                <div class="status-item">
+                    📋 <span id="jobCount">0</span> jobs
+                </div>
+                <div class="status-item">
+                    📜 <span id="logCount">0</span> API calls
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <!-- Configuration -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">⚙️ Configuration</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>API URL</label>
+                            <input type="text" id="apiUrl" value="http://localhost:8000">
+                        </div>
+                        <div class="form-group">
+                            <label>Stream ID</label>
+                            <input type="text" id="streamId" value="default">
+                        </div>
+                        <div class="form-group">
+                            <label>Character ID</label>
+                            <input type="text" id="characterId" value="jesus">
+                        </div>
+                        <button class="btn btn-secondary btn-block mt-4" onclick="checkHealth()">
+                            🏥 Check Health
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Commands Reference -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📖 Commands</span>
+                    </div>
+                    <div class="card-body commands-list">
+                        <div class="command-item">
+                            <strong>!allo &lt;question&gt;</strong>
+                            <p>Ask a question</p>
+                        </div>
+                        <div class="command-item">
+                            <strong>/generate &lt;title&gt;</strong>
+                            <p>Generate a video</p>
+                        </div>
+                        <div class="command-item">
+                            <strong>+ / -</strong>
+                            <p>Submit feedback</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Clear Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🧹 Clear Data</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group mb-2">
+                            <button class="btn btn-secondary btn-sm" onclick="clearChat()">Clear Chat</button>
+                            <button class="btn btn-secondary btn-sm" onclick="clearLogs()">Clear Logs</button>
+                        </div>
+                        <button class="btn btn-secondary btn-block btn-sm" onclick="clearAll()">Clear All</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Chat Panel -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">💬 Chat Simulator</span>
+                </div>
+                <div class="card-body">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-empty">No messages yet. Simulate a user action below!</div>
+                    </div>
+
+                    <div class="chat-input-row">
+                        <input type="text" id="username" value="viewer123" placeholder="Username">
+                        <input type="text" id="chatInput" placeholder="Type a message, !allo question, or /generate title..." onkeypress="handleChatKeypress(event)">
+                    </div>
+
+                    <div class="chat-actions">
+                        <button class="btn btn-secondary" onclick="handleUserJoin()">🎉 User Join</button>
+                        <button class="btn btn-primary" onclick="sendMessage()">📤 Send</button>
+                        <button class="btn btn-secondary" onclick="quickQuestion()">❓ Quick Question</button>
+                        <button class="btn btn-secondary" onclick="quickGenerate()">🎬 Quick Generate</button>
+                    </div>
+
+                    <!-- Feedback Section (hidden by default) -->
+                    <div class="feedback-panel" id="feedbackPanel" style="display: none;">
+                        <h4>⏳ Pending Feedback for <code id="feedbackEntryId"></code></h4>
+                        <div class="feedback-buttons">
+                            <button class="btn btn-success" onclick="submitFeedback('+')">👍 +</button>
+                            <button class="btn btn-danger" onclick="submitFeedback('-')">👎 -</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Panel -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">📺 Video Player Mock</span>
+                    <button class="btn btn-icon btn-sm" onclick="pollNextVideo()">🔄</button>
+                </div>
+                <div class="card-body">
+                    <div class="video-display" id="videoDisplay">
+                        <div class="video-empty-icon">📹</div>
+                        <p class="text-muted">No video loaded. Click 'Poll Next' to fetch one.</p>
+                    </div>
+
+                    <button class="btn btn-primary btn-block" onclick="pollNextVideo()">
+                        🔄 Poll Next Video
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Panels -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('jobs')">📋 Job Tracker</button>
+                    <button class="tab-btn" onclick="switchTab('logs')">📜 API Logs</button>
+                </div>
+
+                <!-- Jobs Tab -->
+                <div class="tab-content active" id="tab-jobs">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <span class="text-secondary">Tracked generation jobs</span>
+                        <button class="btn btn-secondary btn-sm" onclick="refreshJobs()">🔄 Refresh All</button>
+                    </div>
+                    <div class="job-list" id="jobList">
+                        <p class="text-muted" style="text-align: center; padding: 40px;">
+                            No jobs tracked yet. Submit a greeting, question, or generate request.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Logs Tab -->
+                <div class="tab-content" id="tab-logs">
+                    <div class="log-list" id="logList">
+                        <p class="text-muted" style="text-align: center; padding: 40px;">
+                            No API calls yet.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <p id="loadingText">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // =============================================================================
+        // State
+        // =============================================================================
+        const state = {
+            chatMessages: [],
+            trackedJobs: [],
+            apiLogs: [],
+            currentVideo: null,
+            pendingFeedback: null,
+            apiHealthy: null
+        };
+
+        // =============================================================================
+        // API Client
+        // =============================================================================
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.replace(/\/$/, '');
+        }
+
+        function getStreamId() {
+            return document.getElementById('streamId').value;
+        }
+
+        function getCharacterId() {
+            return document.getElementById('characterId').value;
+        }
+
+        async function apiCall(method, endpoint, data = null) {
+            const url = `${getApiUrl()}${endpoint}`;
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+            
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            const logEntry = {
+                timestamp,
+                method,
+                endpoint,
+                request: data,
+                response: null,
+                statusCode: null,
+                error: null
+            };
+
+            try {
+                const response = await fetch(url, options);
+                const responseData = await response.json();
+                
+                logEntry.response = responseData;
+                logEntry.statusCode = response.status;
+                
+                addApiLog(logEntry);
+                
+                return { ok: response.ok, status: response.status, data: responseData };
+            } catch (error) {
+                logEntry.error = error.message;
+                addApiLog(logEntry);
+                
+                return { ok: false, status: 0, error: error.message };
+            }
+        }
+
+        // =============================================================================
+        // Health Check
+        // =============================================================================
+        async function checkHealth() {
+            showLoading('Checking API health...');
+            
+            try {
+                const result = await apiCall('GET', '/health');
+                
+                if (result.ok) {
+                    state.apiHealthy = true;
+                    updateApiStatus(true);
+                    showToast('API is healthy!', 'success');
+                } else {
+                    state.apiHealthy = false;
+                    updateApiStatus(false);
+                    showToast('API health check failed', 'error');
+                }
+            } catch (e) {
+                state.apiHealthy = false;
+                updateApiStatus(false);
+                showToast(`Connection error: ${e.message}`, 'error');
+            }
+            
+            hideLoading();
+        }
+
+        function updateApiStatus(connected) {
+            const dot = document.getElementById('apiStatus');
+            const text = document.getElementById('apiStatusText');
+            
+            dot.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
+            text.textContent = connected ? 'Connected' : 'Disconnected';
+        }
+
+        // =============================================================================
+        // Chat Functions
+        // =============================================================================
+        function addChatMessage(username, message, type = 'user') {
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            
+            state.chatMessages.push({ username, message, timestamp, type });
+            renderChatMessages();
+            updateCounts();
+        }
+
+        function renderChatMessages() {
+            const container = document.getElementById('chatMessages');
+            
+            if (state.chatMessages.length === 0) {
+                container.innerHTML = '<div class="chat-empty">No messages yet. Simulate a user action below!</div>';
+                return;
+            }
+            
+            container.innerHTML = state.chatMessages.map(msg => `
+                <div class="chat-message ${msg.type}">
+                    <span class="timestamp">[${msg.timestamp}]</span>
+                    <span class="username">${msg.username}</span>: ${escapeHtml(msg.message)}
+                </div>
+            `).join('');
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleChatKeypress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const username = document.getElementById('username').value || 'anonymous';
+            const message = document.getElementById('chatInput').value.trim();
+            
+            if (!message) return;
+            
+            document.getElementById('chatInput').value = '';
+            addChatMessage(username, message, 'user');
+            
+            await processMessage(username, message);
+        }
+
+        async function processMessage(username, message) {
+            const msgLower = message.toLowerCase();
+            
+            // Question command: !allo <question>
+            if (msgLower.startsWith('!allo ') || msgLower.startsWith('allo ')) {
+                const prefixLen = msgLower.startsWith('!allo ') ? 6 : 5;
+                const question = message.substring(prefixLen).trim();
+                
+                if (!question) {
+                    addChatMessage('Bot', 'Question is empty!', 'bot');
+                    return;
+                }
+                
+                showLoading('Submitting question...');
+                const result = await apiCall('POST', '/api/v1/jesus-agents/answering/submit', {
+                    user_name: username,
+                    question: question,
+                    character_id: getCharacterId()
+                });
+                hideLoading();
+                
+                if (result.ok) {
+                    const jobId = result.data.job_id;
+                    trackJob(jobId, 'question', { question, user: username });
+                    addChatMessage('Bot', `Question received! Job ID: ${jobId.substring(0, 8)}...`, 'bot');
+                } else {
+                    addChatMessage('Bot', `Error: ${JSON.stringify(result.data || result.error)}`, 'bot');
+                }
+            }
+            // Generate command: /generate <title>
+            else if (msgLower.startsWith('/generate ')) {
+                const title = message.substring(10).trim();
+                
+                if (!title) {
+                    addChatMessage('Bot', 'Title is empty!', 'bot');
+                    return;
+                }
+                
+                showLoading('Submitting video generation...');
+                const result = await apiCall('POST', '/api/v1/video-generation/generate-from-broadcast', {
+                    stream_id: getStreamId(),
+                    title: title,
+                    user: username
+                });
+                hideLoading();
+                
+                if (result.ok) {
+                    const jobId = result.data.job_id;
+                    trackJob(jobId, 'generate', { title, user: username });
+                    addChatMessage('Bot', `Video generation started! Job ID: ${jobId.substring(0, 8)}...`, 'bot');
+                } else if (result.status === 429) {
+                    addChatMessage('Bot', 'Queue full! Try again later.', 'bot');
+                } else if (result.status === 404) {
+                    addChatMessage('Bot', 'No active programmation found.', 'bot');
+                } else {
+                    addChatMessage('Bot', `Error: ${JSON.stringify(result.data || result.error)}`, 'bot');
+                }
+            }
+            // Feedback: + or -
+            else if (['+', '-', 'like', 'dislike', 'good', 'bad'].includes(message)) {
+                if (state.pendingFeedback) {
+                    await submitFeedbackInternal(message);
+                } else {
+                    addChatMessage('Bot', 'No video waiting for feedback.', 'bot');
+                }
+            }
+        }
+
+        async function handleUserJoin() {
+            const username = document.getElementById('username').value || 'anonymous';
+            
+            addChatMessage('System', `→ ${username} joined the chat`, 'system');
+            
+            showLoading('Submitting greeting...');
+            const result = await apiCall('POST', '/api/v1/jesus-agents/greeting/submit', {
+                user_name: username,
+                character_id: getCharacterId()
+            });
+            hideLoading();
+            
+            if (result.ok) {
+                const jobId = result.data.job_id;
+                trackJob(jobId, 'greeting', { user: username });
+                addChatMessage('System', `🎉 ${username} joined! Greeting video queued.`, 'system');
+            } else {
+                addChatMessage('System', `Greeting error: ${JSON.stringify(result.data || result.error)}`, 'system');
+            }
+        }
+
+        function quickQuestion() {
+            document.getElementById('chatInput').value = '!allo How are you?';
+            sendMessage();
+        }
+
+        function quickGenerate() {
+            document.getElementById('chatInput').value = '/generate Test video from UI';
+            sendMessage();
+        }
+
+        // =============================================================================
+        // Video Functions
+        // =============================================================================
+        async function pollNextVideo() {
+            showLoading('Polling for next video...');
+            
+            const result = await apiCall('GET', `/api/v1/streams/${getStreamId()}/next-video`);
+            hideLoading();
+            
+            if (result.ok && result.data.video && result.data.video.entry_id) {
+                state.currentVideo = result.data.video;
+                renderVideoDisplay();
+                showToast('Video loaded!', 'success');
+            } else if (result.status === 404) {
+                state.currentVideo = null;
+                renderVideoDisplay();
+                showToast('No videos in queue', 'info');
+            } else {
+                showToast(`Error: ${JSON.stringify(result.data || result.error)}`, 'error');
+            }
+        }
+
+        function renderVideoDisplay() {
+            const container = document.getElementById('videoDisplay');
+            const video = state.currentVideo;
+            
+            if (!video) {
+                container.className = 'video-display';
+                container.innerHTML = `
+                    <div class="video-empty-icon">📹</div>
+                    <p class="text-muted">No video loaded. Click 'Poll Next' to fetch one.</p>
+                `;
+                return;
+            }
+            
+            const metadata = video.metadata || {};
+            const videoUrl = video.url.replace('minio', 'localhost') || '';
+            const isPlayableUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://');
+            
+            container.className = 'video-display has-video';
+            container.innerHTML = `
+                <div class="video-info">
+                    <h4>🎬 Now Playing</h4>
+                    <p><strong>Entry ID:</strong> <code>${video.entry_id}</code></p>
+                    <p><strong>User:</strong> ${metadata.user || 'N/A'}</p>
+                    <p><strong>Title:</strong> ${metadata.title || 'N/A'}</p>
+                    ${video.is_replay ? '<p><strong>🔁 Replay</strong></p>' : ''}
+                </div>
+                ${isPlayableUrl ? `
+                    <div class="video-player-container">
+                        <video controls src="${videoUrl}"></video>
+                    </div>
+                ` : `
+                    <div class="video-info" style="background: rgba(239, 68, 68, 0.1);">
+                        <p class="text-error">⚠️ Video URL not playable in browser:</p>
+                        <code style="word-break: break-all; font-size: 0.75rem;">${escapeHtml(videoUrl)}</code>
+                    </div>
+                `}
+                <button class="btn btn-primary btn-block mt-2" onclick="markVideoPlayed()">
+                    ✅ Mark as Played
+                </button>
+            `;
+        }
+
+        async function markVideoPlayed() {
+            if (!state.currentVideo) return;
+            
+            const entryId = state.currentVideo.entry_id;
+            const metadata = state.currentVideo.metadata || {};
+            
+            showLoading('Marking as played...');
+            const result = await apiCall('POST', `/api/v1/playlist/${entryId}/played`);
+            hideLoading();
+            
+            if (result.ok) {
+                // Set up feedback if user exists
+                if (metadata.user) {
+                    state.pendingFeedback = {
+                        entryId,
+                        user: metadata.user
+                    };
+                    showFeedbackPanel();
+                    addChatMessage('Bot', `@${metadata.user}, your video just played! + or - ?`, 'bot');
+                }
+                
+                state.currentVideo = null;
+                renderVideoDisplay();
+                showToast('Video marked as played', 'success');
+            } else {
+                showToast(`Error: ${JSON.stringify(result.data || result.error)}`, 'error');
+            }
+        }
+
+        // =============================================================================
+        // Feedback Functions
+        // =============================================================================
+        function showFeedbackPanel() {
+            const panel = document.getElementById('feedbackPanel');
+            const entryIdEl = document.getElementById('feedbackEntryId');
+            
+            if (state.pendingFeedback) {
+                entryIdEl.textContent = state.pendingFeedback.entryId.substring(0, 8) + '...';
+                panel.style.display = 'block';
+            }
+        }
+
+        function hideFeedbackPanel() {
+            document.getElementById('feedbackPanel').style.display = 'none';
+        }
+
+        async function submitFeedback(feedback) {
+            const username = document.getElementById('username').value || 'anonymous';
+            addChatMessage(username, feedback, 'user');
+            await submitFeedbackInternal(feedback);
+        }
+
+        async function submitFeedbackInternal(feedback) {
+            if (!state.pendingFeedback) return;
+            
+            showLoading('Submitting feedback...');
+            const result = await apiCall('POST', '/api/v1/video-generation/feedback', {
+                entry_id: state.pendingFeedback.entryId,
+                user: state.pendingFeedback.user,
+                feedback: feedback
+            });
+            hideLoading();
+            
+            if (result.ok) {
+                addChatMessage('Bot', 'Thanks for your feedback!', 'bot');
+                state.pendingFeedback = null;
+                hideFeedbackPanel();
+            } else {
+                addChatMessage('Bot', `Feedback error: ${JSON.stringify(result.data || result.error)}`, 'bot');
+            }
+        }
+
+        // =============================================================================
+        // Job Tracking
+        // =============================================================================
+        function trackJob(jobId, type, metadata = {}) {
+            state.trackedJobs.unshift({
+                jobId,
+                type,
+                submittedAt: new Date().toISOString(),
+                metadata,
+                status: 'pending',
+                result: null
+            });
+            
+            // Keep only last 20
+            state.trackedJobs = state.trackedJobs.slice(0, 20);
+            renderJobs();
+            updateCounts();
+        }
+
+        function renderJobs() {
+            const container = document.getElementById('jobList');
+            
+            if (state.trackedJobs.length === 0) {
+                container.innerHTML = `
+                    <p class="text-muted" style="text-align: center; padding: 40px;">
+                        No jobs tracked yet. Submit a greeting, question, or generate request.
+                    </p>
+                `;
+                return;
+            }
+            
+            const typeEmoji = { greeting: '👋', question: '❓', generate: '🎬' };
+            
+            container.innerHTML = state.trackedJobs.map((job, idx) => `
+                <div class="job-item" onclick="toggleJobExpand(${idx})">
+                    <div class="job-item-header">
+                        <span class="job-type">
+                            ${typeEmoji[job.type] || '📦'} ${job.type.toUpperCase()}
+                        </span>
+                        <span class="job-status ${job.status}">${job.status}</span>
+                    </div>
+                    <div class="job-meta">
+                        ${job.jobId.substring(0, 8)}... • ${new Date(job.submittedAt).toLocaleTimeString()}
+                    </div>
+                    <div class="job-details">
+                        <p><strong>Full Job ID:</strong></p>
+                        <code style="font-size: 0.75rem; word-break: break-all;">${job.jobId}</code>
+                        ${job.metadata ? `
+                            <p class="mt-2"><strong>Metadata:</strong></p>
+                            <pre style="font-size: 0.75rem; overflow-x: auto;">${JSON.stringify(job.metadata, null, 2)}</pre>
+                        ` : ''}
+                        ${job.result ? `
+                            <p class="mt-2"><strong>Result:</strong></p>
+                            <pre style="font-size: 0.75rem; overflow-x: auto;">${JSON.stringify(job.result, null, 2)}</pre>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleJobExpand(idx) {
+            const items = document.querySelectorAll('.job-item');
+            items[idx].classList.toggle('expanded');
+        }
+
+        async function refreshJobs() {
+            showLoading('Refreshing job statuses...');
+            
+            for (const job of state.trackedJobs) {
+                try {
+                    const result = await apiCall('GET', `/api/v1/video-generation/jobs/${job.jobId}`);
+                    if (result.ok) {
+                        job.status = result.data.status || 'unknown';
+                        job.result = result.data.result;
+                    }
+                } catch (e) {
+                    // Ignore individual failures
+                }
+            }
+            
+            hideLoading();
+            renderJobs();
+            showToast('Jobs refreshed', 'success');
+        }
+
+        // =============================================================================
+        // API Logs
+        // =============================================================================
+        function addApiLog(entry) {
+            state.apiLogs.unshift(entry);
+            state.apiLogs = state.apiLogs.slice(0, 50);
+            renderLogs();
+            updateCounts();
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('logList');
+            
+            if (state.apiLogs.length === 0) {
+                container.innerHTML = `
+                    <p class="text-muted" style="text-align: center; padding: 40px;">
+                        No API calls yet.
+                    </p>
+                `;
+                return;
+            }
+            
+            container.innerHTML = state.apiLogs.map((log, idx) => {
+                const isSuccess = log.statusCode && log.statusCode < 400;
+                const statusClass = log.error ? 'error' : (isSuccess ? 'success' : 'error');
+                
+                return `
+                    <div class="log-item" onclick="toggleLogExpand(${idx})">
+                        <div class="log-header">
+                            <span class="log-status ${statusClass}"></span>
+                            <span class="log-method">${log.method}</span>
+                            <span class="log-endpoint">${log.endpoint}</span>
+                            <span class="log-time">${log.timestamp}</span>
+                        </div>
+                        <div class="log-body">${formatLogBody(log)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatLogBody(log) {
+            let body = '';
+            
+            if (log.request) {
+                body += `<strong>Request:</strong>\n${JSON.stringify(log.request, null, 2)}\n\n`;
+            }
+            
+            if (log.response) {
+                body += `<strong>Response (${log.statusCode}):</strong>\n${JSON.stringify(log.response, null, 2)}`;
+            }
+            
+            if (log.error) {
+                body += `<strong>Error:</strong>\n${log.error}`;
+            }
+            
+            return escapeHtml(body);
+        }
+
+        function toggleLogExpand(idx) {
+            const items = document.querySelectorAll('.log-item');
+            items[idx].classList.toggle('expanded');
+        }
+
+        // =============================================================================
+        // Tabs
+        // =============================================================================
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            document.querySelector(`.tab-btn[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        // =============================================================================
+        // Clear Functions
+        // =============================================================================
+        function clearChat() {
+            state.chatMessages = [];
+            renderChatMessages();
+            updateCounts();
+        }
+
+        function clearLogs() {
+            state.apiLogs = [];
+            renderLogs();
+            updateCounts();
+        }
+
+        function clearAll() {
+            state.chatMessages = [];
+            state.trackedJobs = [];
+            state.apiLogs = [];
+            state.currentVideo = null;
+            state.pendingFeedback = null;
+            
+            renderChatMessages();
+            renderJobs();
+            renderLogs();
+            renderVideoDisplay();
+            hideFeedbackPanel();
+            updateCounts();
+        }
+
+        // =============================================================================
+        // UI Helpers
+        // =============================================================================
+        function updateCounts() {
+            document.getElementById('chatCount').textContent = state.chatMessages.length;
+            document.getElementById('jobCount').textContent = state.trackedJobs.length;
+            document.getElementById('logCount').textContent = state.apiLogs.length;
+        }
+
+        function showLoading(text = 'Loading...') {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingOverlay').classList.add('visible');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('visible');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // =============================================================================
+        // Initialize
+        // =============================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            updateCounts();
+            checkHealth();
+        });
+    </script>
+</body>
+</html>
