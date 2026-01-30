@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Streamer - Video Generation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0d1117;
+            --bg-card: #161b22;
+            --bg-input: #21262d;
+            --bg-hover: #30363d;
+            --border: #30363d;
+            --border-focus: #58a6ff;
+            --text: #c9d1d9;
+            --text-muted: #8b949e;
+            --text-bright: #f0f6fc;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --error: #f85149;
+            --purple: #a371f7;
+            --gradient-start: #58a6ff;
+            --gradient-end: #a371f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Ambient background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: 
+                radial-gradient(circle at 15% 15%, rgba(88, 166, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(163, 113, 247, 0.06) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 32px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Layout */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-header h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-bright);
+        }
+
+        .card-body {
+            padding: 20px;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        /* Collapsible sections */
+        .collapsible {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            padding: 12px 16px;
+            background: var(--bg-input);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background: var(--bg-hover);
+        }
+
+        .collapsible-header::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+        }
+
+        .collapsible.open .collapsible-header::after {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            display: none;
+            padding: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .collapsible.open .collapsible-content {
+            display: block;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(88, 166, 255, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-input);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .tab {
+            padding: 14px 24px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text);
+        }
+
+        .tab.active {
+            color: var(--accent);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-pending { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
+        .status-running { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+        .status-completed { background: rgba(63, 185, 80, 0.15); color: var(--success); }
+        .status-failed { background: rgba(248, 81, 73, 0.15); color: var(--error); }
+
+        /* Job list */
+        .job-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .job-card {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .job-card:hover {
+            border-color: var(--accent);
+            transform: translateX(4px);
+        }
+
+        .job-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .job-title {
+            font-weight: 600;
+            color: var(--text-bright);
+            font-size: 0.95rem;
+        }
+
+        .job-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-input);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Video display */
+        .video-container {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .video-container video {
+            width: 100%;
+            display: block;
+        }
+
+        .video-placeholder {
+            padding: 60px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        /* Result display */
+        .result-panel {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .result-panel.success {
+            border-color: var(--success);
+        }
+
+        .result-panel.error {
+            border-color: var(--error);
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .result-header h4 {
+            color: var(--text-bright);
+        }
+
+        /* Code/JSON display */
+        .code-block {
+            background: var(--bg-dark);
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Radio group */
+        .radio-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .radio-option:hover {
+            border-color: var(--accent);
+        }
+
+        .radio-option.selected {
+            border-color: var(--accent);
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        .radio-option input {
+            width: auto;
+        }
+
+        /* Grid */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 20px;
+            margin-top: 10px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toast.success { border-left: 3px solid var(--success); }
+        .toast.error { border-left: 3px solid var(--error); }
+        .toast.info { border-left: 3px solid var(--accent); }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Loading spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Info boxes */
+        .info-box {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .info-box.tip {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+        }
+
+        /* Download button */
+        .download-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--success);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .download-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(63, 185, 80, 0.3);
+        }
+
+        /* Metric */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .metric {
+            background: var(--bg-input);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--bg-hover);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎬 Video Generation</h1>
+            <p>Generate videos from stories using AI. Provide a title, paste your own story, or use a template.</p>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Sidebar - Configuration -->
+            <aside>
+                <div class="card">
+                    <div class="card-header">
+                        <span>⚙️</span>
+                        <h3>Configuration</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>API Base URL</label>
+                            <input type="text" id="apiBaseUrl" value="http://localhost:8000/api/v1">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Character Voice</label>
+                            <select id="characterSelect">
+                                <option value="">None (default voice)</option>
+                            </select>
+                        </div>
+
+                        <!-- LLM Settings -->
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
+                                🤖 LLM Settings
+                            </div>
+                            <div class="collapsible-content">
+                                <div class="form-group">
+                                    <label>Provider</label>
+                                    <select id="llmProvider">
+                                        <option value="anthropic">Anthropic</option>
+                                        <option value="openai">OpenAI</option>
+                                        <option value="litellm">LiteLLM</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Model</label>
+                                    <input type="text" id="llmModel" value="claude-sonnet-4-5-20250929">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TTS Settings -->
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
+                                🎤 TTS Settings
+                            </div>
+                            <div class="collapsible-content">
+                                <div class="form-group">
+                                    <label>Provider</label>
+                                    <select id="ttsProvider">
+                                        <option value="fish">Fish</option>
+                                        <option value="solero">Solero</option>
+                                        <option value="coqui">Coqui</option>
+                                    </select>
+                                </div>
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label>Host</label>
+                                        <input type="text" id="ttsHost" value="127.0.0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Port</label>
+                                        <input type="number" id="ttsPort" value="8003">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- STT Settings -->
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
+                                🎧 STT Settings
+                            </div>
+                            <div class="collapsible-content">
+                                <div class="form-group">
+                                    <label>Provider</label>
+                                    <select id="sttProvider">
+                                        <option value="whisper">Whisper</option>
+                                        <option value="faster-whisper">Faster Whisper</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Model</label>
+                                    <select id="sttModel">
+                                        <option value="tiny">Tiny</option>
+                                        <option value="base" selected>Base</option>
+                                        <option value="small">Small</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="large">Large</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Settings -->
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
+                                ⚡ Advanced
+                            </div>
+                            <div class="collapsible-content">
+                                <div class="form-group">
+                                    <label>Max Parallel LLM Calls</label>
+                                    <input type="range" id="maxParallelCalls" min="1" max="20" value="5" oninput="document.getElementById('parallelCallsValue').textContent = this.value">
+                                    <div style="text-align: center; margin-top: 4px; color: var(--text-muted);">
+                                        <span id="parallelCallsValue">5</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Output Directory</label>
+                                    <input type="text" id="outputDir" value="./output">
+                                </div>
+                                <div class="form-group">
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="verbose" style="width: auto;">
+                                        Verbose Output
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="enableBlueprintDump" style="width: auto;">
+                                        Enable Blueprint Dump
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-secondary btn-block" style="margin-top: 16px;" onclick="loadCharacters()">
+                            🔄 Refresh Characters
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main>
+                <div class="card">
+                    <div class="card-body">
+                        <!-- Tabs -->
+                        <div class="tabs">
+                            <button class="tab active" data-tab="create" onclick="switchTab('create')">
+                                📝 Create New Video
+                            </button>
+                            <button class="tab" data-tab="status" onclick="switchTab('status')">
+                                📊 Job Status
+                            </button>
+                            <button class="tab" data-tab="recent" onclick="switchTab('recent')">
+                                📋 Recent Jobs
+                            </button>
+                        </div>
+
+                        <!-- Create Tab -->
+                        <div class="tab-panel active" id="tab-create">
+                            <div class="info-box tip">
+                                <strong>💡 Tip:</strong> Choose an input method below. You can generate a story from a title, use a pre-defined template, or paste your own story text.
+                            </div>
+
+                            <!-- Input Method Selection -->
+                            <div class="form-group">
+                                <label>Input Method</label>
+                                <div class="radio-group">
+                                    <label class="radio-option selected" onclick="selectInputMethod('title')">
+                                        <input type="radio" name="inputMethod" value="title" checked>
+                                        Title (Generate Story)
+                                    </label>
+                                    <label class="radio-option" onclick="selectInputMethod('template')">
+                                        <input type="radio" name="inputMethod" value="template">
+                                        From Story Template
+                                    </label>
+                                    <label class="radio-option" onclick="selectInputMethod('text')">
+                                        <input type="radio" name="inputMethod" value="text">
+                                        Paste Story Text
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Title Input -->
+                            <div id="input-title" class="input-section">
+                                <div class="form-group">
+                                    <label>Video Title</label>
+                                    <input type="text" id="titleInput" placeholder="e.g., 'Fred se lance dans l'IA'">
+                                </div>
+                                <button class="btn btn-primary btn-block" onclick="submitJob('title')">
+                                    🚀 Generate Video
+                                </button>
+                            </div>
+
+                            <!-- Template Input -->
+                            <div id="input-template" class="input-section" style="display: none;">
+                                <div class="form-group">
+                                    <label>Story Template</label>
+                                    <select id="templateSelect">
+                                        <option value="">Select a template...</option>
+                                    </select>
+                                </div>
+                                <div id="templateDetails" style="display: none; margin-bottom: 16px;">
+                                    <div class="code-block" id="templatePreview"></div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Scenario Title</label>
+                                    <input type="text" id="templateTitle" placeholder="e.g., 'Fred découvre les NFT'">
+                                </div>
+                                <button class="btn btn-primary btn-block" onclick="submitJob('template')">
+                                    🚀 Generate Video
+                                </button>
+                            </div>
+
+                            <!-- Story Text Input -->
+                            <div id="input-text" class="input-section" style="display: none;">
+                                <div class="form-group">
+                                    <label>Story Text</label>
+                                    <textarea id="storyTextInput" placeholder="Paste your story here..." rows="10"></textarea>
+                                </div>
+                                <button class="btn btn-primary btn-block" onclick="submitJob('text')">
+                                    🚀 Generate Video
+                                </button>
+                            </div>
+
+                            <!-- Result Area -->
+                            <div id="submitResult"></div>
+                        </div>
+
+                        <!-- Status Tab -->
+                        <div class="tab-panel" id="tab-status">
+                            <div class="form-group">
+                                <label>Job ID</label>
+                                <div style="display: flex; gap: 10px;">
+                                    <input type="text" id="jobIdInput" placeholder="Enter job ID to monitor">
+                                    <button class="btn btn-secondary" onclick="checkJobStatus()">
+                                        🔍 Check
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="autoRefresh" style="width: auto;" checked>
+                                    Auto-refresh (every 5 seconds)
+                                </label>
+                            </div>
+
+                            <!-- Status Result -->
+                            <div id="statusResult"></div>
+                        </div>
+
+                        <!-- Recent Jobs Tab -->
+                        <div class="tab-panel" id="tab-recent">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="form-group" style="margin: 0; flex: 1; max-width: 200px;">
+                                    <label>Show last</label>
+                                    <select id="recentJobsLimit" onchange="loadRecentJobs()">
+                                        <option value="10">10 jobs</option>
+                                        <option value="20" selected>20 jobs</option>
+                                        <option value="50">50 jobs</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-secondary" onclick="loadRecentJobs()">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+
+                            <div id="recentJobsList" class="job-list">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📋</div>
+                                    <p>Click refresh to load recent jobs</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // =============================================================================
+        // State
+        // =============================================================================
+        let state = {
+            currentJobId: null,
+            autoRefreshInterval: null,
+            characters: [],
+            templates: []
+        };
+
+        // =============================================================================
+        // API
+        // =============================================================================
+        function getApiUrl() {
+            return document.getElementById('apiBaseUrl').value.replace(/\/$/, '');
+        }
+
+        async function apiCall(method, endpoint, data = null) {
+            const url = `${getApiUrl()}${endpoint}`;
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const responseData = await response.json();
+                return { ok: response.ok, status: response.status, data: responseData };
+            } catch (error) {
+                return { ok: false, status: 0, error: error.message };
+            }
+        }
+
+        // =============================================================================
+        // Characters & Templates
+        // =============================================================================
+        async function loadCharacters() {
+            const result = await apiCall('GET', '/characters');
+            const select = document.getElementById('characterSelect');
+            
+            if (result.ok && Array.isArray(result.data)) {
+                state.characters = result.data;
+                select.innerHTML = '<option value="">None (default voice)</option>';
+                result.data.forEach(char => {
+                    const option = document.createElement('option');
+                    option.value = char.name;
+                    option.textContent = char.name;
+                    select.appendChild(option);
+                });
+                showToast('Characters loaded', 'success');
+            } else {
+                showToast('Failed to load characters', 'error');
+            }
+        }
+
+        async function loadTemplates() {
+            const result = await apiCall('GET', '/story-templates');
+            const select = document.getElementById('templateSelect');
+            
+            if (result.ok && Array.isArray(result.data)) {
+                state.templates = result.data;
+                select.innerHTML = '<option value="">Select a template...</option>';
+                result.data.forEach(tpl => {
+                    const option = document.createElement('option');
+                    option.value = tpl.template_id;
+                    const chars = (tpl.character_ids || []).join(', ') || 'No characters';
+                    option.textContent = `${tpl.name} (${chars})`;
+                    select.appendChild(option);
+                });
+            }
+        }
+
+        document.getElementById('templateSelect').addEventListener('change', function() {
+            const templateId = this.value;
+            const detailsDiv = document.getElementById('templateDetails');
+            const previewDiv = document.getElementById('templatePreview');
+            
+            if (templateId) {
+                const template = state.templates.find(t => t.template_id === templateId);
+                if (template) {
+                    detailsDiv.style.display = 'block';
+                    previewDiv.textContent = JSON.stringify({
+                        template_id: template.template_id,
+                        target_lines: template.target_lines || 6,
+                        characters: template.character_ids || [],
+                        prompt_preview: (template.prompt || '').substring(0, 300) + '...'
+                    }, null, 2);
+                }
+            } else {
+                detailsDiv.style.display = 'none';
+            }
+        });
+
+        // =============================================================================
+        // UI Helpers
+        // =============================================================================
+        function toggleCollapsible(element) {
+            element.classList.toggle('open');
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            
+            document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            // Stop auto-refresh when leaving status tab
+            if (tabName !== 'status' && state.autoRefreshInterval) {
+                clearInterval(state.autoRefreshInterval);
+                state.autoRefreshInterval = null;
+            }
+        }
+
+        function selectInputMethod(method) {
+            document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
+            document.querySelector(`input[value="${method}"]`).parentElement.classList.add('selected');
+            
+            document.querySelectorAll('.input-section').forEach(sec => sec.style.display = 'none');
+            document.getElementById(`input-${method}`).style.display = 'block';
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function getConfig() {
+            return {
+                character_name: document.getElementById('characterSelect').value || null,
+                llm_provider: document.getElementById('llmProvider').value,
+                llm_model: document.getElementById('llmModel').value,
+                tts_provider: document.getElementById('ttsProvider').value,
+                tts_host: document.getElementById('ttsHost').value,
+                tts_port: parseInt(document.getElementById('ttsPort').value),
+                stt_provider: document.getElementById('sttProvider').value,
+                stt_model: document.getElementById('sttModel').value,
+                output_dir: document.getElementById('outputDir').value,
+                max_parallel_llm_calls: parseInt(document.getElementById('maxParallelCalls').value),
+                verbose: document.getElementById('verbose').checked,
+                enable_blueprint_dump: document.getElementById('enableBlueprintDump').checked
+            };
+        }
+
+        // =============================================================================
+        // Job Submission
+        // =============================================================================
+        async function submitJob(inputMethod) {
+            const config = getConfig();
+            let requestData = { ...config };
+            
+            if (inputMethod === 'title') {
+                const title = document.getElementById('titleInput').value.trim();
+                if (!title) {
+                    showToast('Please enter a title', 'error');
+                    return;
+                }
+                requestData.title = title;
+            } else if (inputMethod === 'template') {
+                const templateId = document.getElementById('templateSelect').value;
+                const title = document.getElementById('templateTitle').value.trim();
+                if (!templateId || !title) {
+                    showToast('Please select a template and enter a title', 'error');
+                    return;
+                }
+                requestData.story_template_id = templateId;
+                requestData.title = title;
+            } else if (inputMethod === 'text') {
+                const storyText = document.getElementById('storyTextInput').value.trim();
+                if (!storyText) {
+                    showToast('Please enter story text', 'error');
+                    return;
+                }
+                requestData.story_text = storyText;
+            }
+
+            const resultDiv = document.getElementById('submitResult');
+            resultDiv.innerHTML = `
+                <div class="result-panel">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner"></div>
+                        <span>Submitting job...</span>
+                    </div>
+                </div>
+            `;
+
+            const result = await apiCall('POST', '/video-generation/submit', requestData);
+            
+            if (result.ok && result.data.job_id) {
+                const jobId = result.data.job_id;
+                state.currentJobId = jobId;
+                
+                resultDiv.innerHTML = `
+                    <div class="result-panel success">
+                        <div class="result-header">
+                            <span style="font-size: 1.5rem;">✅</span>
+                            <h4>Job Submitted Successfully!</h4>
+                        </div>
+                        <p>Job ID: <code style="background: var(--bg-dark); padding: 4px 8px; border-radius: 4px;">${jobId}</code></p>
+                        <button class="btn btn-secondary" style="margin-top: 16px;" onclick="monitorJob('${jobId}')">
+                            📊 Monitor Job
+                        </button>
+                    </div>
+                `;
+                showToast('Job submitted!', 'success');
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="result-panel error">
+                        <div class="result-header">
+                            <span style="font-size: 1.5rem;">❌</span>
+                            <h4>Submission Failed</h4>
+                        </div>
+                        <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
+                    </div>
+                `;
+                showToast('Submission failed', 'error');
+            }
+        }
+
+        function monitorJob(jobId) {
+            document.getElementById('jobIdInput').value = jobId;
+            switchTab('status');
+            checkJobStatus();
+        }
+
+        // =============================================================================
+        // Job Status
+        // =============================================================================
+        async function checkJobStatus() {
+            const jobId = document.getElementById('jobIdInput').value.trim();
+            if (!jobId) {
+                showToast('Please enter a job ID', 'error');
+                return;
+            }
+
+            const resultDiv = document.getElementById('statusResult');
+            resultDiv.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px; padding: 20px;">
+                    <div class="spinner"></div>
+                    <span>Fetching status...</span>
+                </div>
+            `;
+
+            const result = await apiCall('GET', `/video-generation/jobs/${jobId}`);
+            
+            if (result.ok) {
+                renderJobStatus(result.data, resultDiv);
+                
+                // Auto-refresh for pending/running jobs
+                const autoRefresh = document.getElementById('autoRefresh').checked;
+                if (autoRefresh && ['pending', 'running'].includes(result.data.status)) {
+                    if (state.autoRefreshInterval) clearInterval(state.autoRefreshInterval);
+                    state.autoRefreshInterval = setInterval(() => checkJobStatus(), 5000);
+                } else if (state.autoRefreshInterval) {
+                    clearInterval(state.autoRefreshInterval);
+                    state.autoRefreshInterval = null;
+                }
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="result-panel error">
+                        <div class="result-header">
+                            <span style="font-size: 1.5rem;">❌</span>
+                            <h4>Failed to Get Status</h4>
+                        </div>
+                        <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderJobStatus(job, container) {
+            const statusEmoji = {
+                pending: '⏳',
+                running: '🔄',
+                completed: '✅',
+                failed: '❌'
+            };
+
+            let html = `
+                <div class="result-panel ${job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : ''}">
+                    <div class="result-header">
+                        <span style="font-size: 1.5rem;">${statusEmoji[job.status] || '❓'}</span>
+                        <h4>Status: ${job.status.toUpperCase()}</h4>
+                        <span class="status-badge status-${job.status}">${job.status}</span>
+                    </div>
+            `;
+
+            if (job.progress) {
+                html += `
+                    <div class="progress-container">
+                        <p style="margin-bottom: 8px;">${job.progress}</p>
+                    </div>
+                `;
+            }
+
+            html += `<p style="color: var(--text-muted); margin-bottom: 16px;">Created: ${job.created_at}</p>`;
+
+            if (job.status === 'completed' && job.result) {
+                const metadata = job.result.metadata || {};
+                const videoUrl = metadata.video_url;
+                
+                html += `
+                    <div class="metrics">
+                        ${metadata.total_duration ? `<div class="metric"><div class="metric-value">${metadata.total_duration.toFixed(1)}s</div><div class="metric-label">Duration</div></div>` : ''}
+                        ${metadata.sentence_count ? `<div class="metric"><div class="metric-value">${metadata.sentence_count}</div><div class="metric-label">Sentences</div></div>` : ''}
+                    </div>
+                `;
+
+                if (videoUrl) {
+                    // Check if URL is playable
+                    if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+                        html += `
+                            <div class="video-container">
+                                <video controls src="${videoUrl}"></video>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="info-box" style="background: rgba(248, 81, 73, 0.1); border: 1px solid var(--error);">
+                                <p style="color: var(--error);">⚠️ Video URL not playable in browser:</p>
+                                <code style="word-break: break-all; font-size: 0.8rem;">${videoUrl}</code>
+                            </div>
+                        `;
+                    }
+                }
+
+                html += `
+                    <details style="margin-top: 16px;">
+                        <summary style="cursor: pointer; color: var(--text-muted);">View Full Result</summary>
+                        <div class="code-block" style="margin-top: 10px;">${JSON.stringify(job.result, null, 2)}</div>
+                    </details>
+                `;
+            }
+
+            if (job.status === 'failed' && job.error) {
+                html += `
+                    <div class="code-block" style="color: var(--error);">${job.error}</div>
+                `;
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        // =============================================================================
+        // Recent Jobs
+        // =============================================================================
+        async function loadRecentJobs() {
+            const limit = document.getElementById('recentJobsLimit').value;
+            const container = document.getElementById('recentJobsList');
+            
+            container.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px;">
+                    <div class="spinner"></div>
+                    <span>Loading jobs...</span>
+                </div>
+            `;
+
+            const result = await apiCall('GET', `/video-generation/jobs?limit=${limit}`);
+            
+            if (result.ok && Array.isArray(result.data)) {
+                if (result.data.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>No jobs found</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = result.data.map(job => `
+                    <div class="job-card" onclick="monitorJob('${job.job_id}')">
+                        <div class="job-card-header">
+                            <span class="job-title">${job.job_id.substring(0, 8)}...</span>
+                            <span class="status-badge status-${job.status}">${job.status}</span>
+                        </div>
+                        <div class="job-meta">Created: ${job.created_at}</div>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <p>Failed to load jobs</p>
+                    </div>
+                `;
+            }
+        }
+
+        // =============================================================================
+        // Initialize
+        // =============================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCharacters();
+            loadTemplates();
+        });
+    </script>
+</body>
+</html>

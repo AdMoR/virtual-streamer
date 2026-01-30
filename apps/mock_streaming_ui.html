@@ -1240,7 +1240,7 @@
             }
             
             const metadata = video.metadata || {};
-            const videoUrl = video.url.replace('minio', 'localhost') || '';
+            const videoUrl = video.url || '';
             const isPlayableUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://');
             
             container.className = 'video-display has-video';

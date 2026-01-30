@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GenAI Video Builder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f0f12;
+            --bg-secondary: #18181c;
+            --bg-tertiary: #1f1f24;
+            --bg-elevated: #27272d;
+            --border: #2d2d35;
+            --border-hover: #3d3d48;
+            --text: #e4e4e7;
+            --text-muted: #71717a;
+            --text-dim: #52525b;
+            --accent: #f59e0b;
+            --accent-hover: #fbbf24;
+            --accent-dim: rgba(245, 158, 11, 0.15);
+            --success: #22c55e;
+            --error: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Lexend', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+
+        .header h1 span {
+            background: linear-gradient(135deg, var(--accent), #fb923c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        /* Layout */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 32px;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .sidebar-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .sidebar-card h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        /* Main Card */
+        .main-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 18px 24px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .tab:hover {
+            color: var(--text);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .tab.active {
+            color: var(--accent);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 20%;
+            right: 20%;
+            height: 3px;
+            background: var(--accent);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 32px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        /* File upload */
+        .file-upload {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--bg-tertiary);
+        }
+
+        .file-upload:hover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .file-upload.dragover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .file-upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+        }
+
+        .file-upload-text {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .file-upload-text strong {
+            color: var(--accent);
+        }
+
+        .file-list {
+            margin-top: 16px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-elevated);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+
+        .file-item-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-item-remove {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .file-item-remove:hover {
+            color: var(--error);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #fb923c);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            background: var(--bg-elevated);
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Select character dropdown */
+        .character-select {
+            position: relative;
+        }
+
+        .character-option {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+        }
+
+        .character-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        /* Video display */
+        .video-container {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 300px;
+            color: var(--text-dim);
+        }
+
+        .video-placeholder-icon {
+            font-size: 4rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* Output section */
+        .output-section {
+            margin-top: 32px;
+            padding-top: 32px;
+            border-top: 1px solid var(--border);
+        }
+
+        .output-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Status */
+        .status-card {
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .status-card.loading {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .status-card.success {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .status-card.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* Info text */
+        .info-text {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            animation: slideDown 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 360px;
+        }
+
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--error); }
+        .toast.info { border-left: 4px solid var(--info); }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Character card */
+        .character-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .character-card:hover {
+            border-color: var(--accent);
+            transform: translateX(4px);
+        }
+
+        .character-card.selected {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .character-info h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .character-info p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Code display */
+        .code-block {
+            background: var(--bg-primary);
+            border-radius: 10px;
+            padding: 16px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-hover);
+        }
+
+        /* Timer display */
+        .timer {
+            font-family: 'Fira Code', monospace;
+            font-size: 1.2rem;
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎬 <span>GenAI Video Builder</span></h1>
+            <p>Create AI-powered videos with custom characters and responses</p>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-card">
+                    <h3>⚙️ Configuration</h3>
+                    
+                    <div class="form-group">
+                        <label>Backend API URL</label>
+                        <input type="text" id="backendUrl" value="http://localhost:8000">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Entity API URL</label>
+                        <input type="text" id="entityUrl" value="http://localhost:8002">
+                    </div>
+
+                    <button class="btn btn-secondary btn-block" onclick="loadCharacters()">
+                        🔄 Refresh Characters
+                    </button>
+                </div>
+
+                <div class="sidebar-card">
+                    <h3>📋 Instructions</h3>
+                    <ol style="color: var(--text-muted); font-size: 0.85rem; padding-left: 20px; line-height: 1.8;">
+                        <li>Select a character</li>
+                        <li>Choose a subtitle mode</li>
+                        <li>Enter the question</li>
+                        <li>Enter the response text</li>
+                        <li>Click 'Generate Video'</li>
+                    </ol>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-card">
+                <div class="tabs">
+                    <button class="tab active" data-tab="generate" onclick="switchTab('generate')">
+                        🎥 Generate Video
+                    </button>
+                    <button class="tab" data-tab="create" onclick="switchTab('create')">
+                        ➕ Create Character
+                    </button>
+                </div>
+
+                <!-- Generate Video Tab -->
+                <div class="tab-content active" id="tab-generate">
+                    <div class="form-group">
+                        <label>Select Character</label>
+                        <div id="characterList">
+                            <p style="color: var(--text-muted); text-align: center; padding: 20px;">
+                                Click "Refresh Characters" to load available characters
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Subtitle Mode</label>
+                        <select id="subtitleMode">
+                            <option value="NONE">None</option>
+                            <option value="QUESTION">Question</option>
+                            <option value="VOICE_SUBTITLE">Voice Subtitle</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Your Question</label>
+                        <input type="text" id="questionInput" placeholder="Enter your question for the character...">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Response Text (what the character will say)</label>
+                        <textarea id="responseText" placeholder="Enter the exact response text the character should say..."></textarea>
+                    </div>
+
+                    <button class="btn btn-primary btn-block" id="generateBtn" onclick="generateVideo()">
+                        🚀 Generate Video
+                    </button>
+
+                    <!-- Output Section -->
+                    <div class="output-section" id="outputSection" style="display: none;">
+                        <h3>📹 Output</h3>
+                        <div id="statusArea"></div>
+                        <div class="video-container" id="videoContainer">
+                            <div class="video-placeholder">
+                                <div class="video-placeholder-icon">🎬</div>
+                                <p>Video will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create Character Tab -->
+                <div class="tab-content" id="tab-create">
+                    <div class="info-text">
+                        Create a new character with voice samples and a representative video. The voice samples will be used for voice cloning.
+                    </div>
+
+                    <div class="form-group">
+                        <label>Character Name</label>
+                        <input type="text" id="newCharName" placeholder="e.g., Fred">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="newCharDesc" placeholder="Describe the character..." rows="3"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Voice Sample Files (WAV or MP3)</label>
+                        <div class="file-upload" id="voiceUpload" onclick="document.getElementById('voiceFiles').click()">
+                            <div class="file-upload-icon">🎤</div>
+                            <div class="file-upload-text">
+                                <strong>Click to upload</strong> or drag and drop<br>
+                                WAV or MP3 files
+                            </div>
+                        </div>
+                        <input type="file" id="voiceFiles" multiple accept=".wav,.mp3" style="display: none;" onchange="handleVoiceFiles(this.files)">
+                        <div class="file-list" id="voiceFileList"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Transcripts (one per voice file, separated by newlines)</label>
+                        <textarea id="transcripts" placeholder="Line 1 transcript&#10;Line 2 transcript&#10;..." rows="4"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Representative Video (MP4, MOV, or AVI)</label>
+                        <div class="file-upload" id="videoUpload" onclick="document.getElementById('videoFile').click()">
+                            <div class="file-upload-icon">📹</div>
+                            <div class="file-upload-text">
+                                <strong>Click to upload</strong> or drag and drop<br>
+                                MP4, MOV, or AVI file
+                            </div>
+                        </div>
+                        <input type="file" id="videoFile" accept=".mp4,.mov,.avi" style="display: none;" onchange="handleVideoFile(this.files)">
+                        <div class="file-list" id="videoFileList"></div>
+                    </div>
+
+                    <button class="btn btn-primary btn-block" onclick="createCharacter()">
+                        ✨ Create Character
+                    </button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // =============================================================================
+        // State
+        // =============================================================================
+        let state = {
+            characters: [],
+            selectedCharacter: null,
+            voiceFiles: [],
+            videoFile: null
+        };
+
+        // =============================================================================
+        // API Helpers
+        // =============================================================================
+        function getBackendUrl() {
+            return document.getElementById('backendUrl').value.replace(/\/$/, '');
+        }
+
+        function getEntityUrl() {
+            return document.getElementById('entityUrl').value.replace(/\/$/, '');
+        }
+
+        // =============================================================================
+        // UI Helpers
+        // =============================================================================
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+            toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // =============================================================================
+        // Characters
+        // =============================================================================
+        async function loadCharacters() {
+            const url = `${getEntityUrl()}/characters`;
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const characters = await response.json();
+                state.characters = characters;
+                renderCharacters();
+                showToast(`Loaded ${characters.length} characters`, 'success');
+            } catch (error) {
+                showToast(`Failed to load characters: ${error.message}`, 'error');
+                document.getElementById('characterList').innerHTML = `
+                    <p style="color: var(--error); text-align: center; padding: 20px;">
+                        Failed to load characters. Check the Entity API URL.
+                    </p>
+                `;
+            }
+        }
+
+        function renderCharacters() {
+            const container = document.getElementById('characterList');
+            
+            if (state.characters.length === 0) {
+                container.innerHTML = `
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">
+                        No characters found. Create one in the "Create Character" tab.
+                    </p>
+                `;
+                return;
+            }
+
+            container.innerHTML = state.characters.map(char => `
+                <div class="character-card ${state.selectedCharacter?.name === char.name ? 'selected' : ''}" 
+                     onclick="selectCharacter('${char.name}')">
+                    <div class="character-avatar">👤</div>
+                    <div class="character-info">
+                        <h4>${char.name}</h4>
+                        <p>${char.description || 'No description'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectCharacter(name) {
+            state.selectedCharacter = state.characters.find(c => c.name === name);
+            renderCharacters();
+        }
+
+        // =============================================================================
+        // Video Generation
+        // =============================================================================
+        async function generateVideo() {
+            if (!state.selectedCharacter) {
+                showToast('Please select a character', 'error');
+                return;
+            }
+
+            const question = document.getElementById('questionInput').value.trim();
+            const response = document.getElementById('responseText').value.trim();
+            const subtitleMode = document.getElementById('subtitleMode').value;
+
+            if (!question) {
+                showToast('Please enter a question', 'error');
+                return;
+            }
+
+            if (!response) {
+                showToast('Please enter response text', 'error');
+                return;
+            }
+
+            // Show output section
+            document.getElementById('outputSection').style.display = 'block';
+            
+            const statusArea = document.getElementById('statusArea');
+            const videoContainer = document.getElementById('videoContainer');
+            
+            statusArea.innerHTML = `
+                <div class="status-card loading">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="spinner"></div>
+                        <div>
+                            <strong>🚀 Generating video...</strong>
+                            <p style="color: var(--text-muted); margin-top: 4px;">This may take a few minutes</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            videoContainer.innerHTML = `
+                <div class="video-placeholder">
+                    <div class="video-placeholder-icon">⏳</div>
+                    <p>Processing...</p>
+                </div>
+            `;
+
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.disabled = true;
+
+            const startTime = Date.now();
+
+            try {
+                const payload = {
+                    question: {
+                        question: question,
+                        character_name: state.selectedCharacter.name,
+                        subtitle_mode: subtitleMode,
+                        name: 'HTMLClient'
+                    },
+                    gpt_response: response
+                };
+
+                const url = `${getBackendUrl()}/process`;
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const endTime = Date.now();
+                const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                }
+
+                const result = await resp.json();
+
+                statusArea.innerHTML = `
+                    <div class="status-card success">
+                        <strong>✅ Video generated successfully!</strong>
+                        <p style="color: var(--text-muted); margin-top: 8px;">
+                            Completed in ${duration} seconds
+                        </p>
+                        ${result.response_text ? `<p style="margin-top: 8px;"><strong>Response:</strong> ${result.response_text}</p>` : ''}
+                    </div>
+                `;
+
+                // Try to display video
+                const videoUrl = result.video_url || result.s3_path || result.video_path;
+                if (videoUrl && (videoUrl.startsWith('http://') || videoUrl.startsWith('https://'))) {
+                    videoContainer.innerHTML = `<video controls src="${videoUrl}"></video>`;
+                } else {
+                    videoContainer.innerHTML = `
+                        <div class="video-placeholder">
+                            <div class="video-placeholder-icon">✅</div>
+                            <p>Video generated</p>
+                            <p style="margin-top: 8px; font-size: 0.85rem; color: var(--text-dim);">
+                                Path: ${videoUrl || 'N/A'}
+                            </p>
+                        </div>
+                    `;
+                }
+
+                showToast('Video generated!', 'success');
+
+            } catch (error) {
+                statusArea.innerHTML = `
+                    <div class="status-card error">
+                        <strong>❌ Generation failed</strong>
+                        <p style="color: var(--text-muted); margin-top: 8px;">${error.message}</p>
+                    </div>
+                `;
+
+                videoContainer.innerHTML = `
+                    <div class="video-placeholder">
+                        <div class="video-placeholder-icon">❌</div>
+                        <p>Generation failed</p>
+                    </div>
+                `;
+
+                showToast('Generation failed', 'error');
+            } finally {
+                generateBtn.disabled = false;
+            }
+        }
+
+        // =============================================================================
+        // File Handling
+        // =============================================================================
+        function handleVoiceFiles(files) {
+            state.voiceFiles = Array.from(files);
+            renderVoiceFiles();
+        }
+
+        function renderVoiceFiles() {
+            const container = document.getElementById('voiceFileList');
+            
+            if (state.voiceFiles.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = state.voiceFiles.map((file, index) => `
+                <div class="file-item">
+                    <div class="file-item-name">
+                        <span>🎵</span>
+                        <span>${file.name}</span>
+                    </div>
+                    <button class="file-item-remove" onclick="removeVoiceFile(${index})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function removeVoiceFile(index) {
+            state.voiceFiles.splice(index, 1);
+            renderVoiceFiles();
+        }
+
+        function handleVideoFile(files) {
+            if (files.length > 0) {
+                state.videoFile = files[0];
+                renderVideoFile();
+            }
+        }
+
+        function renderVideoFile() {
+            const container = document.getElementById('videoFileList');
+            
+            if (!state.videoFile) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="file-item">
+                    <div class="file-item-name">
+                        <span>🎬</span>
+                        <span>${state.videoFile.name}</span>
+                    </div>
+                    <button class="file-item-remove" onclick="removeVideoFile()">✕</button>
+                </div>
+            `;
+        }
+
+        function removeVideoFile() {
+            state.videoFile = null;
+            renderVideoFile();
+        }
+
+        // Drag and drop
+        ['voiceUpload', 'videoUpload'].forEach(id => {
+            const el = document.getElementById(id);
+            
+            el.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                el.classList.add('dragover');
+            });
+
+            el.addEventListener('dragleave', () => {
+                el.classList.remove('dragover');
+            });
+
+            el.addEventListener('drop', (e) => {
+                e.preventDefault();
+                el.classList.remove('dragover');
+                
+                if (id === 'voiceUpload') {
+                    handleVoiceFiles(e.dataTransfer.files);
+                } else {
+                    handleVideoFile(e.dataTransfer.files);
+                }
+            });
+        });
+
+        // =============================================================================
+        // Character Creation
+        // =============================================================================
+        async function createCharacter() {
+            const name = document.getElementById('newCharName').value.trim();
+            const description = document.getElementById('newCharDesc').value.trim();
+            const transcripts = document.getElementById('transcripts').value.trim().split('\n');
+
+            if (!name) {
+                showToast('Character name is required', 'error');
+                return;
+            }
+
+            if (state.voiceFiles.length === 0) {
+                showToast('At least one voice file is required', 'error');
+                return;
+            }
+
+            if (transcripts.length !== state.voiceFiles.length) {
+                showToast(`Number of transcripts (${transcripts.length}) must match voice files (${state.voiceFiles.length})`, 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('description', description);
+            
+            transcripts.forEach(t => formData.append('transcripts', t));
+            state.voiceFiles.forEach(f => formData.append('voice_files', f));
+            
+            if (state.videoFile) {
+                formData.append('video_file', state.videoFile);
+            }
+
+            try {
+                const response = await fetch(`${getEntityUrl()}/characters`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                showToast(`Character "${name}" created successfully!`, 'success');
+                
+                // Reset form
+                document.getElementById('newCharName').value = '';
+                document.getElementById('newCharDesc').value = '';
+                document.getElementById('transcripts').value = '';
+                state.voiceFiles = [];
+                state.videoFile = null;
+                renderVoiceFiles();
+                renderVideoFile();
+
+                // Reload characters
+                loadCharacters();
+
+            } catch (error) {
+                showToast(`Failed to create character: ${error.message}`, 'error');
+            }
+        }
+
+        // =============================================================================
+        // Initialize
+        // =============================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Try to load characters on startup
+            loadCharacters();
+        });
+    </script>
+</body>
+</html>
