@@ -46,6 +46,11 @@ class JobStoreInterface(ABC):
         """Delete a job."""
         pass
 
+    @abstractmethod
+    async def count_pending_jobs(self, story_template_id: str) -> int:
+        """Count pending/running jobs for a specific story template."""
+        pass
+
 
 class InMemoryJobStore(JobStoreInterface):
     """In-memory job store for development/testing."""
@@ -99,6 +104,16 @@ class InMemoryJobStore(JobStoreInterface):
             del self._jobs[job_id]
             return True
         return False
+
+    async def count_pending_jobs(self, story_template_id: str) -> int:
+        """Count pending/running jobs for a specific story template."""
+        count = 0
+        for job in self._jobs.values():
+            if job["status"] in ("pending", "running"):
+                request = job.get("request", {})
+                if request.get("story_template_id") == story_template_id:
+                    count += 1
+        return count
 
 
 class MySQLJobStore(JobStoreInterface):
@@ -268,6 +283,22 @@ class MySQLJobStore(JobStoreInterface):
             async with conn.cursor() as cur:
                 await cur.execute("DELETE FROM jobs WHERE job_id = %s", (job_id,))
                 return cur.rowcount > 0
+
+    async def count_pending_jobs(self, story_template_id: str) -> int:
+        """Count pending/running jobs for a specific story template."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM jobs
+                    WHERE status IN ('pending', 'running')
+                      AND JSON_EXTRACT(request, '$.story_template_id') = %s
+                    """,
+                    (story_template_id,),
+                )
+                row = await cur.fetchone()
+                return row[0] if row else 0
 
     def _row_to_dict(self, row) -> Dict[str, Any]:
         """Convert a database row to a job dictionary."""

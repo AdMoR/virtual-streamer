@@ -685,6 +685,23 @@ class LTXVideoGenerationResponse(BaseModel):
     message: str
 
 
+class GenerateFromBroadcastRequest(BaseModel):
+    """Request model for video generation from active broadcast."""
+
+    stream_id: str
+    title: str
+    user: Optional[str] = None
+
+
+class GenerateFromBroadcastResponse(BaseModel):
+    """Response model for video generation from broadcast."""
+
+    job_id: str
+    status: str
+    message: str
+    story_template_id: str
+
+
 # ============================================================================
 # Background Task
 # ============================================================================
@@ -1141,6 +1158,94 @@ async def generate_video_ltx(
         job_id=job_id,
         status="pending",
         message="LTX-2 video generation job submitted successfully",
+    )
+
+
+# Maximum number of pending jobs allowed per story template
+MAX_PENDING_JOBS = 5
+
+
+@router.post("/generate-from-broadcast", response_model=GenerateFromBroadcastResponse)
+async def generate_from_broadcast(
+    request: GenerateFromBroadcastRequest, background_tasks: BackgroundTasks
+):
+    """
+    Generate video from title using the active broadcast's story template.
+
+    This endpoint is designed for Twitch chat integration. It:
+    1. Gets the active programmation for the stream
+    2. Uses the programmation's story_template_id for generation
+    3. Enforces a queue limit of 5 pending jobs per story template
+
+    Args:
+        request: GenerateFromBroadcastRequest with stream_id, title, and optional user
+
+    Returns:
+        GenerateFromBroadcastResponse with job_id for tracking
+
+    Raises:
+        404: If stream not found or no active programmation
+        429: If queue is full (>= 5 pending jobs)
+    """
+    from virtual_streamer.streaming.store import get_streaming_store
+
+    # Get active programmation for the stream
+    store = await get_streaming_store()
+    stream = await store.get_stream(request.stream_id)
+    if stream is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Stream '{request.stream_id}' not found"
+        )
+
+    # Get the active programmation
+    from datetime import datetime
+    current_time = datetime.now().time()
+    programmation = await store.get_active_programmation(request.stream_id, current_time)
+
+    if programmation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active programmation for stream '{request.stream_id}' at this time"
+        )
+
+    story_template_id = programmation.story_template_id
+
+    # Check pending job count
+    job_store = await get_global_job_store()
+    pending_count = await job_store.count_pending_jobs(story_template_id)
+
+    if pending_count >= MAX_PENDING_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Queue full: {pending_count} jobs pending for template '{story_template_id}'. Max is {MAX_PENDING_JOBS}."
+        )
+
+    # Create the video generation request
+    video_request = VideoGenerationRequest(
+        title=request.title,
+        story_template_id=story_template_id,
+    )
+
+    # Create job with metadata
+    job_id = str(uuid.uuid4())
+    job_data = video_request.model_dump()
+    job_data["source"] = "broadcast"
+    job_data["stream_id"] = request.stream_id
+    job_data["programmation_id"] = programmation.programmation_id
+    if request.user:
+        job_data["user"] = request.user
+
+    await job_store.create_job(job_id, job_data)
+
+    # Start background task
+    background_tasks.add_task(_run_video_generation, job_id, video_request)
+
+    return GenerateFromBroadcastResponse(
+        job_id=job_id,
+        status="pending",
+        message=f"Video generation job submitted for '{story_template_id}'",
+        story_template_id=story_template_id,
     )
 
 

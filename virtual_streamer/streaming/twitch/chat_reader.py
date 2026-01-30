@@ -35,7 +35,8 @@ logging.basicConfig(
 logger = logging.getLogger("TwitchChatReader")
 
 # Configuration from environment
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+# Default API_URL uses Docker Compose service name for inter-container communication
+API_URL = os.environ.get("API_URL", "http://virtual_streamer_api:8000")
 STREAM_ID = os.environ.get("STREAM_ID", "default")
 STORY_TEMPLATE_ID = os.environ.get("STORY_TEMPLATE_ID")
 
@@ -80,6 +81,60 @@ async def submit_question_to_api(user: str, message: str):
     except httpx.RequestError as e:
         logger.error(f"API request failed: {e}")
         return None
+
+
+async def submit_generate_to_api(user: str, title: str) -> dict:
+    """
+    Submit a video generation request using the active broadcast's story template.
+    
+    This calls the generate-from-broadcast endpoint which:
+    1. Gets the active programmation for STREAM_ID
+    2. Uses that programmation's story_template_id
+    3. Enforces queue limits (max 5 pending jobs)
+    
+    Args:
+        user: The username of the person requesting generation
+        title: The video title/topic from the user's message
+        
+    Returns:
+        dict with job_id and status on success, or error info on failure
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{API_URL}/api/v1/video-generation/generate-from-broadcast",
+                json={
+                    "stream_id": STREAM_ID,
+                    "title": title,
+                    "user": user,
+                }
+            )
+            
+            data = response.json()
+            
+            if response.status_code == 200 or response.status_code == 202:
+                logger.info(
+                    f"Submitted generate request from {user}, "
+                    f"job_id: {data.get('job_id')}, "
+                    f"template: {data.get('story_template_id')}"
+                )
+                return {"success": True, **data}
+            elif response.status_code == 429:
+                logger.warning(f"Queue full for generate request from {user}: {data.get('detail')}")
+                return {"success": False, "error": "queue_full", "detail": data.get("detail")}
+            elif response.status_code == 404:
+                logger.warning(f"No active programmation for generate request: {data.get('detail')}")
+                return {"success": False, "error": "no_programmation", "detail": data.get("detail")}
+            else:
+                logger.error(f"API error: {response.status_code} - {response.text}")
+                return {"success": False, "error": "api_error", "detail": data.get("detail", response.text)}
+                
+    except httpx.TimeoutException:
+        logger.error("API request timed out")
+        return {"success": False, "error": "timeout", "detail": "Request timed out"}
+    except httpx.RequestError as e:
+        logger.error(f"API request failed: {e}")
+        return {"success": False, "error": "request_error", "detail": str(e)}
 
 
 class TwitchClient:
@@ -364,6 +419,44 @@ class TwitchClient:
                     
                     # Send acknowledgment
                     response = f"Merci {username}, ta question est en cours de traitement."
+                    await websocket.send(
+                        f"PRIVMSG #{self.channel_name} :{response}"
+                    )
+
+            elif chat_lower.startswith("/generate "):
+                # Extract the title from the message
+                title = chat_message[10:].strip()  # len("/generate ") = 10
+                
+                if title:
+                    # Submit to API using active broadcast's story template
+                    result = await submit_generate_to_api(username, title)
+                    
+                    if result.get("success"):
+                        response = (
+                            f"Merci {username}! Vidéo en cours de génération "
+                            f"(template: {result.get('story_template_id')})"
+                        )
+                    elif result.get("error") == "queue_full":
+                        response = (
+                            f"Désolé {username}, la file d'attente est pleine. "
+                            "Réessaie dans quelques minutes!"
+                        )
+                    elif result.get("error") == "no_programmation":
+                        response = (
+                            f"Désolé {username}, aucune programmation active en ce moment."
+                        )
+                    else:
+                        response = f"Désolé {username}, une erreur s'est produite."
+                    
+                    await websocket.send(
+                        f"PRIVMSG #{self.channel_name} :{response}"
+                    )
+                else:
+                    # No title provided
+                    response = (
+                        f"{username}, utilise /generate <titre> pour générer une vidéo. "
+                        "Ex: /generate Fred se lance dans la conquête spatiale"
+                    )
                     await websocket.send(
                         f"PRIVMSG #{self.channel_name} :{response}"
                     )
