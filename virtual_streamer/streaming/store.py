@@ -647,6 +647,32 @@ class MySQLStreamingStore(StreamingStoreInterface):
                     return None
                 return self._row_to_playlist_entry(row)
 
+    async def get_entries_played_since(
+        self, stream_id: str, since: datetime
+    ) -> List[PlaylistEntry]:
+        """
+        Get playlist entries played after a given timestamp.
+        Joins with programmations to filter by stream.
+        """
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT pe.entry_id, pe.programmation_id, pe.video_storage_key, 
+                           pe.status, pe.play_order, pe.metadata, pe.created_at, pe.played_at
+                    FROM playlist_entries pe
+                    JOIN media_programmations mp ON pe.programmation_id = mp.programmation_id
+                    WHERE mp.stream_id = %s 
+                      AND pe.status = 'played'
+                      AND pe.played_at > %s
+                    ORDER BY pe.played_at ASC
+                    """,
+                    (stream_id, since),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_playlist_entry(row) for row in rows]
+
     def _row_to_playlist_entry(self, row) -> PlaylistEntry:
         """Convert a database row to PlaylistEntry."""
         (

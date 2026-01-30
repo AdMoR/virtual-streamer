@@ -268,3 +268,31 @@ async def update_entry_status(
                 )
     
     return {"status": "ok", "entry_id": entry_id, "new_status": new_status.value}
+
+
+@router.get("/streams/{stream_id}/played-since", response_model=List[PlaylistEntry])
+async def get_entries_played_since(
+    stream_id: str,
+    since: datetime = Query(..., description="ISO timestamp to filter played_at > since")
+):
+    """
+    Get playlist entries that were played since a given timestamp.
+    Used by the feedback monitor to detect newly played videos.
+    
+    Returns entries where:
+    - status = 'played'
+    - played_at > since
+    - Entry belongs to a programmation of this stream
+    """
+    store = await get_streaming_store()
+    
+    # Verify stream exists
+    stream = await store.get_stream(stream_id)
+    if stream is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stream '{stream_id}' not found"
+        )
+    
+    entries = await store.get_entries_played_since(stream_id, since)
+    return entries

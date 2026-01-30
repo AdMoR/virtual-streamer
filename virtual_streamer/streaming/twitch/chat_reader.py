@@ -21,8 +21,9 @@ import time
 import asyncio
 import threading
 import logging
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 import websockets
 import httpx
@@ -39,6 +40,17 @@ logger = logging.getLogger("TwitchChatReader")
 API_URL = os.environ.get("API_URL", "http://virtual_streamer_api:8000")
 STREAM_ID = os.environ.get("STREAM_ID", "default")
 STORY_TEMPLATE_ID = os.environ.get("STORY_TEMPLATE_ID")
+
+# Feedback configuration
+FEEDBACK_TIMEOUT = 120  # seconds to wait for user feedback
+
+
+@dataclass
+class PendingFeedback:
+    """Tracks a pending feedback request for a user."""
+    entry_id: str
+    job_id: str
+    expires_at: float
 
 
 async def submit_question_to_api(user: str, message: str):
@@ -137,6 +149,20 @@ async def submit_generate_to_api(user: str, title: str) -> dict:
         return {"success": False, "error": "request_error", "detail": str(e)}
 
 
+async def submit_feedback_to_api(entry_id: str, user: str, feedback: str) -> bool:
+    """Submit raw feedback to API."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{API_URL}/api/v1/video-generation/feedback",
+                json={"entry_id": entry_id, "user": user, "feedback": feedback}
+            )
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Feedback submit error: {e}")
+        return False
+
+
 class TwitchClient:
     """
     Client for connecting to Twitch chat and handling messages.
@@ -185,6 +211,10 @@ class TwitchClient:
         # Event callbacks
         self._on_user_join_callback: Optional[Callable[[str], Any]] = None
         self._on_new_message_callback: Optional[Callable[[str, str], Any]] = None
+
+        # Feedback monitoring state
+        self._pending_feedback: Dict[str, PendingFeedback] = {}
+        self._last_played_check: datetime = datetime.utcnow()
 
         # Start token refresh thread
         self.token_refresh_thread = threading.Thread(
@@ -256,6 +286,46 @@ class TwitchClient:
             if not self.access_token or time.time() >= self.token_expiry:
                 return self.refresh_access_token()
             return True
+
+    async def _monitor_played_videos(self, websocket):
+        """
+        Background task: polls for played videos and prompts users for feedback.
+        Runs alongside chat reading, shares self._pending_feedback dict.
+        """
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(
+                        f"{API_URL}/api/v1/streams/{STREAM_ID}/played-since",
+                        params={"since": self._last_played_check.isoformat()}
+                    )
+                    
+                    if response.status_code == 200:
+                        entries = response.json()
+                        self._last_played_check = datetime.utcnow()
+                        
+                        for entry in entries:
+                            metadata = entry.get("metadata") or {}
+                            user = metadata.get("user")
+                            
+                            # Skip if no user or already pending
+                            if not user or user in self._pending_feedback:
+                                continue
+                            
+                            self._pending_feedback[user] = PendingFeedback(
+                                entry_id=entry["entry_id"],
+                                job_id=metadata.get("job_id", ""),
+                                expires_at=time.time() + FEEDBACK_TIMEOUT,
+                            )
+                            
+                            msg = f"{user}, ta video vient de passer! + ou - ?"
+                            await websocket.send(f"PRIVMSG #{self.channel_name} :{msg}")
+                            logger.info(f"Feedback requested from {user}")
+                            
+            except Exception as e:
+                logger.error(f"Monitor error: {e}")
+            
+            await asyncio.sleep(10)  # Poll every 10 seconds
 
     def set_on_user_join_callback(self, callback: Callable[[str], Any]) -> None:
         """
@@ -338,29 +408,35 @@ class TwitchClient:
 
                 logger.info(f"Connected to #{self.channel_name} chat")
 
+                # Start played video monitor as background task
+                monitor_task = asyncio.create_task(self._monitor_played_videos(websocket))
+
                 last_ping = time.time()
                 ping_interval = 250
 
-                while True:
-                    try:
-                        if time.time() - last_ping > ping_interval:
-                            await websocket.send("PING :tmi.twitch.tv")
-                            last_ping = time.time()
+                try:
+                    while True:
+                        try:
+                            if time.time() - last_ping > ping_interval:
+                                await websocket.send("PING :tmi.twitch.tv")
+                                last_ping = time.time()
 
-                        response = await asyncio.wait_for(
-                            websocket.recv(), 
-                            timeout=30
-                        )
-                        await self.handle_message(websocket, response)
+                            response = await asyncio.wait_for(
+                                websocket.recv(), 
+                                timeout=30
+                            )
+                            await self.handle_message(websocket, response)
 
-                    except asyncio.TimeoutError:
-                        continue
-                    except websockets.exceptions.ConnectionClosed as e:
-                        logger.warning(f"Connection closed: {e}")
-                        break
-                    except Exception as e:
-                        logger.error(f"Error in chat connection: {e}")
-                        break
+                        except asyncio.TimeoutError:
+                            continue
+                        except websockets.exceptions.ConnectionClosed as e:
+                            logger.warning(f"Connection closed: {e}")
+                            break
+                        except Exception as e:
+                            logger.error(f"Error in chat connection: {e}")
+                            break
+                finally:
+                    monitor_task.cancel()
 
         except websockets.exceptions.InvalidStatusCode as e:
             if e.status_code == 400:
@@ -402,6 +478,26 @@ class TwitchClient:
 
             # Notify callback of new message
             await self.on_new_message(username, chat_message)
+
+            # Check for pending feedback first
+            if username in self._pending_feedback:
+                pending = self._pending_feedback[username]
+                
+                if time.time() < pending.expires_at:
+                    # User has pending feedback - capture their message as raw feedback
+                    success = await submit_feedback_to_api(
+                        pending.entry_id,
+                        username,
+                        chat_message  # Raw message
+                    )
+                    del self._pending_feedback[username]
+                    
+                    response = "Merci pour ton retour!" if success else "Erreur, désolé!"
+                    await websocket.send(f"PRIVMSG #{self.channel_name} :{response}")
+                    return  # Don't process as command
+                else:
+                    # Expired, clean up
+                    del self._pending_feedback[username]
 
             # Check for command prefix
             chat_lower = chat_message.lstrip(" ").lower()
