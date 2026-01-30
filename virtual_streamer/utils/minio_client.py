@@ -308,4 +308,4 @@ def download_remote_video(video_path):
         run_async_in_threads(client.download_file(bucket_path, local_path))
         return local_path
     else:
-        raise Exception(f"Unsupported video format: {video_path}")
+        raise Exception(f"Unsupported non minio video path: {video_path}")

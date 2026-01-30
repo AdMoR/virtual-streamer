@@ -43,7 +43,7 @@ APP_NAME = "jesus_agents"
 class GreetingJesusRequest(BaseModel):
     """Request for greeting a user."""
     user_name: str
-    character_id: str = "jesus"
+    character_id: str = "jesus_short"
     agent_name: str = "greeting_jesus_agent"
 
 
@@ -51,7 +51,7 @@ class AnsweringJesusRequest(BaseModel):
     """Request for answering a question."""
     question: str
     user_name: str
-    character_id: str = "jesus"
+    character_id: str = "jesus_short"
     agent_name: str = "answering_jesus_agent"
 
 
@@ -184,7 +184,7 @@ async def text_to_video_with_subtitles(
         wav2lip_response = await generate_wav2lip(Wav2LipRequest(
             audio_path=os.path.abspath(audio_path),
             video=VideoClipBase(
-                storage_path=character.video_clip_path,
+                storage_path="minio://virtual-streamer/" + character.video_clip_path,
                 collection_ids=[],
             ),
             character_id=character.character_id,
