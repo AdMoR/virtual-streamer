@@ -22,7 +22,7 @@ import asyncio
 import threading
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import websockets
 import httpx
@@ -127,6 +127,10 @@ class TwitchClient:
             "refresh_token.json"
         )
 
+        # Event callbacks
+        self._on_user_join_callback: Optional[Callable[[str], Any]] = None
+        self._on_new_message_callback: Optional[Callable[[str, str], Any]] = None
+
         # Start token refresh thread
         self.token_refresh_thread = threading.Thread(
             target=self._token_refresh_monitor, 
@@ -198,6 +202,68 @@ class TwitchClient:
                 return self.refresh_access_token()
             return True
 
+    def set_on_user_join_callback(self, callback: Callable[[str], Any]) -> None:
+        """
+        Register a callback for user join events.
+        
+        Args:
+            callback: Function to call with username when a user joins
+        """
+        self._on_user_join_callback = callback
+
+    async def on_user_join(self, username: str) -> None:
+        """
+        Called when a new user joins the channel.
+        
+        Args:
+            username: The username of the user who joined
+        """
+        # TODO: Call remote API to handle user join event
+        if self._on_user_join_callback:
+            result = self._on_user_join_callback(username)
+            if asyncio.iscoroutine(result):
+                await result
+
+    async def handle_join(self, message: str) -> None:
+        """
+        Handle a user joining the channel.
+        
+        Args:
+            message: Raw JOIN message from Twitch IRC
+        """
+        try:
+            # JOIN format: :username!username@username.tmi.twitch.tv JOIN #channel
+            if "!" in message:
+                username = message.split("!")[0].lstrip(":")
+                # Exclude bot's own join
+                if username.lower() != self.bot_username.lower():
+                    logger.info(f"User {username} joined #{self.channel_name}")
+                    await self.on_user_join(username)
+        except Exception as e:
+            logger.error(f"Error handling JOIN message: {e}")
+
+    def set_on_new_message_callback(self, callback: Callable[[str, str], Any]) -> None:
+        """
+        Register a callback for new chat messages.
+        
+        Args:
+            callback: Function to call with (username, message) for each chat message
+        """
+        self._on_new_message_callback = callback
+
+    async def on_new_message(self, username: str, message: str) -> None:
+        """
+        Called when a new chat message is received.
+        
+        Args:
+            username: The username of the message sender
+            message: The content of the message
+        """
+        if self._on_new_message_callback:
+            result = self._on_new_message_callback(username, message)
+            if asyncio.iscoroutine(result):
+                await result
+
     async def connect_to_chat(self):
         """Connect to Twitch chat via WebSocket."""
         if not self.ensure_token_valid():
@@ -257,6 +323,8 @@ class TwitchClient:
         if message.startswith("PING"):
             pong_response = message.replace("PING", "PONG")
             await websocket.send(pong_response)
+        elif "JOIN" in message and "PRIVMSG" not in message:
+            await self.handle_join(message)
         elif "PRIVMSG" in message:
             await self.handle_privmsg(websocket, message)
         elif "NOTICE" in message:
@@ -276,6 +344,9 @@ class TwitchClient:
                 return
 
             logger.info(f"[{self.channel_name}] {username}: {chat_message}")
+
+            # Notify callback of new message
+            await self.on_new_message(username, chat_message)
 
             # Check for command prefix
             chat_lower = chat_message.lstrip(" ").lower()
