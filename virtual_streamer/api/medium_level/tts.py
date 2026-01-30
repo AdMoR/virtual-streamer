@@ -11,10 +11,10 @@ from pydantic import BaseModel
 import uuid
 import os
 
-from virtual_streamer.video_server.models import DialogueEntry, Character, VoiceSample
+from virtual_streamer.video_server.models import DialogueEntry
 from virtual_streamer.utils.utils import txt_to_speech_call_fish
 from virtual_streamer.api.dependencies import get_path_resolver, get_storage_resolver
-from virtual_streamer.utils.entity_repository import get_entity_repository
+from virtual_streamer.utils.character_loader import load_character
 
 
 # Router setup
@@ -46,38 +46,16 @@ async def generate_tts(payload: DialogueEntry):
     print(f"Received TTS generation request for entry: {payload.entry_id}")
 
     # Fetch character data to get voice configuration
+    character_id = payload.character_id
     try:
-        repo = get_entity_repository()
-        character_id = payload.character_id
-        character_data = await repo.get_character(character_id)
-        if character_data is None:
-            raise HTTPException(
-                status_code=404, detail=f"Character '{character_id}' not found"
-            )
-        character = Character(
-            character_id=character_data["character_id"],
-            name=character_data["name"],
-            description=character_data.get("description"),
-            video_clip_path=character_data.get("video_clip_path", ""),
-            voice_samples=[
-                VoiceSample(
-                    sample_storage_path=s["sample_storage_path"],
-                    transcript=s["transcript"],
-                )
-                for s in character_data.get("voice_samples", [])
-            ],
-            video_search_tag=character_data.get("video_search_tag"),
-            identity_images=character_data.get("identity_images", []),
-            created_at=character_data.get("created_at"),
-            updated_at=character_data.get("updated_at"),
-        )
-    except HTTPException as e :
+        character = await load_character(character_id)
+    except ValueError as e:
         logger.error(f"Failed to generate TTS audio for entry: {payload.entry_id}, {e}", exc_info=True)
-        raise
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to generate TTS audio for entry: {payload.entry_id}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Error fetching character '{payload.character_id}': {e}"
+            status_code=500, detail=f"Error fetching character '{character_id}': {e}"
         )
 
     # Generate unique filename in temp directory

@@ -19,9 +19,9 @@ import cv2
 import torch
 from tqdm import tqdm
 
-from virtual_streamer.video_server.models import VideoClipBase, VideoOptions, Character, VoiceSample
+from virtual_streamer.video_server.models import VideoClipBase, VideoOptions
 from virtual_streamer.api.dependencies import get_path_resolver, get_storage_resolver
-from virtual_streamer.utils.entity_repository import get_entity_repository
+from virtual_streamer.utils.character_loader import load_character
 from virtual_streamer.wav2lip import audio
 from virtual_streamer.wav2lip.main_logic import (
     Config,
@@ -216,31 +216,9 @@ async def generate_wav2lip(payload: Wav2LipRequest):
 
         # Retrieve character data
         try:
-            repo = get_entity_repository()
-            character_data = await repo.get_character(character_id)
-            if character_data is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Character '{character_id}' not found"
-                )
-            character = Character(
-                character_id=character_data["character_id"],
-                name=character_data["name"],
-                description=character_data.get("description"),
-                video_clip_path=character_data.get("video_clip_path", ""),
-                voice_samples=[
-                    VoiceSample(
-                        sample_storage_path=s["sample_storage_path"],
-                        transcript=s["transcript"],
-                    )
-                    for s in character_data.get("voice_samples", [])
-                ],
-                video_search_tag=character_data.get("video_search_tag"),
-                identity_images=character_data.get("identity_images", []),
-                created_at=character_data.get("created_at"),
-                updated_at=character_data.get("updated_at"),
-            )
-        except HTTPException:
-            raise
+            character = await load_character(character_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error fetching character '{character_id}': {e}"

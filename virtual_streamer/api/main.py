@@ -33,6 +33,7 @@ from virtual_streamer.api.high_level.video_generation import (
     router as video_generation_router,
 )
 from virtual_streamer.api.high_level.legacy_qa import router as legacy_qa_router
+from virtual_streamer.api.high_level.jesus_agents import router as jesus_agents_router
 
 # Import ADK app factory and mounting utilities
 from virtual_streamer.api.adk_app import create_adk_app
@@ -132,6 +133,7 @@ app.include_router(wav2lip_router, prefix="/api/v1")
 
 # High-level: Applications
 app.include_router(video_generation_router, prefix="/api/v1")
+app.include_router(jesus_agents_router, prefix="/api/v1")
 
 # Legacy: Backward compatibility
 app.include_router(legacy_qa_router)  # No prefix for backward compatibility

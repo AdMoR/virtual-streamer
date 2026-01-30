@@ -20,10 +20,8 @@ from virtual_streamer.video_server.models import (
     DialogueEntry,
     VideoClipBase,
     VideoOptions,
-    Character,
-    VoiceSample,
 )
-from virtual_streamer.utils.entity_repository import get_entity_repository
+from virtual_streamer.utils.character_loader import load_character
 from virtual_streamer.utils.utils import (
     sanitize_str,
     combine_video_and_audio,
@@ -92,32 +90,9 @@ async def qa_process_video(
 
     # Get character data from internal storage
     try:
-        repo = get_entity_repository()
-        character_data = await repo.get_character(character_name)
-        if character_data is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Character '{character_name}' not found",
-            )
-        character = Character(
-            character_id=character_data["character_id"],
-            name=character_data["name"],
-            description=character_data.get("description"),
-            video_clip_path=character_data.get("video_clip_path", ""),
-            voice_samples=[
-                VoiceSample(
-                    sample_storage_path=s["sample_storage_path"],
-                    transcript=s["transcript"],
-                )
-                for s in character_data.get("voice_samples", [])
-            ],
-            video_search_tag=character_data.get("video_search_tag"),
-            identity_images=character_data.get("identity_images", []),
-            created_at=character_data.get("created_at"),
-            updated_at=character_data.get("updated_at"),
-        )
-    except HTTPException:
-        raise
+        character = await load_character(character_name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,
