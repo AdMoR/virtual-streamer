@@ -360,11 +360,13 @@ volumes:
 
 ## Integration with Character Model
 
+> **Note**: See [`virtual_streamer/video_server/models.py`](../../virtual_streamer/video_server/models.py) for the canonical Character model definition.
+
 The Character model integrates with remote services:
 
 ```python
 class Character(BaseModel):
-    # ... other fields ...
+    # ... other fields (see canonical definition) ...
     
     # Stored in MinIO
     video_clip_path: str          # clips/fred_reference.mp4

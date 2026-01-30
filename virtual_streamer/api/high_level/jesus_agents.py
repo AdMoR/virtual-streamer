@@ -70,7 +70,7 @@ async def _transcribe_audio_to_srt(audio_path: str, output_dir: str) -> str:
     """
     Transcribe audio to SRT subtitle file.
     
-    This is a local helper that directly uses stable_whisper,
+    This is a local helper that directly uses the shared transcription utility,
     avoiding an HTTP call when running in the same process.
     
     Args:
@@ -80,18 +80,14 @@ async def _transcribe_audio_to_srt(audio_path: str, output_dir: str) -> str:
     Returns:
         Path to the generated SRT file
     """
-    import stable_whisper
+    from virtual_streamer.utils.transcription import transcribe_to_srt
     
-    # Load Whisper model
-    model = stable_whisper.load_model("base")
-    
-    # Transcribe
-    result = model.transcribe(audio_path)
-    
-    # Generate SRT file
+    # Generate SRT file path
     srt_filename = f"subtitle_{uuid.uuid4().hex[:8]}.srt"
     srt_path = os.path.join(output_dir, srt_filename)
-    result.to_srt_vtt(srt_path, word_level=False)
+    
+    # Use the shared transcription utility with cached model
+    transcribe_to_srt(audio_path, srt_path, model_name="base", use_faster=False)
     
     return srt_path
 

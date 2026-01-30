@@ -26,6 +26,12 @@ from typing import Optional
 
 import requests
 
+from virtual_streamer.utils.transcription import (
+    get_whisper_model,
+    transcribe_audio as _transcribe_audio,
+    get_audio_files,
+)
+
 
 def load_whisper_model(model_name: str = "large-v3"):
     """
@@ -37,10 +43,8 @@ def load_whisper_model(model_name: str = "large-v3"):
     Returns:
         Loaded whisper model
     """
-    import stable_whisper
-    
     print(f"Loading Whisper model '{model_name}'...")
-    model = stable_whisper.load_faster_whisper(model_name)
+    model = get_whisper_model(model_name, use_faster=True)
     print(f"✓ Model loaded successfully")
     return model
 
@@ -49,49 +53,18 @@ def transcribe_audio(model, audio_path: str) -> str:
     """
     Transcribe a single audio file to text.
     
+    Note: model parameter kept for backward compatibility but is ignored.
+    The shared transcription module handles model caching internally.
+    
     Args:
-        model: Loaded whisper model
+        model: Loaded whisper model (ignored, kept for compatibility)
         audio_path: Path to audio file
         
     Returns:
         Transcribed text
     """
-    result = model.transcribe(audio_path)
-    return result.text.strip()
-
-
-def get_audio_files(audio_dir: Optional[str], audio_files: Optional[list[str]]) -> list[Path]:
-    """
-    Get list of audio files from directory or explicit file list.
-    
-    Args:
-        audio_dir: Directory containing audio files
-        audio_files: List of specific audio file paths
-        
-    Returns:
-        List of Path objects to audio files
-    """
-    if audio_dir:
-        audio_path = Path(audio_dir)
-        if not audio_path.exists():
-            raise FileNotFoundError(f"Audio directory not found: {audio_dir}")
-        
-        # Get all wav/mp3 files
-        files = list(audio_path.glob("*.wav")) + list(audio_path.glob("*.mp3"))
-        if not files:
-            raise ValueError(f"No audio files (*.wav, *.mp3) found in {audio_dir}")
-        
-        return sorted(files)
-    
-    elif audio_files:
-        paths = [Path(f) for f in audio_files]
-        for p in paths:
-            if not p.exists():
-                raise FileNotFoundError(f"Audio file not found: {p}")
-        return paths
-    
-    else:
-        raise ValueError("Either --audio-dir or --audio-files must be provided")
+    # Use the shared transcription utility with the same model
+    return _transcribe_audio(audio_path, model_name="large-v3", use_faster=True)
 
 
 def register_via_api(

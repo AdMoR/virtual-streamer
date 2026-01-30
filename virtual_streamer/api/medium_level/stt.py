@@ -4,14 +4,18 @@ Medium-level API: Speech-to-Text Service
 Provides STT transcription using Whisper models.
 """
 import logging
-import stable_whisper
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
 import os
 import tempfile
 
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from pydantic import BaseModel
+
+from virtual_streamer.utils.transcription import get_whisper_model
+
 # Router setup
 router = APIRouter(prefix="/stt", tags=["Speech-to-Text"])
+
+logger = logging.getLogger(__name__)
 
 
 class STTResponse(BaseModel):
@@ -32,8 +36,6 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
     Returns:
         STTResponse with transcribed text
     """
-    import stable_whisper
-
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         content = await audio_file.read()
@@ -41,8 +43,8 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        # Load Whisper model (consider caching this)
-        model = stable_whisper.load_model("base")
+        # Use cached Whisper model
+        model = get_whisper_model("base", use_faster=False)
 
         # Transcribe
         result = model.transcribe(tmp_path)
@@ -71,7 +73,6 @@ async def transcribe_to_srt(audio_file: UploadFile = File(...)):
     Returns:
         STTResponse with SRT file path
     """
-
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         content = await audio_file.read()
@@ -79,8 +80,8 @@ async def transcribe_to_srt(audio_file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        # Load Whisper model
-        model = stable_whisper.load_model("base")
+        # Use cached Whisper model
+        model = get_whisper_model("base", use_faster=False)
 
         # Transcribe
         result = model.transcribe(tmp_path)
@@ -97,7 +98,7 @@ async def transcribe_to_srt(audio_file: UploadFile = File(...)):
         return STTResponse(text=text, srt_path=srt_path)
 
     except Exception as e:
-        logging.error(f"STT transcription failed: {str(e)}", exc_info=True)
+        logger.error(f"STT transcription failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"STT transcription failed: {str(e)}"
         )

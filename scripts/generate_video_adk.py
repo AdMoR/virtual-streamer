@@ -45,7 +45,6 @@ import logging
 import argparse
 from datetime import datetime
 from typing import List, Optional
-from dataclasses import dataclass
 
 import httpx
 
@@ -77,120 +76,10 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# API Client
+# API Client (imported from shared module)
 # ============================================================================
 
-
-@dataclass
-class APIConfig:
-    """Configuration for webservice API calls."""
-    base_url: str = "http://localhost:8000"
-    character_id: str = "fred"
-    timeout: float = 120.0
-
-
-class WebserviceClient:
-    """
-    Async HTTP client for calling the Virtual Streamer webservice API.
-    
-    Handles TTS, Wav2Lip, and STT API calls with proper error handling.
-    """
-    
-    def __init__(self, config: APIConfig):
-        self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
-    
-    async def __aenter__(self):
-        self._client = httpx.AsyncClient(
-            base_url=self.config.base_url,
-            timeout=self.config.timeout,
-        )
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self._client:
-            await self._client.aclose()
-    
-    async def generate_tts(self, text: str, entry_id: str = "") -> str:
-        """
-        Call TTS API to generate audio from text.
-        
-        Args:
-            text: Dialog text to synthesize
-            entry_id: Optional entry ID for tracking
-        
-        Returns:
-            Path to generated audio file
-        """
-        response = await self._client.post(
-            "/api/v1/tts/generate",
-            json={
-                "entry_id": entry_id or f"tts_{datetime.now().timestamp()}",
-                "character_id": self.config.character_id,
-                "text": text,
-                "timestamp": 0,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["audio_path"]
-    
-    async def generate_wav2lip(
-        self, 
-        audio_path: str, 
-        video_path: str,
-        output_dir: Optional[str] = None,
-    ) -> str:
-        """
-        Call Wav2Lip API to generate lip-synced video.
-        
-        Args:
-            audio_path: Path to audio file
-            video_path: Path to source video
-            output_dir: Optional output directory
-        
-        Returns:
-            Path to generated lip-synced video
-        """
-        response = await self._client.post(
-            "/api/v1/wav2lip/generate",
-            json={
-                "audio_path": audio_path,
-                "video": {
-                    "storage_path": video_path,
-                    "collection_ids": [],
-                },
-                "options": {
-                    "subtitles_enabled": False,
-                    "subtitle_style": None,
-                },
-                "character_id": self.config.character_id,
-                "output_dir": output_dir,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["raw_video_path"]
-    
-    async def transcribe_to_srt(self, audio_path: str) -> str:
-        """
-        Call STT API to generate SRT subtitles from audio.
-        
-        Args:
-            audio_path: Path to audio file
-        
-        Returns:
-            Path to generated SRT file
-        """
-        with open(audio_path, "rb") as f:
-            files = {"audio_file": (os.path.basename(audio_path), f, "audio/wav")}
-            response = await self._client.post(
-                "/api/v1/stt/transcribe-to-srt",
-                files=files,
-            )
-        response.raise_for_status()
-        data = response.json()
-        return data["srt_path"]
+from virtual_streamer.api.clients.webservice_client import WebserviceClient, APIConfig
 
 
 # ============================================================================
