@@ -2,321 +2,207 @@
 
 Step-by-step roadmap to refactor the Virtual Streamer monorepo.
 
-## Overview
+## Migration Status Summary
 
-| Phase | Duration | Focus |
-|-------|----------|-------|
-| Phase 1 | Week 1 | Core package setup |
-| Phase 2 | Week 1-2 | ML service APIs |
-| Phase 3 | Week 2 | ADK agents |
-| Phase 4 | Week 2-3 | Application configs |
-| Phase 5 | Week 3 | Cleanup & documentation |
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1 | ✅ Complete | Core package setup |
+| Phase 2 | ✅ Complete | Unified API structure |
+| Phase 3 | ✅ Complete | ADK agents |
+| Phase 4 | 🔄 In Progress | Streaming infrastructure |
+| Phase 5 | 📋 Planned | Cleanup & documentation |
 
 ---
 
-## Phase 1: Core Package Setup
+## Phase 1: Core Package Setup ✅ COMPLETE
 
-**Goal:** Create `packages/vs-core/` with clean data models and API clients.
+**Goal:** Create core library with clean data models and utilities.
 
-### Tasks
+### Completed Tasks
 
-- [ ] **1.1** Create workspace structure
-  ```bash
-  mkdir -p packages/vs-core/src/vs_core/{models,api_clients,api_models,storage,utils}
-  ```
-
-- [ ] **1.2** Create workspace `pyproject.toml`
-  ```toml
-  [project]
-  name = "virtual-streamer-workspace"
-  version = "0.1.0"
-  
-  [tool.uv.workspace]
-  members = ["packages/vs-core"]
-  ```
-
-- [ ] **1.3** Create `packages/vs-core/pyproject.toml`
-  ```toml
-  [project]
-  name = "vs-core"
-  version = "0.1.0"
-  dependencies = ["pydantic>=2.0", "httpx>=0.28"]
-  ```
-
-- [ ] **1.4** Implement data models
-  - `models/character.py` - Character, VoiceSample
-  - `models/video_clip.py` - VideoClip, CharacterPresence
-  - `models/collection.py` - Collection
-  - `models/__init__.py` - Exports
-
-- [ ] **1.5** Implement API models
-  - `api_models/wav2lip.py` - Request/Response
-  - `api_models/face_detection.py` - Request/Response
-  - `api_models/tts.py` - Request/Response
-  - `api_models/stt.py` - Request/Response
-
-- [ ] **1.6** Implement API clients
-  - `api_clients/base.py` - BaseAPIClient
-  - `api_clients/wav2lip.py` - Wav2LipClient
-  - `api_clients/face_detection.py` - FaceDetectionClient
-  - `api_clients/tts.py` - TTSClient
-  - `api_clients/stt.py` - STTClient
-
-- [ ] **1.7** Migrate storage utilities
-  - `storage/local_fs_client.py` ← from `virtual_streamer/utils/local_fs_client.py`
-  - `storage/s3_client.py` ← from `virtual_streamer/utils/s3_client.py`
-
-- [ ] **1.8** Migrate common utils
-  - `utils/video.py` ← relevant parts from `virtual_streamer/utils/utils.py`
-  - `utils/audio.py`
-  - `utils/subtitle.py`
+- [x] **1.1** Created `virtual_streamer/` package structure
+- [x] **1.2** Created workspace `pyproject.toml` with UV configuration
+- [x] **1.3** Implemented data models in `virtual_streamer/video_server/models.py`
+  - `Character`, `VoiceSample`
+  - `VideoClip`, `CharacterPresence`
+  - Streaming models (`StreamConfig`, `MediaProgrammation`, `PlaylistEntry`)
+- [x] **1.4** Implemented utilities in `virtual_streamer/utils/`
+  - `character_loader.py` - Centralized character loading
+  - `minio_client.py` - MinIO storage operations
+  - `job_store.py` - Background job tracking
+  - `file_manager.py` - File operations
+  - `subtitle_utils.py` - SRT generation
+  - `storage_interface.py` - Storage abstraction
 
 ### Validation
 
 ```bash
-# Install the package
-uv pip install -e packages/vs-core
-
-# Run tests
-cd packages/vs-core && pytest
-
-# Verify imports work
-python -c "from vs_core.models import Character; print('OK')"
-python -c "from vs_core.api_clients import Wav2LipClient; print('OK')"
+# Package is installed and working
+python -c "from virtual_streamer.utils.character_loader import load_character; print('OK')"
+python -c "from virtual_streamer.video_server.models import Character; print('OK')"
 ```
 
 ---
 
-## Phase 2: ML Service APIs
+## Phase 2: Unified API Structure ✅ COMPLETE
 
-**Goal:** Create standalone FastAPI services for Wav2Lip and Face Detection.
+**Goal:** Create layered API architecture with all services integrated.
 
-### Tasks
+### Completed Tasks
 
-- [ ] **2.1** Create service structure
-  ```bash
-  mkdir -p services/{wav2lip_service,face_detection_service,entity_service}/src
-  ```
-
-- [ ] **2.2** Create Wav2Lip service
-  - `services/wav2lip_service/src/main.py` - FastAPI app
-  - `services/wav2lip_service/src/inference.py` - ML logic (from `virtual_streamer/wav2lip/`)
-  - `services/wav2lip_service/src/models.py` - Request/Response models
-  - `services/wav2lip_service/Dockerfile`
-  - `services/wav2lip_service/pyproject.toml`
-
-- [ ] **2.3** Create Face Detection service
-  - `services/face_detection_service/src/main.py`
-  - `services/face_detection_service/src/inference.py` (from `face_detection/`)
-  - `services/face_detection_service/src/models.py`
-  - `services/face_detection_service/Dockerfile`
-  - `services/face_detection_service/pyproject.toml`
-
-- [ ] **2.4** Create Entity service
-  - `services/entity_service/src/main.py` ← from `virtual_streamer/video_server/entity_webservice.py`
-  - `services/entity_service/src/models.py`
-  - `services/entity_service/Dockerfile`
-  - `services/entity_service/pyproject.toml`
-
-- [ ] **2.5** Create unified docker-compose
-  - `infra/compose.yml` - All services
-
-- [ ] **2.6** Test services
-  ```bash
-  cd infra && docker compose up -d
-  curl http://localhost:8001/health  # Wav2Lip
-  curl http://localhost:8005/health  # Face Detection
-  curl http://localhost:8002/health  # Entity
-  ```
+- [x] **2.1** Created unified API at `virtual_streamer/api/main.py`
+- [x] **2.2** Implemented low-level entity APIs
+  - `low_level/characters.py` - Character CRUD
+  - `low_level/clips.py` - Video clip management
+  - `low_level/streams.py` - Stream configuration
+  - `low_level/programmations.py` - Scheduling
+  - `low_level/playlist.py` - Playlist management
+  - `low_level/story_templates.py` - Story templates
+  - `low_level/articles.py` - Article management
+- [x] **2.3** Implemented medium-level service APIs
+  - `medium_level/tts.py` - Text-to-speech wrapper
+  - `medium_level/stt.py` - Speech-to-text wrapper
+  - `medium_level/wav2lip.py` - Lip-sync generation
+- [x] **2.4** Implemented high-level application APIs
+  - `high_level/video_generation.py` - Video generation pipeline
+  - `high_level/jesus_agents.py` - AI Jesus agent endpoints
+  - `high_level/legacy_qa.py` - Backward compatibility
 
 ### Validation
 
 ```bash
-# Test Wav2Lip API
-curl -X POST http://localhost:8001/generate \
-  -H "Content-Type: application/json" \
-  -d '{"video_path": "/data/test.mp4", "audio_path": "/data/test.wav"}'
+# Start the API
+uvicorn virtual_streamer.api.main:app --host 0.0.0.0 --port 8000
 
-# Test via client
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Test character API
+curl http://localhost:8000/api/v1/characters
+
+# Test Jesus agent
+curl -X POST http://localhost:8000/api/v1/jesus-agents/greeting/submit \
+  -H "Content-Type: application/json" \
+  -d '{"user_name": "TestUser"}'
+```
+
+---
+
+## Phase 3: ADK Agents ✅ COMPLETE
+
+**Goal:** Create ADK agents with proper structure.
+
+### Completed Tasks
+
+- [x] **3.1** Created `virtual_streamer/lib/agents/` base classes
+  - `BaseLlmAgent` - Simple LLM agent
+  - `StatefulLlmAgent` - Agent with state management
+  - `MapReduceAgent` - Parallel processing agent
+  - `MapperAgent`, `AggregatorAgent` - Map-reduce components
+  - Callback base classes
+- [x] **3.2** Created agent factory at `virtual_streamer/agents/factory.py`
+- [x] **3.3** Implemented character agents
+  - `greeting_jesus_agent/` - Twitch greeting agent
+  - `answering_jesus_agent/` - Q&A agent
+- [x] **3.4** Implemented content generation agents
+  - `story_generator/` - Parody story generation
+  - `keyword_generator/` - Keyword extraction
+  - `rubric_builder_agent/` - Video rubric building
+  - `rubric_builder_map_reduce/` - Parallel rubric building
+- [x] **3.5** Implemented video processing agents
+  - `video_matcher/` - Video-to-dialogue matching
+  - `sentence_video_matcher/` - Per-sentence matching
+- [x] **3.6** Implemented orchestration agents
+  - `orchestrator/` - Pipeline coordination
+  - `virtual_streamer_agent/` - Main streaming agent with tools
+
+### Validation
+
+```bash
+# Test agent factory
 python -c "
-from vs_core.api_clients.wav2lip import Wav2LipClient
-client = Wav2LipClient()
-print(client.health())
+from virtual_streamer.agents.factory import list_agents, get_agent
+print('Available agents:', list_agents())
+agent = get_agent('greeting_jesus_agent')
+print('Agent loaded:', agent.name)
 "
 ```
 
 ---
 
-## Phase 3: ADK Agents
+## Phase 4: Streaming Infrastructure 🔄 IN PROGRESS
 
-**Goal:** Create ADK agents with proper structure.
+**Goal:** Complete streaming infrastructure and integration.
 
-### Tasks
+### Completed Tasks
 
-- [ ] **3.1** Create agent structure
-  ```bash
-  mkdir -p agents/{sub_agents/{tts_agent,lip_sync_agent,video_composer_agent},qa_responder,story_generator,video_creator}
-  ```
+- [x] **4.1** Created streaming models in `virtual_streamer/streaming/models.py`
+  - `StreamConfig` - Stream configuration
+  - `MediaProgrammation` - Time-based scheduling
+  - `PlaylistEntry` - Playlist entries
+  - `PlaylistStatus` - Status enum
+- [x] **4.2** Created streaming store in `virtual_streamer/streaming/store.py`
+- [x] **4.3** Created video server in `virtual_streamer/streaming/video_server/`
+  - `app.py` - FastAPI proxy
+  - `static/index.html` - HTML5 video player
+- [x] **4.4** Created Twitch integration in `virtual_streamer/streaming/twitch/`
+  - `chat_reader.py` - IRC chat reader
+- [x] **4.5** Created agent loop in `virtual_streamer/streaming/agent_loop/`
+  - Continuous agent runner for streaming
 
-- [ ] **3.2** Implement sub-agents
-  - `agents/sub_agents/tts_agent/agent.py`
-  - `agents/sub_agents/tts_agent/prompt.py`
-  - `agents/sub_agents/lip_sync_agent/agent.py`
-  - `agents/sub_agents/lip_sync_agent/prompt.py`
-  - `agents/sub_agents/video_composer_agent/agent.py`
+### Remaining Tasks
 
-- [ ] **3.3** Implement QA responder (AI Jesus)
-  - `agents/qa_responder/agent.py`
-  - `agents/qa_responder/prompt.py`
-  - `agents/qa_responder/callback.py`
-
-- [ ] **3.4** Implement story generator (Fred & Jamy)
-  - `agents/story_generator/agent.py`
-  - `agents/story_generator/prompt.py`
-  - Migrate prompts from `prompts/story_generation.txt`
-  - Migrate scorer from `scripts/cest_pas_sorcier_parody_scorer.py`
-
-- [ ] **3.5** Implement video creator orchestrator
-  - `agents/video_creator/agent.py`
-  - `agents/video_creator/prompt.py`
-
-- [ ] **3.6** Remove old workflow
-  - Delete `virtual_streamer/workflows/virtual_streamer_workflow.py` (LlamaIndex)
-  - Delete `virtual_streamer/workflows/prompts.py`
+- [ ] **4.6** Test end-to-end streaming flow
+- [ ] **4.7** Update Docker compose for streaming stack
+- [ ] **4.8** Create streaming setup scripts
 
 ### Validation
 
 ```bash
-# Test agent import
-python -c "from agents.qa_responder.agent import qa_responder; print(qa_responder.name)"
+# Test streaming models
+python -c "
+from virtual_streamer.streaming.models import StreamConfig, MediaProgrammation
+print('Streaming models OK')
+"
 
-# Run agent via ADK
-adk run qa_responder --input "What is love?"
+# Test video server
+python -c "
+from virtual_streamer.streaming.video_server.app import app
+print('Video server app OK')
+"
 ```
 
 ---
 
-## Phase 4: Application Configs
+## Phase 5: Cleanup & Documentation 📋 PLANNED
 
-**Goal:** Create app configurations and migrate app-specific code.
-
-### Tasks
-
-- [ ] **4.1** Create app structure
-  ```bash
-  mkdir -p apps/{ai_jesus,fred_et_jamy,obs_streamer}/{characters,prompts}
-  ```
-
-- [ ] **4.2** AI Jesus app
-  - `apps/ai_jesus/config.yaml`
-  - `apps/ai_jesus/characters/jesus.yaml`
-  - `apps/ai_jesus/prompts/qa_prompt.txt`
-  - `apps/ai_jesus/README.md`
-
-- [ ] **4.3** Fred & Jamy app
-  - `apps/fred_et_jamy/config.yaml`
-  - `apps/fred_et_jamy/characters/fred.yaml`
-  - `apps/fred_et_jamy/characters/jamy.yaml`
-  - `apps/fred_et_jamy/prompts/story_generation.txt` ← from `prompts/`
-  - `apps/fred_et_jamy/scorer.py` ← from `scripts/cest_pas_sorcier_parody_scorer.py`
-  - `apps/fred_et_jamy/README.md`
-
-- [ ] **4.4** OBS Streamer app
-  - `apps/obs_streamer/docker-compose.yml` ← from `compose_obs.yml`
-  - `apps/obs_streamer/video_server.py` ← from `apps/obs_video_server.py`
-  - `apps/obs_streamer/twitch_reader.py` ← from `virtual_streamer/twitch/`
-  - `apps/obs_streamer/configs/` ← from `assets/obs_config/`
-
-- [ ] **4.5** Create video indexer tool
-  - `tools/video_indexer/` structure
-  - Migrate from `scripts/florence_run.py`
-  - Create CLI interface
-
-### Validation
-
-```bash
-# Validate configs
-python -c "import yaml; yaml.safe_load(open('apps/ai_jesus/config.yaml'))"
-
-# Test video indexer
-cd tools/video_indexer && python -m src.cli --help
-```
-
----
-
-## Phase 5: Cleanup & Documentation
-
-**Goal:** Remove deprecated files and update documentation.
-
-### Files to Delete
-
-```bash
-# Deprecated root files
-rm webservice.py
-rm webservice_prod.py
-rm compose_demo.yml
-rm setup.py
-
-# Old requirements (use pyproject.toml instead)
-rm requirements.txt
-rm requirements_cpu.txt
-rm requirements_demo.txt
-rm requirements_video_generation.txt
-rm requirements_ui.txt
-
-# Old docker files (replaced by infra/compose.yml)
-rm docker-compose.yml
-
-# Deprecated modules
-rm -rf virtual_streamer/workflows/  # Replaced by agents/
-rm -rf virtual_streamer/video_server/  # Replaced by services/entity_service/
-
-# Scripts (migrated elsewhere)
-rm scripts/cest_pas_sorcier_parody_scorer.py  # → apps/fred_et_jamy/
-rm scripts/florence_run.py  # → tools/video_indexer/
-
-# Old apps (migrated)
-rm apps/obs_video_server.py  # → apps/obs_streamer/
-rm apps/demo.py  # Deprecated
-```
-
-### Files to Keep (for now)
-
-```bash
-# Keep until fully migrated
-virtual_streamer/wav2lip/  # Reference until services/wav2lip_service/ is complete
-face_detection/  # Reference until services/face_detection_service/ is complete
-virtual_streamer/utils/  # Reference until packages/vs-core/utils/ is complete
-```
+**Goal:** Remove deprecated files and finalize documentation.
 
 ### Documentation Updates
 
-- [ ] Update `README.md` with new architecture
-- [ ] Update `design/README.md` as single source of truth
-- [ ] Add `CONTRIBUTING.md` with development guidelines
-- [ ] Add `services/README.md` explaining service development
-- [ ] Add `agents/README.md` explaining agent development
+- [x] Update `docs/design/package-structure.md`
+- [x] Update `docs/design/architecture.md`
+- [x] Update `docs/design/agents.md`
+- [x] Update `docs/design/api-services.md`
+- [x] Update `docs/design/migration-plan.md`
+- [ ] Update main `README.md`
 
-### Final Validation
+### Files to Keep (Reference)
 
 ```bash
-# Full system test
-cd infra && docker compose up -d
-sleep 30  # Wait for services
+# Keep for now as reference
+virtual_streamer/wav2lip/          # Wav2Lip inference code
+face_detection/                    # Face detection module
+models/                            # ML model definitions
+```
 
-# Test all services
-curl http://localhost:8001/health
-curl http://localhost:8002/health
-curl http://localhost:8003/health
-curl http://localhost:8005/health
+### Files to Eventually Remove
 
-# Test agent
-adk run qa_responder --input "Hello"
-
-# Run package tests
-cd packages/vs-core && pytest
-cd services/wav2lip_service && pytest
-cd services/face_detection_service && pytest
+```bash
+# Deprecated when migration complete
+requirements.txt                   # Use pyproject.toml instead
+requirements_*.txt                 # Various requirement files
+setup.py                          # Use pyproject.toml instead
 ```
 
 ---
@@ -324,27 +210,63 @@ cd services/face_detection_service && pytest
 ## Migration Checklist
 
 ### Before Starting
-- [ ] Create git branch: `git checkout -b refactor/modular-architecture`
-- [ ] Backup current working state
-- [ ] Document all environment variables in use
+- [x] Create git branch for migration
+- [x] Document all environment variables
 
 ### After Each Phase
-- [ ] All tests pass
-- [ ] Docker services start and respond
-- [ ] No import errors
-- [ ] Git commit with descriptive message
+- [x] Phase 1: Tests pass, imports work
+- [x] Phase 2: API endpoints respond
+- [x] Phase 3: Agents load and run
+- [x] Phase 4: Streaming stack works
+- [ ] Phase 5: Documentation complete
 
-### Before Merge
+### Before Final Release
 - [ ] All deprecated files removed
 - [ ] Documentation updated
-- [ ] CI/CD updated (if applicable)
+- [ ] CI/CD updated
 - [ ] Team review completed
+
+---
+
+## Architecture Decisions Made
+
+### Decision 1: Unified API Instead of Microservices
+
+**Why?**
+- Single GPU instance for all ML models
+- Simplified deployment and monitoring
+- Consistent API patterns
+- Easier development and testing
+
+### Decision 2: ADK Over LlamaIndex Workflows
+
+**Why?**
+- Better tooling and debugging
+- More flexible agent composition
+- Native support for structured output
+- Better state management
+
+### Decision 3: MinIO for All Storage
+
+**Why?**
+- S3-compatible API
+- Self-hosted for development
+- Can migrate to real S3 for production
+- Single storage interface
+
+### Decision 4: MySQL for Streaming State
+
+**Why?**
+- Robust transactional support
+- Easy querying for playlist management
+- Proven at scale
+- Good tooling ecosystem
 
 ---
 
 ## Rollback Plan
 
-If issues arise:
+If issues arise during migration:
 
 1. **Phase 1-2:** Old code still works, just don't use new packages
 2. **Phase 3:** Old workflows remain until agents are validated
@@ -354,6 +276,14 @@ If issues arise:
 ```bash
 # Create safety branch before Phase 5
 git checkout -b backup/pre-cleanup
-git checkout refactor/modular-architecture
+git checkout main
 ```
 
+---
+
+## Next Steps
+
+1. Complete Phase 4 streaming validation
+2. Update main README.md
+3. Clean up deprecated code
+4. Final testing and release

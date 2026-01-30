@@ -7,7 +7,7 @@
 Every ML model (Wav2Lip, Face Detection, TTS, STT) is accessed through HTTP APIs:
 
 ```
-Agent → API Client → HTTP → ML Service (Docker)
+Agent → API Client → HTTP → ML Service (Docker/Internal)
 ```
 
 **Benefits:**
@@ -16,16 +16,28 @@ Agent → API Client → HTTP → ML Service (Docker)
 - Testability: Mock API clients for unit tests
 - Language agnostic: Services could be in any language
 
-### 2. Agents are Shared, Not Per-App
+### 2. Unified API Server
 
-Instead of each application having its own agents, agents are **shared resources** that multiple applications can use:
+All services are integrated into a single FastAPI application with layered architecture:
 
 ```
-❌ Wrong: ai_jesus/agents/qa_agent.py
-❌ Wrong: fred_et_jamy/agents/story_agent.py
+❌ Old: Multiple separate services
+✅ Current: Single unified API at virtual_streamer.api.main
+```
 
-✅ Correct: agents/qa_responder/agent.py  (used by AI Jesus config)
-✅ Correct: agents/story_generator/agent.py  (used by Fred & Jamy config)
+**Why?**
+- Single GPU model instance (efficient resource usage)
+- Simplified deployment
+- Consistent API patterns
+- Centralized health monitoring
+
+### 3. Agents are Shared, Not Per-App
+
+Agents are **shared resources** that multiple applications can use:
+
+```
+✅ Correct: virtual_streamer/agents/qa_responder/agent.py  (used by AI Jesus)
+✅ Correct: virtual_streamer/agents/story_generator/agent.py  (used by Fred & Jamy)
 ```
 
 **Why?**
@@ -34,48 +46,34 @@ Instead of each application having its own agents, agents are **shared resources
 - Easier maintenance
 - Applications become configurations, not code
 
-### 3. Clean Data Models
+### 4. Clean Data Models
 
 One model per entity, no redundancy:
 
 ```python
-# ❌ Wrong: Redundant models
-class CharacterReference:
-    face_embeddings: List
-    
+# ✅ Correct: Single unified model in virtual_streamer/video_server/models.py
 class Character:
-    face_embeddings: List  # Duplicated!
-
-# ✅ Correct: Single unified model
-class Character:
-    # Contains everything needed across all modalities
-    voice_samples: List[VoiceSample]
-    representative_video_path: str
-    face_reference_paths: List[str]
+    character_id: str
+    name: str
+    video_clip_path: str           # For Wav2Lip
+    voice_samples: List[VoiceSample]  # For TTS
+    video_search_tag: Optional[str]   # For video search filtering
+    identity_images: List[str]        # For face detection
 ```
 
-### 4. ADK Agent Structure
+### 5. ADK Agent Structure
 
 All agents follow Google ADK conventions:
 
 ```
 agents/
 ├── agent_name/
-│   ├── agent.py      # LlmAgent definition
+│   ├── __init__.py
+│   ├── agent.py      # Agent definition (REQUIRED)
 │   ├── prompt.py     # Prompt templates
-│   └── callback.py   # Event callbacks
+│   ├── schema.py     # Pydantic models (optional)
+│   └── callback.py   # Event callbacks (optional)
 ```
-
-### 5. Docker for Services Only
-
-| Component | Docker? | Runtime |
-|-----------|---------|---------|
-| Wav2Lip Service | ✅ Yes | Container with GPU |
-| Face Detection Service | ✅ Yes | Container with GPU |
-| Fish TTS | ✅ Yes | Container with GPU |
-| Entity API | ✅ Yes | Container |
-| ADK Agents | ❌ No | ADK Server |
-| Video Indexer | ❌ No | CLI tool |
 
 ### 6. Shared Utilities
 
@@ -102,59 +100,86 @@ await storage.upload_file(local_path, minio_key)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ LAYER 4: APPLICATION CONFIGURATIONS                                 │
+│ LAYER 4: APPLICATION INTERFACES                                      │
 │                                                                      │
 │  apps/                                                               │
-│  ├── ai_jesus/config.yaml      → Uses: qa_responder, video_creator  │
-│  ├── fred_et_jamy/config.yaml  → Uses: story_generator, video_creator│
-│  └── streaming/                → compose_streaming.yml (OBS infra)  │
+│  ├── agent_test_interface.py   → Test agents interactively          │
+│  ├── video_generation_ui.py    → Gradio UI for video generation     │
+│  └── creation_interface.py     → Content creation interface          │
+│                                                                      │
+│  streaming/                                                          │
+│  └── compose_streaming.yml     → OBS streaming stack                │
 │                                                                      │
 └───────────────────────────────────┬──────────────────────────────────┘
-                                    │ configure
+                                    │ HTTP API calls
                                     ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│ LAYER 3: ADK AGENTS (Run via ADK Server)                            │
+│ LAYER 3: UNIFIED API (virtual_streamer.api.main)                     │
 │                                                                      │
-│  agents/                                                             │
-│  ├── sub_agents/           ← Reusable building blocks               │
-│  │   ├── tts_agent/                                                 │
-│  │   ├── lip_sync_agent/                                            │
-│  │   └── video_composer_agent/                                      │
-│  │                                                                   │
-│  ├── qa_responder/         ← Answers questions (uses sub_agents)    │
-│  ├── story_generator/      ← Generates stories                      │
-│  └── video_creator/        ← Orchestrates full video creation       │
+│  High-level (Applications):                                          │
+│  ├── /api/v1/video-generation/*   → Full video pipeline             │
+│  ├── /api/v1/jesus-agents/*       → AI Jesus video responses        │
+│  └── /process                     → Legacy Q&A (deprecated)          │
+│                                                                      │
+│  Medium-level (Services):                                            │
+│  ├── /api/v1/tts/*               → Text-to-speech                   │
+│  ├── /api/v1/stt/*               → Speech-to-text                   │
+│  └── /api/v1/wav2lip/*           → Lip synchronization              │
+│                                                                      │
+│  Low-level (Entities):                                               │
+│  ├── /api/v1/characters/*        → Character CRUD                   │
+│  ├── /api/v1/clips/*             → Video clip management            │
+│  ├── /api/v1/streams/*           → Stream configuration             │
+│  ├── /api/v1/programmations/*    → Scheduling                       │
+│  └── /api/v1/playlist/*          → Playlist management              │
+│                                                                      │
+│  ADK Agents (mounted at /adk):                                       │
+│  ├── story_generator             → Generate stories                 │
+│  ├── video_matcher               → Match videos to dialogue         │
+│  └── orchestrator                → Full pipeline orchestration      │
 │                                                                      │
 └───────────────────────────────────┬──────────────────────────────────┘
                                     │ uses
                                     ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│ LAYER 2: API CLIENTS (Python library)                               │
+│ LAYER 2: ADK AGENTS (virtual_streamer.agents)                        │
 │                                                                      │
-│  packages/vs-core/src/vs_core/                                       │
-│  ├── api_clients/                                                    │
-│  │   ├── tts.py            → FishTTSClient, TTSClient               │
-│  │   ├── stt.py            → WhisperSTTClient, STTClient            │
-│  │   ├── wav2lip.py        → Wav2LipClient                          │
-│  │   └── face_detection.py → FaceDetectionClient                    │
-│  │                                                                   │
-│  ├── api_models/           ← Request/Response Pydantic models       │
-│  └── models/               ← Data entities (Character, VideoClip)   │
+│  Character Agents:                                                   │
+│  ├── greeting_jesus_agent/       → Greet Twitch viewers             │
+│  └── answering_jesus_agent/      → Answer viewer questions          │
+│                                                                      │
+│  Content Generation:                                                 │
+│  ├── story_generator/            → Generate parody stories          │
+│  ├── keyword_generator/          → Extract keywords                 │
+│  └── rubric_builder_agent/       → Build video rubrics              │
+│                                                                      │
+│  Video Processing:                                                   │
+│  ├── video_matcher/              → Match videos to dialogue         │
+│  ├── sentence_video_matcher/     → Per-sentence matching            │
+│  └── rubric_builder_map_reduce/  → Parallel rubric building         │
+│                                                                      │
+│  Orchestration:                                                      │
+│  ├── orchestrator/               → Pipeline coordination            │
+│  └── virtual_streamer_agent/     → Main streaming agent             │
 │                                                                      │
 └───────────────────────────────────┬──────────────────────────────────┘
-                                    │ HTTP calls
+                                    │ uses
                                     ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│ LAYER 1: ML SERVICES (Docker Containers)                            │
+│ LAYER 1: CORE LIBRARY (virtual_streamer.lib)                         │
 │                                                                      │
-│  services/                                                           │
-│  ├── wav2lip_service/      → POST /generate, GET /health            │
-│  ├── face_detection_service/ → POST /detect, POST /preprocess       │
-│  └── entity_service/       → CRUD for Character, VideoClip          │
+│  Agent Base Classes:                                                 │
+│  ├── BaseLlmAgent               → Simple LLM agent                  │
+│  ├── StatefulLlmAgent           → Agent with state management       │
+│  ├── MapReduceAgent             → Parallel processing agent         │
+│  ├── MapperAgent                → Split input into items            │
+│  └── AggregatorAgent            → Combine results                   │
 │                                                                      │
-│  External:                                                           │
-│  ├── Fish TTS (fishaudio/fish-speech)                               │
-│  └── Whisper STT                                                     │
+│  Callbacks:                                                          │
+│  ├── BeforeModelCallback        → Pre-LLM processing                │
+│  ├── AfterModelCallback         → Post-LLM processing               │
+│  ├── StateInputCallback         → Inject state before agent         │
+│  └── StateOutputCallback        → Save state after agent            │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -233,12 +258,15 @@ await storage.upload_file(local_path, minio_key)
    ├── Uses LLM to generate parody dialogue
    └── Returns structured dialogue JSON
 
-3. video_creator agent (for each dialogue line):
-   ├── tts_agent → Generate audio for line
-   ├── lip_sync_agent → Generate lip-synced clip
-   └── video_composer_agent → Stitch clips together
+3. video_matcher agent (for each dialogue line):
+   ├── Search video database for matching clips
+   ├── Score and rank results
+   └── Return best matching video per line
 
-4. Scorer evaluates parody quality (optional)
+4. Video generation pipeline:
+   ├── TTS → Generate audio for each line
+   ├── Wav2Lip → Generate lip-synced clips
+   └── FFmpeg → Concatenate clips
 
 5. Output: Complete Fred & Jamy video
 ```
@@ -273,26 +301,31 @@ await storage.upload_file(local_path, minio_key)
 
 ## Service Communication
 
-All services communicate via REST APIs over a shared Docker network:
+All services communicate via the unified API:
 
 ```yaml
-# infra/compose.yml
+# compose.yaml
 services:
-  wav2lip:
-    ports: ["8001:8001"]
-    
-  face_detection:
-    ports: ["8005:8005"]
-    
-  entity_api:
-    ports: ["8002:8002"]
-    
+  virtual_streamer_api:
+    build: ./docker/docker_unified_api
+    ports: ["8000:8000"]
+    environment:
+      - FISH_TTS_HOST=fish_tts
+      - FISH_TTS_PORT=8003
+      - MINIO_ENDPOINT=minio:9000
+    volumes:
+      - data:/data
+
   fish_tts:
+    image: fishaudio/fish-speech:latest
     ports: ["8003:8003"]
 
-# All share:
+  minio:
+    image: minio/minio
+    ports: ["9000:9000"]
+
 volumes:
-  - data:/data  # Shared file storage
+  data:
 ```
 
 ### Shared Volume Strategy
@@ -304,7 +337,8 @@ Since services need to exchange files (audio, video), they share a volume:
 ├── audio/          # TTS outputs
 ├── video/          # Video files
 ├── cache/          # Face detection cache
-└── output/         # Final generated videos
+├── output/         # Final generated videos
+└── characters/     # Character JSON definitions
 ```
 
 All API requests reference paths within `/data/`:
@@ -318,6 +352,38 @@ All API requests reference paths within `/data/`:
 
 ---
 
+## Current Implementation Status
+
+### ✅ Implemented
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| Unified API | `virtual_streamer/api/main.py` | Complete |
+| Agent Factory | `virtual_streamer/agents/factory.py` | Complete |
+| Jesus Agents | `greeting_jesus_agent/`, `answering_jesus_agent/` | Complete |
+| Story Generator | `story_generator/` | Complete |
+| Video Matcher | `video_matcher/`, `sentence_video_matcher/` | Complete |
+| Rubric Builder | `rubric_builder_agent/`, `rubric_builder_map_reduce/` | Complete |
+| Streaming Infrastructure | `virtual_streamer/streaming/` | Complete |
+| Character Loader | `virtual_streamer/utils/character_loader.py` | Complete |
+| MinIO Client | `virtual_streamer/utils/minio_client.py` | Complete |
+| Agent Base Classes | `virtual_streamer/lib/agents/` | Complete |
+
+### 🔄 In Progress
+
+| Component | Notes |
+|-----------|-------|
+| Virtual Streamer Agent | Main streaming agent with tools |
+| Orchestrator Agent | Pipeline coordination |
+
+### 📋 Planned
+
+| Component | Notes |
+|-----------|-------|
+| Sub-agents (TTS, Lip-sync, Video Composer) | Will be extracted from current pipeline |
+
+---
+
 ## Scalability Considerations
 
 ### Horizontal Scaling
@@ -326,17 +392,17 @@ Each service can be scaled independently:
 
 ```yaml
 services:
-  wav2lip:
+  virtual_streamer_api:
     deploy:
-      replicas: 3  # 3 GPU workers
+      replicas: 3  # Multiple API instances
 ```
 
 ### GPU Allocation
 
-Different services may need different GPU resources:
+Different operations require different GPU resources:
 
-| Service | GPU Memory | Can Share GPU? |
-|---------|------------|----------------|
+| Operation | GPU Memory | Can Share GPU? |
+|-----------|------------|----------------|
 | Wav2Lip | ~4GB | Yes |
 | Face Detection | ~2GB | Yes |
 | Fish TTS | ~4GB | Yes |
@@ -351,4 +417,3 @@ Agent → RabbitMQ → Worker Pool → Service
 ```
 
 This is not implemented in v1 but the API-based architecture makes it easy to add.
-
