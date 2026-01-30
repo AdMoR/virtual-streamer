@@ -578,13 +578,8 @@
                     <h3>⚙️ Configuration</h3>
                     
                     <div class="form-group">
-                        <label>Backend API URL</label>
-                        <input type="text" id="backendUrl" value="http://localhost:8000">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Entity API URL</label>
-                        <input type="text" id="entityUrl" value="http://localhost:8002">
+                        <label>API URL</label>
+                        <input type="text" id="apiUrl" value="http://localhost:8000">
                     </div>
 
                     <button class="btn btn-secondary btn-block" onclick="loadCharacters()">
@@ -734,12 +729,8 @@
         // =============================================================================
         // API Helpers
         // =============================================================================
-        function getBackendUrl() {
-            return document.getElementById('backendUrl').value.replace(/\/$/, '');
-        }
-
-        function getEntityUrl() {
-            return document.getElementById('entityUrl').value.replace(/\/$/, '');
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.replace(/\/$/, '');
         }
 
         // =============================================================================
@@ -774,7 +765,7 @@
         // Characters
         // =============================================================================
         async function loadCharacters() {
-            const url = `${getEntityUrl()}/characters`;
+            const url = `${getApiUrl()}/api/v1/characters`;
             
             try {
                 const response = await fetch(url);
@@ -887,7 +878,7 @@
                     gpt_response: response
                 };
 
-                const url = `${getBackendUrl()}/process`;
+                const url = `${getApiUrl()}/process`;
                 const resp = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1075,7 +1066,7 @@
             }
 
             try {
-                const response = await fetch(`${getEntityUrl()}/characters`, {
+                const response = await fetch(`${getApiUrl()}/api/v1/characters`, {
                     method: 'POST',
                     body: formData
                 });
