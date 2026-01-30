@@ -1,6 +1,6 @@
 # Package Structure
 
-## Complete Directory Tree
+## Current Directory Tree
 
 ```
 virtual-streamer/
@@ -9,379 +9,371 @@ virtual-streamer/
 ├── uv.lock
 ├── README.md
 │
-├── design/                            # 📐 Design documentation (this folder)
-│   ├── README.md
-│   ├── architecture.md
-│   ├── package-structure.md
-│   ├── data-models.md
-│   ├── api-services.md
-│   ├── agents.md
-│   └── migration-plan.md
-│
-├── packages/                          # 📦 Shared Python packages
-│   │
-│   └── vs-core/                       # Core library (pip installable)
-│       ├── pyproject.toml
+├── docs/                              # 📐 Design documentation
+│   └── design/
 │       ├── README.md
-│       └── src/vs_core/
-│           ├── __init__.py
-│           │
-│           ├── models/                # 🗃️ Data models
-│           │   ├── __init__.py
-│           │   ├── character.py       # Character entity
-│           │   ├── video_clip.py      # VideoClip entity
-│           │   └── collection.py      # Collection entity
-│           │
-│           ├── api_clients/           # 📞 HTTP API clients
-│           │   ├── __init__.py
-│           │   ├── base.py            # Base client class
-│           │   ├── tts.py             # TTS API client
-│           │   ├── stt.py             # STT API client
-│           │   ├── wav2lip.py         # Wav2Lip API client
-│           │   └── face_detection.py  # Face Detection API client
-│           │
-│           ├── api_models/            # 📋 Request/Response models
-│           │   ├── __init__.py
-│           │   ├── tts.py
-│           │   ├── stt.py
-│           │   ├── wav2lip.py
-│           │   └── face_detection.py
-│           │
-│           ├── storage/               # 💾 Storage backends
-│           │   ├── __init__.py
-│           │   ├── base.py
-│           │   ├── s3_client.py
-│           │   └── local_fs_client.py
-│           │
-│           └── utils/                 # 🛠️ Common utilities
-│               ├── __init__.py
-│               ├── video.py           # Video processing utils
-│               ├── audio.py           # Audio processing utils
-│               └── subtitle.py        # Subtitle utilities
+│       ├── architecture.md
+│       ├── package-structure.md       # (this file)
+│       ├── data-models.md
+│       ├── api-services.md
+│       ├── agents.md
+│       ├── streaming.md
+│       └── migration-plan.md
 │
-├── services/                          # 🔧 ML Service APIs (Docker)
-│   │
-│   ├── wav2lip_service/
-│   │   ├── pyproject.toml
-│   │   ├── Dockerfile
-│   │   └── src/
-│   │       ├── main.py                # FastAPI app
-│   │       ├── inference.py           # ML inference logic
-│   │       └── models.py              # Pydantic models
-│   │
-│   ├── face_detection_service/
-│   │   ├── pyproject.toml
-│   │   ├── Dockerfile
-│   │   └── src/
-│   │       ├── main.py
-│   │       ├── inference.py
-│   │       └── models.py
-│   │
-│   └── entity_service/
-│       ├── pyproject.toml
-│       ├── Dockerfile
-│       └── src/
-│           ├── main.py
-│           └── models.py
+├── configs/                           # ⚙️ Agent and app configurations
+│   ├── agents/                        # Agent-specific configs
+│   │   ├── example_agent.yaml
+│   │   ├── greeting_jesus_agent.yaml
+│   │   ├── keyword_generator.yaml
+│   │   ├── rubric_builder.yaml
+│   │   ├── story_generator.yaml
+│   │   ├── video_matcher.yaml
+│   │   └── virtual_streamer.yaml
+│   ├── default_config.yaml
+│   └── virtual_streamer_tools.yaml
 │
-├── agents/                            # 🤖 ADK Agents
+├── prompts/                           # 📝 Prompt templates
+│   ├── cest_pas_sorcier.txt
+│   ├── gorafi_rules.txt
+│   ├── story_generation.txt
+│   └── thread_horreur.txt
+│
+├── virtual_streamer/                  # 📦 Main Python package
 │   │
-│   ├── factory.py                     # 🏭 Agent factory registry
-│   │
-│   ├── greeting_jesus_agent/          # Greeting agent (AI Jesus)
-│   │   ├── agent.py
-│   │   └── prompt.py
-│   │
-│   ├── answering_jesus_agent/         # Q&A agent (AI Jesus)
-│   │   ├── agent.py
-│   │   └── prompt.py
-│   │
-│   ├── sub_agents/                    # Reusable sub-agents
+│   ├── agents/                        # 🤖 ADK Agents
+│   │   ├── factory.py                 # Agent registry/factory
+│   │   ├── common/                    # Shared agent utilities
+│   │   │   ├── callbacks.py
+│   │   │   ├── state_keys.py
+│   │   │   └── utils.py
 │   │   │
-│   │   ├── tts_agent/
-│   │   │   ├── __init__.py
+│   │   ├── greeting_jesus_agent/      # ✅ Greets Twitch viewers
+│   │   │   ├── agent.py
+│   │   │   └── prompt.py
+│   │   │
+│   │   ├── answering_jesus_agent/     # ✅ Answers viewer questions
+│   │   │   ├── agent.py
+│   │   │   └── prompt.py
+│   │   │
+│   │   ├── story_generator/           # ✅ Generates parody stories
 │   │   │   ├── agent.py
 │   │   │   ├── prompt.py
+│   │   │   ├── schema.py
 │   │   │   └── callback.py
 │   │   │
-│   │   ├── lip_sync_agent/
-│   │   │   ├── __init__.py
+│   │   ├── keyword_generator/         # ✅ Extracts keywords from text
+│   │   │   ├── agent.py
+│   │   │   └── prompt.py
+│   │   │
+│   │   ├── video_matcher/             # ✅ Matches videos to dialogue
+│   │   │   ├── agent.py
+│   │   │   ├── aggregator.py
+│   │   │   ├── prompt.py
+│   │   │   ├── schema.py
+│   │   │   └── callback.py
+│   │   │
+│   │   ├── sentence_video_matcher/    # ✅ Per-sentence video matching
+│   │   │   ├── agent.py
+│   │   │   ├── schema.py
+│   │   │   └── utils.py
+│   │   │
+│   │   ├── rubric_builder_agent/      # ✅ Builds video rubrics
 │   │   │   ├── agent.py
 │   │   │   ├── prompt.py
+│   │   │   └── schema.py
+│   │   │
+│   │   ├── rubric_builder_map_reduce/ # ✅ Map-reduce rubric builder
+│   │   │   ├── agent.py
 │   │   │   └── callback.py
 │   │   │
-│   │   └── video_composer_agent/
-│   │       ├── __init__.py
+│   │   ├── orchestrator/              # ✅ Pipeline orchestrator
+│   │   │   └── agent.py
+│   │   │
+│   │   └── virtual_streamer_agent/    # ✅ Main streaming agent
 │   │       ├── agent.py
 │   │       ├── prompt.py
-│   │       └── callback.py
+│   │       ├── schema.py
+│   │       ├── callbacks/             # Context injection callbacks
+│   │       │   └── context_injector.py
+│   │       ├── context/               # Context providers
+│   │       │   ├── builder.py
+│   │       │   ├── chat_provider.py
+│   │       │   ├── conversation.py
+│   │       │   ├── providers.py
+│   │       │   └── queue_provider.py
+│   │       └── tools/                 # Agent tools
+│   │           ├── base.py
+│   │           ├── create_video.py
+│   │           ├── send_message.py
+│   │           └── factory.py
 │   │
-│   ├── qa_responder/                  # Q&A agent (legacy)
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── prompt.py
-│   │   └── callback.py
+│   ├── api/                           # 🌐 FastAPI REST API
+│   │   ├── main.py                    # Main app entry point
+│   │   ├── adk_app.py                 # ADK agents mounting
+│   │   ├── dependencies.py            # Dependency injection
+│   │   │
+│   │   ├── low_level/                 # Entity CRUD endpoints
+│   │   │   ├── characters.py          # /api/v1/characters
+│   │   │   ├── clips.py               # /api/v1/clips
+│   │   │   ├── story_templates.py     # /api/v1/story-templates
+│   │   │   ├── articles.py            # /api/v1/articles
+│   │   │   ├── streams.py             # /api/v1/streams
+│   │   │   ├── programmations.py      # /api/v1/programmations
+│   │   │   └── playlist.py            # /api/v1/playlist
+│   │   │
+│   │   ├── medium_level/              # ML service wrappers
+│   │   │   ├── tts.py                 # /api/v1/tts
+│   │   │   ├── stt.py                 # /api/v1/stt
+│   │   │   ├── wav2lip.py             # /api/v1/wav2lip
+│   │   │   └── face_detection.py      # /api/v1/face-detection
+│   │   │
+│   │   ├── high_level/                # Application workflows
+│   │   │   ├── video_generation.py    # /api/v1/video-generation
+│   │   │   ├── jesus_agents.py        # /api/v1/jesus-agents
+│   │   │   └── legacy_qa.py           # /process (deprecated)
+│   │   │
+│   │   ├── clients/                   # Internal API clients
+│   │   │   └── character_client.py
+│   │   │
+│   │   └── utils/                     # API utilities
+│   │       ├── gpu_semaphore.py
+│   │       └── mount_app.py
 │   │
-│   ├── story_generator/               # Story generation (Fred & Jamy)
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── prompt.py
-│   │   └── callback.py
+│   ├── lib/                           # 🔧 Core library classes
+│   │   ├── agents/                    # Agent base classes
+│   │   │   ├── base.py                # BaseLlmAgent
+│   │   │   ├── stateful_agent.py      # StatefulLlmAgent
+│   │   │   ├── dynamic_parallel_processor.py  # MapReduceAgent
+│   │   │   ├── callbacks.py           # Callback base classes
+│   │   │   └── stateful_callbacks.py  # State callbacks
+│   │   │
+│   │   ├── config/                    # Configuration loading
+│   │   │   └── loader.py
+│   │   │
+│   │   └── providers/                 # LLM providers
+│   │       └── llm.py
 │   │
-│   └── video_creator/                 # Orchestrator agent
-│       ├── __init__.py
-│       ├── agent.py
-│       ├── prompt.py
-│       └── callback.py
+│   ├── streaming/                     # 📺 OBS Streaming Infrastructure
+│   │   ├── models.py                  # StreamConfig, PlaylistEntry, etc.
+│   │   ├── store.py                   # Database operations
+│   │   │
+│   │   ├── video_server/              # HTML5 video player
+│   │   │   ├── app.py                 # FastAPI proxy
+│   │   │   └── static/
+│   │   │       └── index.html         # Browser source player
+│   │   │
+│   │   ├── twitch/                    # Twitch integration
+│   │   │   └── chat_reader.py         # IRC chat reader
+│   │   │
+│   │   └── agent_loop/                # Continuous agent runner
+│   │       ├── main.py
+│   │       ├── runner.py
+│   │       └── chat_store.py
+│   │
+│   ├── utils/                         # 🛠️ Shared utilities
+│   │   ├── character_loader.py        # Character loading helper
+│   │   ├── minio_client.py            # MinIO storage client
+│   │   ├── storage_interface.py       # Storage abstraction
+│   │   ├── entity_repository.py       # Entity persistence
+│   │   ├── file_manager.py            # File operations
+│   │   ├── job_store.py               # Background job tracking
+│   │   ├── subtitle_utils.py          # SRT generation
+│   │   ├── syllable_estimator.py      # Audio timing
+│   │   └── utils.py                   # General utilities
+│   │
+│   ├── video_generation/              # 🎬 Video generation pipeline
+│   │   ├── core.py                    # Core video logic
+│   │   ├── interfaces.py              # Abstract interfaces
+│   │   ├── implementations.py         # Concrete implementations
+│   │   ├── config.py                  # Generation config
+│   │   ├── story_to_video.py          # Story-to-video conversion
+│   │   └── visualizer.py              # Debug visualization
+│   │
+│   ├── video_search/                  # 🔍 Video search client
+│   │   └── client.py                  # VideoSearchClient
+│   │
+│   ├── video_server/                  # 🗄️ Entity models
+│   │   └── models.py                  # Character, VoiceSample, etc.
+│   │
+│   ├── wav2lip/                       # 👄 Wav2Lip inference
+│   │   ├── inference.py
+│   │   ├── preprocessing.py
+│   │   ├── audio.py
+│   │   └── helpers.py
+│   │
+│   └── news/                          # 📰 News fetching (for Gorafi)
+│       ├── fetcher.py
+│       ├── models.py
+│       ├── selector.py
+│       └── store.py
 │
-├── tools/                             # 🔨 CLI Tools
-│   │
-│   └── video_indexer/                 # Video dataset processing
-│       ├── pyproject.toml
-│       ├── README.md
-│       └── src/
-│           ├── __init__.py
-│           ├── cli.py                 # CLI entry point
-│           ├── pipeline.py            # Main processing pipeline
-│           ├── scene_splitter.py      # Scene detection
-│           ├── character_detector.py  # Character detection
-│           ├── transcriber.py         # Audio transcription
-│           └── visual_captioner.py    # Visual captioning (Florence)
+├── face_detection/                    # 👤 Face detection module
+│   ├── api.py
+│   ├── core.py
+│   ├── models.py
+│   ├── utils.py
+│   └── detection/
+│       └── sfd/                       # SFD face detector
 │
-├── apps/                              # 📱 Application Configurations
-│   │
-│   ├── ai_jesus/
-│   │   ├── config.yaml                # Agent and character config
-│   │   ├── characters/
-│   │   │   └── jesus.yaml
-│   │   ├── prompts/
-│   │   │   └── qa_prompt.txt
-│   │   └── README.md
-│   │
-│   ├── fred_et_jamy/
-│   │   ├── config.yaml
-│   │   ├── characters/
-│   │   │   ├── fred.yaml
-│   │   │   └── jamy.yaml
-│   │   ├── prompts/
-│   │   │   └── story_generation.txt
-│   │   ├── scorer.py                  # Parody evaluation
-│   │   └── README.md
-│   │
-│   └── obs_streamer/                  # OBS streaming infrastructure
-│       ├── docker-compose.yml
-│       ├── video_server.py
-│       ├── twitch_reader.py
-│       └── configs/
-│           └── obs/
+├── models/                            # 🧠 ML model definitions
+│   ├── wav2lip.py
+│   ├── syncnet.py
+│   └── conv.py
 │
-├── infra/                             # 🐳 Infrastructure
-│   │
-│   ├── docker/
-│   │   ├── base.Dockerfile            # Base image
-│   │   └── README.md
-│   │
-│   ├── compose.yml                    # All ML services
-│   │
-│   └── models/                        # Model checkpoints
-│       └── README.md                  # Download instructions
+├── docker/                            # 🐳 Docker configurations
+│   ├── docker_base/Dockerfile
+│   ├── docker_unified_api/Dockerfile
+│   ├── docker_tts/Dockerfile
+│   ├── docker_fr_tts/Dockerfile
+│   ├── docker_stt/Dockerfile
+│   ├── docker_entity_api/Dockerfile
+│   ├── docker_worker/Dockerfile
+│   └── streaming/                     # Streaming stack
+│       ├── obs/
+│       ├── twitch/
+│       ├── video_server/
+│       └── virtual_streamer_agent/
 │
-├── config/                            # ⚙️ Global Configuration
-│   │
-│   └── defaults.yaml                  # Default settings
+├── apps/                              # 📱 Demo/UI applications
+│   ├── agent_test_interface.py        # Agent testing UI
+│   ├── video_generation_ui.py         # Video generation UI
+│   ├── creation_interface.py          # Content creation UI
+│   └── create_video_from_dialogue_demo.py
 │
-└── data/                              # 📁 Data directory (gitignored)
-    ├── audio/
-    ├── video/
-    ├── cache/
-    └── output/
+├── scripts/                           # 🔨 Utility scripts
+│   ├── api_helpers/                   # API setup helpers
+│   │   ├── register_character.py
+│   │   ├── register_story_template.py
+│   │   ├── seed_streaming_data.py
+│   │   ├── setup_streaming_tables.py
+│   │   └── bootstrap_playlist.py
+│   │
+│   ├── batch_video_generation.py
+│   ├── batch_scene_split.py
+│   ├── generate_video_adk.py
+│   └── cest_pas_sorcier_parody_scorer.py
+│
+├── tests/                             # 🧪 Test suite
+│   ├── test_file_manager.py
+│   ├── test_map_reduce_agents.py
+│   ├── test_stateful_callbacks.py
+│   ├── test_storage.py
+│   └── test_video_generation.py
+│
+├── compose.yaml                       # Main services docker-compose
+├── compose_streaming.yml              # Streaming stack compose
+├── checkpoints/                       # Model checkpoints
+└── assets/                            # Static assets
+    └── obs_config/                    # OBS configuration
 ```
 
 ---
 
 ## Package Details
 
-### `packages/vs-core/`
+### `virtual_streamer/`
 
-The core library that all other components depend on.
-
-```toml
-# packages/vs-core/pyproject.toml
-[project]
-name = "vs-core"
-version = "0.1.0"
-description = "Virtual Streamer core library"
-requires-python = ">=3.10"
-dependencies = [
-    "pydantic>=2.0",
-    "httpx>=0.28",
-    "boto3>=1.40",
-]
-
-[project.optional-dependencies]
-dev = ["pytest", "pytest-asyncio", "httpx[http2]"]
-```
-
-**What it contains:**
-- Data models (`Character`, `VideoClip`, `Collection`)
-- API clients for all ML services
-- Storage backends (S3, local filesystem)
-- Common utilities
-
-**What it does NOT contain:**
-- ML model code (that's in services/)
-- Agent logic (that's in agents/)
-- Application-specific code
-
-### `services/wav2lip_service/`
-
-Standalone FastAPI service for Wav2Lip inference.
-
-```toml
-# services/wav2lip_service/pyproject.toml
-[project]
-name = "wav2lip-service"
-version = "0.1.0"
-dependencies = [
-    "fastapi>=0.100",
-    "uvicorn[standard]>=0.20",
-    "torch>=2.0",
-    "opencv-python>=4.6",
-    "numpy<2",
-]
-```
-
-**Dockerfile:**
-```dockerfile
-FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
-
-WORKDIR /app
-COPY . .
-RUN pip install -e .
-
-EXPOSE 8001
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]
-```
-
-### `agents/`
-
-ADK agents following Google's conventions.
-
-Each agent folder contains:
-- `agent.py` - LlmAgent definition with tools
-- `prompt.py` - Prompt templates
-- `callback.py` - Event callbacks (optional)
-
-Agents can reference other agents as sub-agents:
-
-```python
-# agents/video_creator/agent.py
-from agents.sub_agents.tts_agent.agent import tts_agent
-from agents.sub_agents.lip_sync_agent.agent import lip_sync_agent
-
-video_creator = LlmAgent(
-    name="video_creator",
-    sub_agents=[tts_agent, lip_sync_agent],
-    ...
-)
-```
-
-### `tools/video_indexer/`
-
-CLI tool for processing video datasets (not an agent, not a service).
-
-```bash
-# Example usage
-video-indexer process \
-    --input /path/to/cest_pas_sorcier/ \
-    --output /data/indexed/ \
-    --characters fred.yaml jamy.yaml
-```
-
-### `apps/`
-
-Application configurations - mostly YAML files, minimal code.
-
-```yaml
-# apps/ai_jesus/config.yaml
-name: "AI Jesus"
-description: "Q&A streamer responding to Twitch chat"
-
-character: "jesus"
-
-agents:
-  root: "qa_responder"
-  
-services:
-  tts:
-    host: "localhost"
-    port: 8003
-  wav2lip:
-    host: "localhost"
-    port: 8001
-```
-
----
-
-## UV Workspace Configuration
+The main Python package containing all application code.
 
 ```toml
 # pyproject.toml (workspace root)
 [project]
-name = "virtual-streamer-workspace"
-version = "0.1.0"
+name = "virtual-streamer"
+version = "1.0.0"
 requires-python = ">=3.10"
-
-[tool.uv.workspace]
-members = [
-    "packages/vs-core",
-    "services/wav2lip_service",
-    "services/face_detection_service",
-    "services/entity_service",
-    "tools/video_indexer",
+dependencies = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.20",
+    "pydantic>=2.0",
+    "httpx>=0.28",
+    "torch>=2.0",
+    "google-adk>=0.1.0",
+    # ... other dependencies
 ]
-
-[tool.uv.sources]
-vs-core = { workspace = true }
 ```
+
+### `virtual_streamer/agents/`
+
+ADK agents following Google ADK conventions.
+
+Each agent folder contains:
+- `agent.py` - Agent definition (REQUIRED)
+- `prompt.py` - Prompt templates
+- `schema.py` - Input/output Pydantic models (optional)
+- `callback.py` - Event callbacks (optional)
+
+**Agent Types:**
+1. **Simple agents** - Direct LLM-based agents (greeting_jesus_agent, answering_jesus_agent)
+2. **Tool agents** - Agents with external tool access (virtual_streamer_agent)
+3. **Map-reduce agents** - Parallel processing agents (rubric_builder_map_reduce)
+
+### `virtual_streamer/api/`
+
+FastAPI application with layered architecture:
+
+| Layer | Prefix | Purpose |
+|-------|--------|---------|
+| Low-level | `/api/v1/` | Entity CRUD (characters, clips, streams) |
+| Medium-level | `/api/v1/` | ML service wrappers (TTS, STT, Wav2Lip) |
+| High-level | `/api/v1/` | Application workflows (video generation) |
+| ADK | `/adk/` | Google ADK agents |
+
+### `virtual_streamer/lib/`
+
+Core library providing:
+- `BaseLlmAgent` - Base class for all agents
+- `StatefulLlmAgent` - Agent with state management
+- `MapReduceAgent` - Parallel processing agent
+- Callback base classes
+
+### `virtual_streamer/streaming/`
+
+OBS streaming infrastructure:
+- Video server (HTML5 player for browser source)
+- Twitch chat reader (IRC integration)
+- Playlist management (database-backed)
+- Agent loop (continuous video generation)
+
+### `virtual_streamer/utils/`
+
+Shared utilities including:
+- `character_loader.py` - Load characters from storage
+- `minio_client.py` - MinIO S3-compatible client
+- `job_store.py` - Background job tracking
+- `subtitle_utils.py` - SRT generation
 
 ---
 
 ## Import Patterns
 
-### From an agent:
+### From agents:
 ```python
-from vs_core.api_clients.tts import TTSClient
-from vs_core.api_clients.wav2lip import Wav2LipClient
-from vs_core.api_models.wav2lip import Wav2LipRequest
-from vs_core.models import Character
+from virtual_streamer.agents.factory import get_agent, list_agents
+from virtual_streamer.agents.greeting_jesus_agent.agent import get_greeting_jesus_agent
 ```
 
-### From a service:
+### From lib:
 ```python
-# Services have their own models that mirror vs_core.api_models
-from models import Wav2LipRequest, Wav2LipResponse
+from virtual_streamer.lib.agents import (
+    BaseLlmAgent,
+    StatefulLlmAgent,
+    MapReduceAgent,
+    MapperAgent,
+    AggregatorAgent,
+)
 ```
 
-### From a tool:
+### From utilities:
 ```python
-from vs_core.models import VideoClip, Collection
-from vs_core.storage import LocalFSClient
-```
-
-### From the main API (virtual_streamer):
-```python
-# Shared utilities
 from virtual_streamer.utils.character_loader import load_character
 from virtual_streamer.utils.minio_client import get_storage_client
 from virtual_streamer.utils.job_store import get_global_job_store
+```
 
-# Agent factory
-from virtual_streamer.agents.factory import get_agent, list_agents
-
-# Medium-level services
-from virtual_streamer.api.medium_level.tts import generate_tts
-from virtual_streamer.api.medium_level.wav2lip import generate_wav2lip
+### From API clients:
+```python
+from virtual_streamer.api.clients.character_client import CharacterClient
+from virtual_streamer.video_search.client import VideoSearchClient
 ```
 
 ---
@@ -417,4 +409,20 @@ agent = get_agent("greeting_jesus_agent")
 def _get_my_agent():
     from virtual_streamer.agents.my_agent.agent import get_my_agent
     return get_my_agent()
+```
+
+### `lib/agents/`
+
+Agent base classes for building new agents:
+
+```python
+from virtual_streamer.lib.agents import BaseLlmAgent
+
+class MyAgent(BaseLlmAgent):
+    def __init__(self):
+        super().__init__(
+            name="my_agent",
+            instruction="Your prompt here",
+            output_schema=MyOutputSchema,  # Optional
+        )
 ```
