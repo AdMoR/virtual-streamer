@@ -77,6 +77,25 @@ agents/
 | ADK Agents | ❌ No | ADK Server |
 | Video Indexer | ❌ No | CLI tool |
 
+### 6. Shared Utilities
+
+Common functionality is centralized to avoid duplication:
+
+```python
+# Character loading (used by TTS, Wav2Lip, jesus_agents, legacy_qa)
+from virtual_streamer.utils.character_loader import load_character
+character = await load_character("jesus")
+
+# Agent factory (loads agents by name)
+from virtual_streamer.agents.factory import get_agent
+agent = get_agent("greeting_jesus_agent")
+
+# Storage operations
+from virtual_streamer.utils.minio_client import get_storage_client
+storage = get_storage_client()
+await storage.upload_file(local_path, minio_key)
+```
+
 ---
 
 ## Layer Diagram
@@ -181,21 +200,28 @@ agents/
 
 ## Data Flow Examples
 
-### Example 1: AI Jesus Answering a Question
+### Example 1: AI Jesus Answering a Question (via Jesus Agents API)
 
 ```
-1. Twitch Chat → "What is the meaning of life?"
-   
-2. ADK Server invokes qa_responder agent
-   ├── qa_responder uses LLM to generate answer
-   └── Delegates to video_creator agent
+1. Client → POST /api/v1/jesus-agents/answering/submit
+   {"question": "What is the meaning of life?", "user_name": "Dany"}
 
-3. video_creator orchestrates:
-   ├── tts_agent → TTSClient → Fish TTS API → audio.wav
-   ├── lip_sync_agent → Wav2LipClient → Wav2Lip API → video.mp4
-   └── video_composer_agent → Combines + subtitles → final.mp4
+2. Background job starts:
+   ├── Agent Factory loads answering_jesus_agent
+   └── Agent generates sarcastic response text
 
-4. final.mp4 → OBS → Twitch Stream
+3. Video pipeline executes:
+   ├── load_character("jesus") → Character with voice samples
+   ├── TTS → Fish TTS API → audio.wav
+   ├── Wav2Lip → Lip-synced video.mp4
+   ├── STT → Subtitles (SRT)
+   └── FFmpeg → final.mp4 with burned subtitles
+
+4. Upload to MinIO:
+   └── generated_videos/answering_jesus_agent/{job_id}.mp4
+
+5. Client polls /video-generation/jobs/{job_id}
+   └── Returns video_url when complete
 ```
 
 ### Example 2: Fred & Jamy Video Generation

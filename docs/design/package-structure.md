@@ -86,6 +86,16 @@ virtual-streamer/
 │
 ├── agents/                            # 🤖 ADK Agents
 │   │
+│   ├── factory.py                     # 🏭 Agent factory registry
+│   │
+│   ├── greeting_jesus_agent/          # Greeting agent (AI Jesus)
+│   │   ├── agent.py
+│   │   └── prompt.py
+│   │
+│   ├── answering_jesus_agent/         # Q&A agent (AI Jesus)
+│   │   ├── agent.py
+│   │   └── prompt.py
+│   │
 │   ├── sub_agents/                    # Reusable sub-agents
 │   │   │
 │   │   ├── tts_agent/
@@ -106,7 +116,7 @@ virtual-streamer/
 │   │       ├── prompt.py
 │   │       └── callback.py
 │   │
-│   ├── qa_responder/                  # Q&A agent (AI Jesus)
+│   ├── qa_responder/                  # Q&A agent (legacy)
 │   │   ├── __init__.py
 │   │   ├── agent.py
 │   │   ├── prompt.py
@@ -359,3 +369,52 @@ from vs_core.models import VideoClip, Collection
 from vs_core.storage import LocalFSClient
 ```
 
+### From the main API (virtual_streamer):
+```python
+# Shared utilities
+from virtual_streamer.utils.character_loader import load_character
+from virtual_streamer.utils.minio_client import get_storage_client
+from virtual_streamer.utils.job_store import get_global_job_store
+
+# Agent factory
+from virtual_streamer.agents.factory import get_agent, list_agents
+
+# Medium-level services
+from virtual_streamer.api.medium_level.tts import generate_tts
+from virtual_streamer.api.medium_level.wav2lip import generate_wav2lip
+```
+
+---
+
+## Key Shared Utilities
+
+### `utils/character_loader.py`
+
+Centralized character loading used by TTS, Wav2Lip, and high-level APIs:
+
+```python
+from virtual_streamer.utils.character_loader import load_character
+
+character = await load_character("jesus")
+# Returns Character model with voice_samples, video_clip_path, etc.
+```
+
+### `agents/factory.py`
+
+Agent factory registry for dynamic agent loading:
+
+```python
+from virtual_streamer.agents.factory import get_agent, list_agents, register_agent
+
+# List available agents
+available = list_agents()  # ["greeting_jesus_agent", "answering_jesus_agent"]
+
+# Load agent by name
+agent = get_agent("greeting_jesus_agent")
+
+# Register new agent
+@register_agent("my_agent")
+def _get_my_agent():
+    from virtual_streamer.agents.my_agent.agent import get_my_agent
+    return get_my_agent()
+```

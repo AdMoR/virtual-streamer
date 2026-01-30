@@ -66,6 +66,32 @@ def create_my_map_reduce_agent(...) -> MapReduceAgent:
     ...
 ```
 
+## Agent Factory
+
+Agents can be loaded dynamically using the factory registry pattern:
+
+```python
+# agents/factory.py
+
+from virtual_streamer.agents.factory import get_agent, list_agents, register_agent
+
+# List available agents
+available = list_agents()  # ["greeting_jesus_agent", "answering_jesus_agent"]
+
+# Load an agent by name
+agent = get_agent("greeting_jesus_agent")
+
+# Register a new agent
+@register_agent("my_custom_agent")
+def _get_my_agent():
+    from virtual_streamer.agents.my_agent.agent import get_my_agent
+    return get_my_agent()
+```
+
+The factory uses lazy imports to avoid loading all agents at startup.
+
+---
+
 ## Agent Hierarchy
 
 ```
@@ -85,6 +111,92 @@ def create_my_map_reduce_agent(...) -> MapReduceAgent:
    TTSClient            Wav2LipClient         FFmpeg/Video
                        FaceDetectionClient      processing
 ```
+
+---
+
+## Jesus Character Agents
+
+These agents generate personalized responses for the "AI Jesus" character.
+
+### Greeting Jesus Agent
+
+Generates personalized greetings for new viewers, analyzing their username with "divine insight".
+
+```python
+# agents/greeting_jesus_agent/agent.py
+
+from virtual_streamer.lib.agents import BaseLlmAgent
+from virtual_streamer.agents.greeting_jesus_agent.prompt import PROMPT
+
+class GreetingJesusAgent(BaseLlmAgent):
+    def __init__(self):
+        super().__init__(
+            name="greeting_jesus_agent",
+            instruction=PROMPT,
+            output_schema=None,  # Free-form text output
+        )
+
+def get_greeting_jesus_agent() -> BaseLlmAgent:
+    return GreetingJesusAgent()
+
+root_agent = get_greeting_jesus_agent()
+```
+
+**Prompt characteristics:**
+- Speaks in French
+- Witty, sarcastic, slightly condescending
+- Analyzes username as a "prophetic sign"
+- Includes biblical references (real or invented)
+- Max 4 lines of output
+
+### Answering Jesus Agent
+
+Answers viewer questions with dark humor and biblical references.
+
+```python
+# agents/answering_jesus_agent/agent.py
+
+from virtual_streamer.lib.agents import BaseLlmAgent
+from virtual_streamer.agents.answering_jesus_agent.prompt import PROMPT
+
+class AnsweringJesusAgent(BaseLlmAgent):
+    def __init__(self):
+        super().__init__(
+            name="answering_jesus_agent",  
+            instruction=PROMPT,
+            output_schema=None,  # Free-form text output
+        )
+
+def get_answering_jesus_agent() -> BaseLlmAgent:
+    return AnsweringJesusAgent()
+
+root_agent = get_answering_jesus_agent()
+```
+
+**Prompt characteristics:**
+- Stand-up comedian pretending to be Jesus
+- Mean, sarcastic, dark humor
+- Uses French street slang
+- Calls audience "mon petit pécheur"
+- Integrates biblical references
+- ~4 sentences output
+
+### API Integration
+
+Both agents are exposed via the Jesus Agents API:
+
+```bash
+# Greeting
+POST /api/v1/jesus-agents/greeting/submit
+{"user_name": "DrPetitesFesses"}
+
+# Answering
+POST /api/v1/jesus-agents/answering/submit
+{"question": "Comment fait-on les hosties?", "user_name": "Dany"}
+```
+
+The API wraps the agent with a full video pipeline:
+`Agent → TTS → Wav2Lip → Subtitles → MinIO`
 
 ---
 

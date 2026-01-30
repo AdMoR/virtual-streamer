@@ -423,6 +423,130 @@ volumes:
 
 ---
 
+---
+
+## Jesus Agents API
+
+High-level API endpoints that wrap ADK agents with video generation pipeline.
+
+### Agent Factory
+
+Agents are loaded via a factory registry pattern (`agents/factory.py`):
+
+```python
+from virtual_streamer.agents.factory import get_agent, list_agents
+
+# Get available agents
+available = list_agents()  # ["greeting_jesus_agent", "answering_jesus_agent"]
+
+# Load an agent by name
+agent = get_agent("greeting_jesus_agent")
+```
+
+### Endpoint: `POST /api/v1/jesus-agents/greeting/submit`
+
+Generate a greeting video for a user.
+
+**Request:**
+```python
+class GreetingJesusRequest(BaseModel):
+    user_name: str                              # Username to greet
+    character_id: str = "jesus"                 # Character for TTS/Wav2Lip
+    agent_name: str = "greeting_jesus_agent"    # Agent to generate greeting
+```
+
+**Response:**
+```python
+class JesusAgentResponse(BaseModel):
+    job_id: str      # UUID for tracking
+    status: str      # "pending"
+    message: str     # Confirmation message
+```
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/jesus-agents/greeting/submit" \
+  -H "Content-Type: application/json" \
+  -d '{"user_name": "DrPetitesFesses"}'
+```
+
+### Endpoint: `POST /api/v1/jesus-agents/answering/submit`
+
+Generate a Q&A video response.
+
+**Request:**
+```python
+class AnsweringJesusRequest(BaseModel):
+    question: str                                 # Question to answer
+    user_name: str                                # User asking the question
+    character_id: str = "jesus"                   # Character for TTS/Wav2Lip
+    agent_name: str = "answering_jesus_agent"     # Agent to generate answer
+```
+
+**Response:** Same as greeting endpoint.
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/jesus-agents/answering/submit" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Comment fait-on les hosties?", "user_name": "Dany"}'
+```
+
+### Job Status
+
+Check job status using the shared video-generation jobs endpoint:
+
+```bash
+curl "http://localhost:8000/api/v1/video-generation/jobs/{job_id}"
+```
+
+**Completed Job Result:**
+```json
+{
+  "job_id": "abc-123",
+  "status": "completed",
+  "result": {
+    "video_url": "https://minio.../generated_videos/greeting_jesus_agent/abc-123.mp4",
+    "minio_video_key": "generated_videos/greeting_jesus_agent/abc-123.mp4",
+    "agent_response": "Salut DrPetitesFesses, que la paix soit avec tes...",
+    "user_name": "DrPetitesFesses",
+    "timestamp": "2026-01-30T10:30:00.000Z"
+  }
+}
+```
+
+### Pipeline
+
+Both endpoints follow the same pipeline:
+
+```
+Agent → TTS → Wav2Lip → Combine → STT → Subtitles → MinIO Upload
+```
+
+1. **Agent**: Generate text response using ADK agent
+2. **TTS**: Convert text to audio using character's voice
+3. **Wav2Lip**: Generate lip-synced video from character's reference video
+4. **Combine**: Merge video and audio tracks
+5. **STT**: Transcribe audio to SRT subtitles
+6. **Subtitles**: Burn subtitles into video
+7. **Upload**: Store final video in MinIO
+
+### Shared Utilities
+
+The implementation uses centralized utilities:
+
+```python
+# Character loading (used by TTS, Wav2Lip, legacy_qa, jesus_agents)
+from virtual_streamer.utils.character_loader import load_character
+character = await load_character("jesus")
+
+# Agent factory (used by jesus_agents)
+from virtual_streamer.agents.factory import get_agent
+agent = get_agent("greeting_jesus_agent")
+```
+
+---
+
 ## Environment Variables
 
 Each client reads from environment:
