@@ -1230,7 +1230,8 @@
 
             if (job.status === 'completed' && job.result) {
                 const metadata = job.result.metadata || {};
-                const videoUrl = metadata.video_url;
+                // Rewrite MinIO internal URLs to go through nginx proxy
+                const videoUrl = (metadata.video_url || '').replace('http://minio:9000', 'http://localhost:8080/minio');
                 
                 html += `
                     <div class="metrics">

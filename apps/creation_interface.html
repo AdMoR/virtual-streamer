@@ -904,8 +904,9 @@
                     </div>
                 `;
 
-                // Try to display video
-                const videoUrl = result.video_url || result.s3_path || result.video_path;
+                // Try to display video - rewrite MinIO URLs to go through nginx proxy
+                const rawVideoUrl = result.video_url || result.s3_path || result.video_path;
+                const videoUrl = rawVideoUrl ? rawVideoUrl.replace('http://minio:9000', 'http://localhost:8080/minio') : null;
                 if (videoUrl && (videoUrl.startsWith('http://') || videoUrl.startsWith('https://'))) {
                     videoContainer.innerHTML = `<video controls src="${videoUrl}"></video>`;
                 } else {

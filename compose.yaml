@@ -182,7 +182,7 @@ services:
       retries: 3
     restart: always
 
-  # Simple static file server for HTML apps
+  # Static file server + MinIO proxy for HTML apps
   html_apps:
     image: nginx:alpine
     container_name: html_apps
@@ -190,8 +190,11 @@ services:
       - "8080:80"
     volumes:
       - ./apps:/usr/share/nginx/html:ro
+      - ./apps/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - tts
+    depends_on:
+      - minio
     restart: unless-stopped
 
   obs:
