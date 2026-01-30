@@ -50,6 +50,8 @@ Agents are **shared resources** that multiple applications can use:
 
 One model per entity, no redundancy:
 
+> **Canonical definitions**: All data models are defined in [`virtual_streamer/video_server/models.py`](../../virtual_streamer/video_server/models.py).
+
 ```python
 # ✅ Correct: Single unified model in virtual_streamer/video_server/models.py
 class Character:

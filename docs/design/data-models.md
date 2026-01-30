@@ -50,8 +50,11 @@ A character that can appear in generated videos. Contains all information needed
 
 ### Model Definition
 
+> **Note**: The canonical model definitions are in [`virtual_streamer/video_server/models.py`](../../virtual_streamer/video_server/models.py).
+> The code examples below are illustrative; refer to the source file for the authoritative definitions.
+
 ```python
-# virtual_streamer/video_server/models.py
+# Canonical location: virtual_streamer/video_server/models.py
 
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -60,27 +63,18 @@ from datetime import datetime
 
 class VoiceSample(BaseModel):
     """Audio sample for voice cloning."""
-    sample_storage_path: str = Field(..., description="Path/key to the speaker WAV file (e.g., MinIO key)")
-    transcript: str = Field(..., description="Accurate transcript of the WAV file")
+    sample_storage_path: str = Field(...)
+    transcript: str = Field(...)
 
 
 class CharacterBase(BaseModel):
     """Base character fields for creation."""
-    name: str = Field(..., description="Display name of the character/voice")
-    description: Optional[str] = Field(None, description="Optional description")
-    video_clip_path: str = Field(
-        ..., description="Storage path or URL to the representative video clip"
-    )
-    voice_samples: List[VoiceSample] = Field(
-        ..., min_items=0, description="Samples used to define/clone the voice"
-    )
-    video_search_tag: Optional[str] = Field(
-        None, description="Tag for filtering videos in search (e.g., 'person:fred')"
-    )
-    identity_images: List[str] = Field(
-        default_factory=list,
-        description="Storage paths to identity/reference images for the character",
-    )
+    name: str
+    description: Optional[str] = None
+    video_clip_path: str
+    voice_samples: List[VoiceSample]
+    video_search_tag: Optional[str] = None
+    identity_images: List[str] = []
 
 
 class Character(CharacterBase):
@@ -92,37 +86,10 @@ class Character(CharacterBase):
     - Video: reference video for Wav2Lip lip-sync
     - Search: tag for filtering in Video Search service
     - Identity: reference images for face detection/recognition
-    
-    Examples:
-        - Fred (C'est pas Sorcier host)
-        - Jamy (C'est pas Sorcier scientist)
-        - Jesus (AI Jesus project)
     """
-    character_id: str = Field(..., description="Unique identifier for the character/voice")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-    class Config:
-        orm_mode = True
-        json_schema_extra = {
-            "example": {
-                "character_id": "fred",
-                "name": "Fred",
-                "description": "Bombastic host of C'est pas Sorcier",
-                "video_clip_path": "clips/fred_reference.mp4",
-                "voice_samples": [
-                    {
-                        "sample_storage_path": "audio/fred_sample1.wav",
-                        "transcript": "Eh bien dis donc Jamy..."
-                    }
-                ],
-                "video_search_tag": "person:fred",
-                "identity_images": [
-                    "identity_images/fred_face_1.jpg",
-                    "identity_images/fred_face_2.jpg"
-                ]
-            }
-        }
+    character_id: str
+    created_at: datetime
+    updated_at: datetime
 ```
 
 ### Video Search Tag
@@ -181,8 +148,11 @@ The API accepts multipart form data:
 
 A segment of video with associated metadata.
 
+> **Note**: The canonical model definitions are in [`virtual_streamer/video_server/models.py`](../../virtual_streamer/video_server/models.py).
+> See `VideoClip`, `VideoClipBase`, `CharacterPresence`, and related models there.
+
 ```python
-# packages/vs-core/src/vs_core/models/video_clip.py
+# Canonical location: virtual_streamer/video_server/models.py
 
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -191,10 +161,10 @@ from datetime import datetime
 
 class CharacterPresence(BaseModel):
     """Records when a character appears in a clip."""
-    character_id: str = Field(..., description="Reference to Character")
-    start_time: float = Field(..., ge=0, description="Start time in seconds")
-    end_time: float = Field(..., gt=0, description="End time in seconds")
-    confidence: Optional[float] = Field(None, ge=0, le=1, description="Detection confidence")
+    character_id: str
+    start_time: float
+    end_time: float
+    confidence: Optional[float] = None
 
 
 class VideoClip(BaseModel):
@@ -204,13 +174,11 @@ class VideoClip(BaseModel):
     Can be:
     - A source clip extracted from a larger video (Collection)
     - A generated output clip
-    
-    Metadata can be populated by the video_indexer tool.
     """
     
     # === Identity ===
-    clip_id: str = Field(..., description="Unique identifier")
-    storage_path: str = Field(..., description="Path to video file")
+    clip_id: str
+    storage_path: str
     
     # === Collection Reference ===
     collection_id: Optional[str] = Field(
