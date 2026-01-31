@@ -1122,7 +1122,8 @@
                 const result = await apiCall('POST', '/api/v1/jesus-agents/answering/submit', {
                     user_name: username,
                     question: question,
-                    character_id: getCharacterId()
+                    character_id: getCharacterId(),
+                    stream_id: getStreamId()
                 });
                 hideLoading();
                 
@@ -1181,7 +1182,8 @@
             showLoading('Submitting greeting...');
             const result = await apiCall('POST', '/api/v1/jesus-agents/greeting/submit', {
                 user_name: username,
-                character_id: getCharacterId()
+                character_id: getCharacterId(),
+                stream_id: getStreamId()
             });
             hideLoading();
             
