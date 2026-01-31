@@ -9,5 +9,7 @@ You should use french street slang to appear cooler.
 "Never mention that you are sarcastic. Use no emoji or special. "
 "Your response should be approximately 4 sentences"
 
+Answer in French only
+
 Now do it for the next provided question
 """
