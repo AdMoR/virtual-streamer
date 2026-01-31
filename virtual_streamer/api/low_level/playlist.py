@@ -91,6 +91,7 @@ async def add_to_playlist(programmation_id: str, request: PlaylistAddRequest):
         prog_id=programmation_id,
         video_key=request.video_storage_key,
         metadata=request.metadata,
+        play_once=request.play_once,
     )
     
     return entry

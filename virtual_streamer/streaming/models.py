@@ -100,3 +100,4 @@ class PlaylistAddRequest(BaseModel):
     video_storage_key: str = Field(..., description="MinIO storage key for the video")
     play_order: Optional[int] = Field(None, description="Order within playlist")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    play_once: bool = Field(default=False, description="If true, video will not be included in replay rotation")

@@ -90,7 +90,7 @@ class StreamingStoreInterface(ABC):
     # Playlist
     @abstractmethod
     async def add_to_playlist(
-        self, prog_id: str, video_key: str, metadata: Dict[str, Any] = None
+        self, prog_id: str, video_key: str, metadata: Dict[str, Any] = None, play_once: bool = False
     ) -> PlaylistEntry:
         """Add a video to a programmation's playlist."""
         pass
@@ -483,13 +483,17 @@ class MySQLStreamingStore(StreamingStoreInterface):
     # ========== Playlist ==========
 
     async def add_to_playlist(
-        self, prog_id: str, video_key: str, metadata: Dict[str, Any] = None
+        self, prog_id: str, video_key: str, metadata: Dict[str, Any] = None, play_once: bool = False
     ) -> PlaylistEntry:
         """Add a video to a programmation's playlist."""
         pool = await self._get_pool()
         entry_id = str(uuid.uuid4())
         now = datetime.utcnow()
         metadata = metadata or {}
+        
+        # Store play_once flag in metadata
+        if play_once:
+            metadata["play_once"] = True
 
         # Get next play_order
         async with pool.acquire() as conn:
@@ -557,13 +561,15 @@ class MySQLStreamingStore(StreamingStoreInterface):
                 if row:
                     return self._row_to_playlist_entry(row)
 
-                # Fallback: random from played
+                # Fallback: random from played (excluding play_once videos)
                 await cur.execute(
                     """
                     SELECT entry_id, programmation_id, video_storage_key, status,
                            play_order, metadata, created_at, played_at
                     FROM playlist_entries
                     WHERE programmation_id = %s AND status = 'played'
+                      AND (JSON_EXTRACT(metadata, '$.play_once') IS NULL 
+                           OR JSON_EXTRACT(metadata, '$.play_once') != true)
                     ORDER BY RAND()
                     LIMIT 1
                     """,

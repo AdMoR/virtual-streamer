@@ -45,6 +45,7 @@ class GreetingJesusRequest(BaseModel):
     user_name: str
     character_id: str = "jesus_short"
     agent_name: str = "greeting_jesus_agent"
+    stream_id: Optional[str] = None  # If provided, video will be added to broadcast playlist (play once)
 
 
 class AnsweringJesusRequest(BaseModel):
@@ -53,6 +54,7 @@ class AnsweringJesusRequest(BaseModel):
     user_name: str
     character_id: str = "jesus_short"
     agent_name: str = "answering_jesus_agent"
+    stream_id: Optional[str] = None  # If provided, video will be added to broadcast playlist (play once)
 
 
 class JesusAgentResponse(BaseModel):
@@ -274,6 +276,78 @@ async def _run_agent_video_job(
         await job_store.update_job(job_id, status="failed", error=str(e))
 
 
+async def _run_agent_video_job_with_broadcast(
+    job_id: str,
+    agent_name: str,
+    character_id: str,
+    user_message: str,
+    stream_id: str,
+    extra_result: Optional[Dict[str, Any]] = None,
+):
+    """
+    Agent video generation with broadcast playlist integration.
+    
+    Wraps video generation with post-processing to add the video to the
+    active programmation's playlist with play_once=True.
+    
+    Args:
+        job_id: Job identifier
+        agent_name: Name of agent to run
+        character_id: Character for TTS/Wav2Lip
+        user_message: The message to send to the agent
+        stream_id: Stream to add the video to
+        extra_result: Additional fields to include in result
+    """
+    # Step 1: Run video generation
+    await _run_agent_video_job(
+        job_id=job_id,
+        agent_name=agent_name,
+        character_id=character_id,
+        user_message=user_message,
+        extra_result=extra_result,
+    )
+    
+    # Step 2: On success, add to playlist
+    job_store = await get_global_job_store()
+    job = await job_store.get_job(job_id)
+    
+    if job is None or job["status"] != "completed":
+        logger.warning(f"[Broadcast {job_id}] Generation failed, skipping playlist")
+        return
+    
+    result = job["result"]
+    minio_video_key = result["minio_video_key"]
+    
+    # Get active programmation for the stream
+    from virtual_streamer.streaming.store import get_streaming_store
+    store = await get_streaming_store()
+    
+    current_time = datetime.now().time()
+    programmation = await store.get_active_programmation(stream_id, current_time)
+    
+    if programmation is None:
+        logger.warning(f"[Broadcast {job_id}] No active programmation for stream '{stream_id}', skipping playlist")
+        return
+    
+    # Add to playlist with play_once=True
+    entry = await store.add_to_playlist(
+        prog_id=programmation.programmation_id,
+        video_key=minio_video_key,
+        metadata={
+            "job_id": job_id,
+            "agent_name": agent_name,
+            "source": "jesus_agent",
+        },
+        play_once=True,
+    )
+    
+    # Update job result with entry_id
+    result["entry_id"] = entry.entry_id
+    result["programmation_id"] = programmation.programmation_id
+    await job_store.update_job(job_id, result=result)
+    logger.info(f"[Broadcast {job_id}] Added to playlist (play_once): {entry.entry_id}")
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -288,25 +362,44 @@ async def submit_greeting(
     
     The agent generates a personalized greeting for the user,
     then TTS + Wav2Lip + subtitles creates a video.
+    
+    If stream_id is provided, the video will be added to the broadcast
+    playlist with play_once=True (no replay).
     """
     job_store = await get_global_job_store()
     job_id = str(uuid.uuid4())
     await job_store.create_job(job_id, request.model_dump())
     
-    # Use factored background task
-    background_tasks.add_task(
-        _run_agent_video_job,
-        job_id=job_id,
-        agent_name=request.agent_name,
-        character_id=request.character_id,
-        user_message=request.user_name,  # Agent receives just the username
-        extra_result={"user_name": request.user_name},
-    )
+    extra_result = {"user_name": request.user_name}
+    
+    if request.stream_id:
+        # Use broadcast wrapper to add to playlist
+        background_tasks.add_task(
+            _run_agent_video_job_with_broadcast,
+            job_id=job_id,
+            agent_name=request.agent_name,
+            character_id=request.character_id,
+            user_message=request.user_name,
+            stream_id=request.stream_id,
+            extra_result=extra_result,
+        )
+        message = "Greeting video generation job submitted (will add to broadcast)"
+    else:
+        # Standard generation without playlist
+        background_tasks.add_task(
+            _run_agent_video_job,
+            job_id=job_id,
+            agent_name=request.agent_name,
+            character_id=request.character_id,
+            user_message=request.user_name,
+            extra_result=extra_result,
+        )
+        message = "Greeting video generation job submitted"
     
     return JesusAgentResponse(
         job_id=job_id,
         status="pending",
-        message="Greeting video generation job submitted",
+        message=message,
     )
 
 
@@ -320,23 +413,43 @@ async def submit_answering(
     
     The agent generates an answer to the question,
     then TTS + Wav2Lip + subtitles creates a video.
+    
+    If stream_id is provided, the video will be added to the broadcast
+    playlist with play_once=True (no replay).
     """
     job_store = await get_global_job_store()
     job_id = str(uuid.uuid4())
     await job_store.create_job(job_id, request.model_dump())
     
-    # Use factored background task
-    background_tasks.add_task(
-        _run_agent_video_job,
-        job_id=job_id,
-        agent_name=request.agent_name,
-        character_id=request.character_id,
-        user_message=f"Question from {request.user_name}: {request.question}",
-        extra_result={"user_name": request.user_name, "question": request.question},
-    )
+    user_message = f"Question from {request.user_name}: {request.question}"
+    extra_result = {"user_name": request.user_name, "question": request.question}
+    
+    if request.stream_id:
+        # Use broadcast wrapper to add to playlist
+        background_tasks.add_task(
+            _run_agent_video_job_with_broadcast,
+            job_id=job_id,
+            agent_name=request.agent_name,
+            character_id=request.character_id,
+            user_message=user_message,
+            stream_id=request.stream_id,
+            extra_result=extra_result,
+        )
+        message = "Answering video generation job submitted (will add to broadcast)"
+    else:
+        # Standard generation without playlist
+        background_tasks.add_task(
+            _run_agent_video_job,
+            job_id=job_id,
+            agent_name=request.agent_name,
+            character_id=request.character_id,
+            user_message=user_message,
+            extra_result=extra_result,
+        )
+        message = "Answering video generation job submitted"
     
     return JesusAgentResponse(
         job_id=job_id,
         status="pending",
-        message="Answering video generation job submitted",
+        message=message,
     )
