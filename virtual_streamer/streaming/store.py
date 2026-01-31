@@ -462,10 +462,10 @@ class MySQLStreamingStore(StreamingStoreInterface):
         
         # Handle timedelta from MySQL TIME column
         if hasattr(start_time, 'total_seconds'):
-            total_secs = int(start_time.total_seconds())
+            total_secs = int(start_time.total_seconds()) % 86400  # Wrap to 24-hour range
             start_time = time(total_secs // 3600, (total_secs % 3600) // 60, total_secs % 60)
         if hasattr(end_time, 'total_seconds'):
-            total_secs = int(end_time.total_seconds())
+            total_secs = int(end_time.total_seconds()) % 86400  # Wrap to 24-hour range
             end_time = time(total_secs // 3600, (total_secs % 3600) // 60, total_secs % 60)
         
         return MediaProgrammation(
