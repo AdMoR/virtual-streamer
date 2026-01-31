@@ -14,7 +14,7 @@ import stable_whisper
 
 
 @functools.lru_cache(maxsize=4)
-def get_whisper_model(model_name: str = "base", use_faster: bool = False):
+def get_whisper_model(model_name: str = "large-v3", use_faster: bool = True):
     """
     Get or create a cached Whisper model.
     
