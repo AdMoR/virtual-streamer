@@ -26,6 +26,7 @@ from virtual_streamer.api.low_level.streams import router as streams_router
 from virtual_streamer.api.low_level.programmations import router as programmations_router
 from virtual_streamer.api.low_level.playlist import router as playlist_router
 from virtual_streamer.api.low_level.articles import router as articles_router
+from virtual_streamer.api.low_level.db_browser import router as db_browser_router
 from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
 from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
@@ -125,6 +126,8 @@ app.include_router(articles_router, prefix="/api/v1")
 app.include_router(streams_router, prefix="/api/v1")
 app.include_router(programmations_router, prefix="/api/v1")
 app.include_router(playlist_router, prefix="/api/v1")
+# Low-level: Database browser (admin/debug)
+app.include_router(db_browser_router, prefix="/api/v1")
 
 # Medium-level: Core services
 app.include_router(tts_router, prefix="/api/v1")

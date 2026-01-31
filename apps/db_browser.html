@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Browser</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-cyan: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-purple: #a371f7;
+            --accent-red: #f85149;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        header h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .db-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .config-bar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        .config-bar label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .config-bar input {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            width: 280px;
+        }
+
+        .config-bar input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .config-bar button {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .config-bar button:hover {
+            opacity: 0.85;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 1.5rem;
+        }
+
+        .sidebar {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            height: fit-content;
+            position: sticky;
+            top: 2rem;
+        }
+
+        .sidebar h2 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .table-list {
+            list-style: none;
+        }
+
+        .table-list li {
+            padding: 0.625rem 0.75rem;
+            margin: 0.25rem 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            transition: background 0.15s, color 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .table-list li::before {
+            content: "⊞";
+            color: var(--accent-orange);
+            font-size: 0.75rem;
+        }
+
+        .table-list li:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .table-list li.active {
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-cyan);
+        }
+
+        .table-list li.active::before {
+            color: var(--accent-cyan);
+        }
+
+        .data-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-header h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-header h3::before {
+            content: "SELECT * FROM";
+            color: var(--accent-purple);
+            font-size: 0.75rem;
+        }
+
+        .row-count {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: calc(100vh - 320px);
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            background: var(--bg-tertiary);
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 0.625rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            max-width: 350px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        tr:hover td {
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        td.null-value {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        td.json-value {
+            color: var(--accent-orange);
+        }
+
+        td.number-value {
+            color: var(--accent-green);
+        }
+
+        td.date-value {
+            color: var(--accent-purple);
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .pagination button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: var(--bg-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination span {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            padding: 0 1rem;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="db-icon">⚡</div>
+            <h1>Database Browser</h1>
+        </header>
+
+        <div class="config-bar">
+            <label>API URL:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+            <button onclick="loadTables()">Connect</button>
+        </div>
+
+        <div class="main-content">
+            <aside class="sidebar">
+                <h2>Tables</h2>
+                <ul class="table-list" id="tableList">
+                    <li class="empty-state" style="padding: 2rem 0; flex-direction: column;">
+                        <span style="opacity: 0.5;">Click Connect to load tables</span>
+                    </li>
+                </ul>
+            </aside>
+
+            <main class="data-panel">
+                <div class="panel-header">
+                    <h3 id="tableTitle">Select a table</h3>
+                    <span class="row-count" id="rowCount">0 rows</span>
+                </div>
+                <div id="tableContent">
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <p>Select a table from the sidebar to view its data</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        let currentTable = null;
+        let currentOffset = 0;
+        const LIMIT = 50;
+
+        async function loadTables() {
+            const apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, '');
+            const tableList = document.getElementById('tableList');
+            
+            tableList.innerHTML = '<li><div class="loading"><div class="spinner"></div></div></li>';
+            
+            try {
+                const response = await fetch(`${apiUrl}/api/v1/db/tables`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const tables = await response.json();
+                
+                if (tables.length === 0) {
+                    tableList.innerHTML = '<li class="empty-state"><span>No tables found</span></li>';
+                    return;
+                }
+                
+                tableList.innerHTML = tables.map(table => 
+                    `<li onclick="selectTable('${table}')">${table}</li>`
+                ).join('');
+                
+            } catch (error) {
+                tableList.innerHTML = `<li class="error-message">Error: ${error.message}</li>`;
+            }
+        }
+
+        async function selectTable(tableName) {
+            currentTable = tableName;
+            currentOffset = 0;
+            
+            // Update active state in sidebar
+            document.querySelectorAll('.table-list li').forEach(li => {
+                li.classList.remove('active');
+                if (li.textContent === tableName) {
+                    li.classList.add('active');
+                }
+            });
+            
+            await loadTableData();
+        }
+
+        async function loadTableData() {
+            if (!currentTable) return;
+            
+            const apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, '');
+            const tableContent = document.getElementById('tableContent');
+            const tableTitle = document.getElementById('tableTitle');
+            const rowCount = document.getElementById('rowCount');
+            
+            tableTitle.textContent = currentTable;
+            tableContent.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            
+            try {
+                const response = await fetch(
+                    `${apiUrl}/api/v1/db/tables/${currentTable}/rows?limit=${LIMIT}&offset=${currentOffset}`
+                );
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                rowCount.textContent = `${data.total} rows`;
+                
+                if (data.rows.length === 0) {
+                    tableContent.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📭</div>
+                            <p>This table is empty</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const columns = Object.keys(data.rows[0]);
+                
+                const tableHtml = `
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    ${columns.map(col => `<th>${col}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.rows.map(row => `
+                                    <tr>
+                                        ${columns.map(col => {
+                                            const value = row[col];
+                                            const { display, className } = formatValue(value);
+                                            return `<td class="${className}" title="${escapeHtml(String(value))}">${display}</td>`;
+                                        }).join('')}
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination">
+                        <button onclick="prevPage()" ${currentOffset === 0 ? 'disabled' : ''}>← Previous</button>
+                        <span>Showing ${currentOffset + 1}–${Math.min(currentOffset + LIMIT, data.total)} of ${data.total}</span>
+                        <button onclick="nextPage()" ${currentOffset + LIMIT >= data.total ? 'disabled' : ''}>Next →</button>
+                    </div>
+                `;
+                
+                tableContent.innerHTML = tableHtml;
+                
+            } catch (error) {
+                tableContent.innerHTML = `<div class="error-message">Error loading data: ${error.message}</div>`;
+            }
+        }
+
+        function formatValue(value) {
+            if (value === null || value === undefined) {
+                return { display: 'NULL', className: 'null-value' };
+            }
+            
+            if (typeof value === 'object') {
+                return { display: JSON.stringify(value), className: 'json-value' };
+            }
+            
+            if (typeof value === 'number') {
+                return { display: String(value), className: 'number-value' };
+            }
+            
+            // Check if it looks like a date/timestamp
+            if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+                return { display: value, className: 'date-value' };
+            }
+            
+            return { display: escapeHtml(String(value)), className: '' };
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function prevPage() {
+            if (currentOffset > 0) {
+                currentOffset = Math.max(0, currentOffset - LIMIT);
+                loadTableData();
+            }
+        }
+
+        function nextPage() {
+            currentOffset += LIMIT;
+            loadTableData();
+        }
+
+        // Auto-connect on page load if URL is set
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const apiParam = urlParams.get('api');
+            if (apiParam) {
+                document.getElementById('apiUrl').value = apiParam;
+            }
+            loadTables();
+        });
+    </script>
+</body>
+</html>
