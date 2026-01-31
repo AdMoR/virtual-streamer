@@ -569,6 +569,15 @@ class GenerateFromBroadcastRequest(BaseModel):
     title: str
     user: Optional[str] = None
 
+    # ADMIN FLAG: Bypass queue limit for batch operations.
+    # When True, ignores MAX_PENDING_JOBS limit.
+    # WARNING: For admin/batch use only - do not expose to end users.
+    skip_queue_limit: bool = Field(
+        default=False,
+        description="[ADMIN] Bypass MAX_PENDING_JOBS queue limit. "
+        "For batch operations only - do not expose to end users.",
+    )
+
 
 class GenerateFromBroadcastResponse(BaseModel):
     """Response model for video generation from broadcast."""
@@ -1140,15 +1149,18 @@ async def generate_from_broadcast(
 
     story_template_id = programmation.story_template_id
 
-    # Check pending job count
-    job_store = await get_global_job_store()
-    pending_count = await job_store.count_pending_jobs(story_template_id)
+    # Check pending job count - UNLESS admin flag is set
+    # NOTE: skip_queue_limit is for admin/batch use only.
+    # It allows batch scripts to submit many jobs without hitting the queue limit.
+    if not request.skip_queue_limit:
+        job_store = await get_global_job_store()
+        pending_count = await job_store.count_pending_jobs(story_template_id)
 
-    if pending_count >= MAX_PENDING_JOBS:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Queue full: {pending_count} jobs pending for template '{story_template_id}'. Max is {MAX_PENDING_JOBS}."
-        )
+        if pending_count >= MAX_PENDING_JOBS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Queue full: {pending_count} jobs pending for template '{story_template_id}'. Max is {MAX_PENDING_JOBS}.",
+            )
 
     # Create the video generation request
     video_request = VideoGenerationRequest(
