@@ -1,14 +1,39 @@
 import json
 import logging
 
+from typing import Optional
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmResponse
+from google.genai import types
 
-from virtual_streamer.lib.agents import AfterModelCallback
+from virtual_streamer.lib.agents import AfterModelCallback, AgentCallback
 from virtual_streamer.agents.common.state_keys import STORY_OUTPUT, SENTENCES
-from virtual_streamer.agents.story_generator.schema import StoryOutput, DialogLines
+from virtual_streamer.agents.story_generator.schema import StoryOutput
+from virtual_streamer.agents.common.state_keys import SECURITY_FLAG
+from virtual_streamer.agents.guardrails_agent.schema import GuardrailsOutput, GuardrailFlag
 
 logger = logging.getLogger(__name__)
+
+
+class SafetyFlagCheckerCallback(AgentCallback):
+
+    async def __call__(
+        self,
+        callback_context: CallbackContext,
+    ) -> Optional[types.Content]:
+        security_flag_json = callback_context.state.get(SECURITY_FLAG)
+
+        if not security_flag_json:
+            return None
+        else:
+            print(type(security_flag_json), security_flag_json)
+            security_output = GuardrailsOutput.model_validate(security_flag_json)
+            security_flag = security_output.flag
+            if security_flag == GuardrailFlag.MALICIOUS:
+                return types.Content(parts=[])
+            else:
+                return None
+
 
 
 class SplitStoryCallback(AfterModelCallback):

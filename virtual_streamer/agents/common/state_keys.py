@@ -50,6 +50,8 @@ story generation. Format:
     Date: {published_date}
 """
 
+SECURITY_FLAG = "SECURITY_FLAG"
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # STORY GENERATION STATE (after StoryGeneratorAgent)
 # ═══════════════════════════════════════════════════════════════════════════════

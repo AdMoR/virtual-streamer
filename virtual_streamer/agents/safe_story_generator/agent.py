@@ -8,19 +8,22 @@ This is a standard BaseLlmAgent with:
 """
 
 import logging
-from virtual_streamer.agents.story_generator.callback import SplitStoryCallback, SafetyFlagCheckerCallback
-from virtual_streamer.agents.story_generator.prompt import StoryInstructionProvider
-from virtual_streamer.agents.story_generator.schema import StoryOutput
-from virtual_streamer.lib.agents import BaseLlmAgent
+from functools import lru_cache
 
+from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.agents.sequential_agent import SequentialAgent
+
+from virtual_streamer.agents.common.state_keys import TITLE
+from virtual_streamer.agents.story_generator.agent import get_story_generator
+from virtual_streamer.agents.guardrails_agent.agent import get_story_generation_guardrail_agent
 
 logger = logging.getLogger(__name__)
 
 
-class StoryGeneratorAgent(BaseLlmAgent):
+class SafeStoryGeneratorAgent(SequentialAgent):
     """
     Agent that generates a story from a title.
-    
+
     Uses:
     - StoryInstructionProvider to read title from state and format prompt
     - StoryOutput schema for structured output
@@ -30,21 +33,20 @@ class StoryGeneratorAgent(BaseLlmAgent):
     def __init__(self):
         super().__init__(
             name="story_generator",
-            instruction=StoryInstructionProvider(),
-            output_schema=StoryOutput,
-            before_agent_callback=[SafetyFlagCheckerCallback()],
-            after_model_callback=[SplitStoryCallback()],
+            sub_agents=[
+                get_story_generation_guardrail_agent(), get_story_generator()
+            ]
         )
 
 
-def get_story_generator() -> StoryGeneratorAgent:
+def get_safe_story_generator() -> SafeStoryGeneratorAgent:
     """
     Factory function to get the StoryGeneratorAgent singleton.
-    
+
     Returns:
         Configured StoryGeneratorAgent instance
     """
-    return StoryGeneratorAgent()
+    return SafeStoryGeneratorAgent()
 
 
-root_agent = get_story_generator()
+root_agent = get_safe_story_generator()

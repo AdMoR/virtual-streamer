@@ -4,6 +4,7 @@ from virtual_streamer.agents.guardrails_agent.prompt import PROMPT
 from virtual_streamer.agents.story_generator.prompt import META_PROMPT
 from virtual_streamer.agents.guardrails_agent.schema import GuardrailsOutput
 from virtual_streamer.lib.agents import BaseLlmAgent
+from virtual_streamer.agents.common.state_keys import SECURITY_FLAG
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class GuardrailAgent(BaseLlmAgent):
             name="guardrail_agent",
             instruction=PROMPT.format(agent_type=agent_name, agent_context=agent_context),
             output_schema=GuardrailsOutput,
+            output_key=SECURITY_FLAG
         )
 
 
