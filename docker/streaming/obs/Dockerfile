@@ -1,18 +1,52 @@
-# OBS Streaming Container
-# Based on OBS-NDI for streaming with browser source
+FROM ubuntu:24.04
 
-FROM mountaintopsolutions/docker-obs-ndi-ng:legacy-latest
+ENV DEBIAN_FRONTEND=noninteractive
+
+# --- Base Dependencies ---
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    curl wget gnupg2 ca-certificates lsb-release sudo \
+    x11vnc xserver-xorg-core xserver-xorg-video-all x11-utils x11-xserver-utils x11-apps xvfb \
+    openbox xterm novnc websockify \
+    python3 python3-websockify net-tools \
+    libglib2.0-0 libsm6 libxrender1 libxext6 \
+    mesa-utils xinit xserver-xorg-input-all \
+    dbus-x11 avahi-daemon ffmpeg pulseaudio && rm -rf /var/lib/apt/lists/*
+
+# NVIDIA: rely on host driver via NVIDIA Container Toolkit; no driver install here.
+
+# --- OBS Studio ---
+RUN add-apt-repository -y ppa:obsproject/obs-studio && apt-get update && \
+    apt-get install -y obs-studio && rm -rf /var/lib/apt/lists/*
+
+# --- DistroAV ---
+RUN wget https://github.com/DistroAV/DistroAV/releases/download/6.1.1/distroav-6.1.1-x86_64-linux-gnu.deb -O distroav.deb && \
+    dpkg -i distroav.deb || apt-get install -f -y && \
+    rm distroav.deb && rm -rf /var/lib/apt/lists/*
+
+# --- libndi (NewTek NDI support) ---
+RUN wget https://raw.githubusercontent.com/DistroAV/DistroAV/refs/heads/master/CI/libndi-get.sh && \
+    chmod +x libndi-get.sh && \
+    ./libndi-get.sh install && \
+    rm libndi-get.sh
+
+# --- Create OBS user and allow video access ---
+RUN useradd -m -s /bin/bash obs && usermod -aG video obs && \
+    mkdir -p /run/user/1001 && chown obs:obs /run/user/1001
+
+WORKDIR /home/obs
+COPY assets/start.sh /start.sh
+RUN chmod +x /start.sh
 
 # Create config directory
-RUN mkdir -p /config/obs-studio
+RUN mkdir -p /root/.config/obs-studio
 
 # Copy OBS configuration
 # Note: Scene configs can be customized per stream by mounting different configs
-COPY ./assets/obs_config/obs-studio /config/obs-studio
+COPY ./assets/obs_config/obs-studio /root/.config/obs-studio
 
 # Rename profile and scene to generic names
-RUN mv /config/obs-studio/basic/profiles/jesus /config/obs-studio/basic/profiles/Untitled 2>/dev/null || true && \
-    mv /config/obs-studio/basic/scenes/jesus_browser.json /config/obs-studio/basic/scenes/Untitled.json 2>/dev/null || true
+RUN mv /config/obs-studio/basic/profiles/jesus /root/.config/obs-studio/basic/profiles/Untitled 2>/dev/null || true && \
+    mv /config/obs-studio/basic/scenes/jesus_browser.json /root/.config/obs-studio/basic/scenes/Untitled.json 2>/dev/null || true
 
-# The browser source URL should be updated to point to the video_server container
-# This is typically done via environment variables or by mounting a custom scene config
+CMD ["/start.sh"]
