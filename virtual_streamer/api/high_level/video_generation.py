@@ -15,29 +15,20 @@ Architecture (LTX-2 Pipeline):
     3. Concatenate segments into final video
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
 import json
-import uuid
-import os
 import logging
+import os
+import uuid
 from datetime import datetime
+from typing import Optional, Dict, Any, List
 
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 # ADK imports
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from pydantic import BaseModel, Field
 
-# Agent imports
-from virtual_streamer.agents.story_generator import get_story_generator
-from virtual_streamer.agents.story_generator.schema import StoryOutput
-from virtual_streamer.agents.sentence_video_matcher import (
-    create_sentence_video_matcher,
-    SentenceVideoMatcherOutput,
-    DialogLineMatch,
-)
-from virtual_streamer.utils.minio_client import MinIOClient
 from virtual_streamer.agents.common.state_keys import (
     TITLE,
     STORY_TEMPLATE_ID,
@@ -46,7 +37,25 @@ from virtual_streamer.agents.common.state_keys import (
     VIDEO_MATCHES,
     VIDEO_COLLECTION,
 )
-
+from virtual_streamer.agents.safe_story_generator.agent import get_safe_story_generator
+from virtual_streamer.agents.sentence_video_matcher import (
+    create_sentence_video_matcher,
+    SentenceVideoMatcherOutput,
+    DialogLineMatch
+)
+# Agent imports
+from virtual_streamer.agents.story_generator import get_story_generator
+from virtual_streamer.agents.story_generator.schema import StoryOutput
+from virtual_streamer.utils.job_store import get_global_job_store
+from virtual_streamer.utils.minio_client import MinIOClient
+from virtual_streamer.utils.minio_client import get_storage_client
+# Local video processing utilities
+from virtual_streamer.utils.utils import (
+    combine_video_and_short_audio,
+    add_subtitle_from_srt,
+    combine_part_in_concat_file,
+    get_length,
+)
 # Video generation imports
 from virtual_streamer.video_generation import (
     VideoGenerationConfig,
@@ -60,21 +69,11 @@ from virtual_streamer.video_generation.ltx_client import (
     LTXVideoConfig,
     VideoGenerationParams,
 )
+from virtual_streamer.video_generation.ltx_prompt_builder import build_negative_prompt
 from virtual_streamer.video_generation.story_to_video import (
     story_to_video,
     StoryVideoResult,
 )
-from virtual_streamer.video_generation.ltx_prompt_builder import build_negative_prompt
-
-# Local video processing utilities
-from virtual_streamer.utils.utils import (
-    combine_video_and_short_audio,
-    add_subtitle_from_srt,
-    combine_part_in_concat_file,
-    get_length,
-)
-from virtual_streamer.utils.job_store import get_global_job_store
-from virtual_streamer.utils.minio_client import get_storage_client
 from virtual_streamer.video_server.models import Character, VoiceSample
 
 logger = logging.getLogger(__name__)
@@ -82,13 +81,11 @@ logger = logging.getLogger(__name__)
 # Router setup
 router = APIRouter(prefix="/video-generation", tags=["Video Generation"])
 
-
 # ============================================================================
 # Webservice Client (imported from shared module)
 # ============================================================================
 
 from virtual_streamer.api.clients.webservice_client import WebserviceClient, APIConfig
-
 
 # ============================================================================
 # ADK Agent Runners
@@ -99,7 +96,9 @@ APP_NAME = "virtual_streamer"
 
 
 async def run_story_generator(
-    title: str, story_template_id: Optional[str] = None
+        title: str,
+        story_template_id: Optional[str] = None,
+        safe: bool = True,
 ) -> StoryOutput:
     """
     Run the StoryGeneratorAgent to generate a story from a title.
@@ -107,12 +106,16 @@ async def run_story_generator(
     Args:
         title: The title/topic for story generation
         story_template_id: Optional story template ID to customize generation
+        safe: if true, use story generator version with guardrails, else use one without
 
     Returns:
         StoryOutput with title, story_plan, and dialog
     """
     # Get the story generator agent
-    story_generator = get_story_generator()
+    if safe:
+        story_generator = get_safe_story_generator()
+    else:
+        story_generator = get_story_generator()
 
     # Create session service and runner
     session_service = InMemorySessionService()
@@ -142,9 +145,9 @@ async def run_story_generator(
 
     # Run agent via runner (state_delta is applied automatically)
     async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session.id,
-        new_message=content,
+            user_id=user_id,
+            session_id=session.id,
+            new_message=content,
     ):
         if event.is_final_response():
             if event.content and event.content.parts:
@@ -172,10 +175,10 @@ async def run_story_generator(
 
 
 async def run_sentence_video_matcher(
-    sentences: List[Any],
-    collection: str,
-    character_map: Dict[str, Character],
-    config: VideoGenerationConfig,
+        sentences: List[Any],
+        collection: str,
+        character_map: Dict[str, Character],
+        config: VideoGenerationConfig,
 ) -> SentenceVideoMatcherOutput:
     """
     Run the SentenceVideoMatcher to match dialog lines to videos.
@@ -227,9 +230,9 @@ async def run_sentence_video_matcher(
 
     # Run agent via runner (state_delta is applied automatically)
     async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session.id,
-        new_message=content,
+            user_id=user_id,
+            session_id=session.id,
+            new_message=content,
     ):
         if event.is_final_response():
             if event.content and event.content.parts:
@@ -264,10 +267,10 @@ async def run_sentence_video_matcher(
 
 
 async def generate_ltx_fallback_video(
-    scene_description: str,
-    ltx_config: LTXConfig,
-    output_dir: str,
-    segment_index: int,
+        scene_description: str,
+        ltx_config: LTXConfig,
+        output_dir: str,
+        segment_index: int,
 ) -> str:
     """
     Generate a video segment using LTX-2 text-to-video.
@@ -321,13 +324,13 @@ async def generate_ltx_fallback_video(
 
 
 async def script_to_video(
-    matches: List[DialogLineMatch],
-    client: WebserviceClient,
-    config: VideoGenerationConfig,
-    ltx_config: Optional[LTXConfig] = None,
-    enable_ltx_fallback: bool = False,
-    progress_callback: Optional[callable] = None,
-    debug_upload_prefix: Optional[str] = None,
+        matches: List[DialogLineMatch],
+        client: WebserviceClient,
+        config: VideoGenerationConfig,
+        ltx_config: Optional[LTXConfig] = None,
+        enable_ltx_fallback: bool = False,
+        progress_callback: Optional[callable] = None,
+        debug_upload_prefix: Optional[str] = None,
 ) -> str:
     """
     Convert matched dialog lines to final video using webservices.
@@ -365,9 +368,9 @@ async def script_to_video(
         dialog = match.dialog_line.text
 
         if progress_callback:
-            progress_callback(f"Processing segment {i+1}/{len(matches)}: {dialog[:50]}...")
+            progress_callback(f"Processing segment {i + 1}/{len(matches)}: {dialog[:50]}...")
 
-        logger.info(f"Processing segment {i+1}/{len(matches)}: {dialog[:50]}...")
+        logger.info(f"Processing segment {i + 1}/{len(matches)}: {dialog[:50]}...")
 
         try:
             # Check if we need to generate video via LTX fallback
@@ -453,10 +456,10 @@ async def script_to_video(
             )
 
             video_segments.append(segment_path)
-            logger.info(f"  Segment {i+1} complete: {segment_path}")
+            logger.info(f"  Segment {i + 1} complete: {segment_path}")
 
         except Exception as e:
-            logger.error(f"  Error processing segment {i+1}: {e}", exc_info=True)
+            logger.error(f"  Error processing segment {i + 1}: {e}", exc_info=True)
             raise
 
     # Concatenate all segments
@@ -576,7 +579,7 @@ class GenerateFromBroadcastRequest(BaseModel):
     skip_queue_limit: bool = Field(
         default=False,
         description="[ADMIN] Bypass MAX_PENDING_JOBS queue limit. "
-        "For batch operations only - do not expose to end users.",
+                    "For batch operations only - do not expose to end users.",
     )
 
 
@@ -671,21 +674,21 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
         characters = {cid: await repo.get_character(cid) for cid in story_output.get_character_names()}
         characters = {
             cid: Character(
-            character_id=character_data["character_id"],
-            name=character_data["name"],
-            description=character_data.get("description"),
-            video_clip_path=character_data.get("video_clip_path", ""),
-            voice_samples=[
-                VoiceSample(
-                    sample_storage_path=s["sample_storage_path"],
-                    transcript=s["transcript"],
-                )
-                for s in character_data.get("voice_samples", [])
-            ],
-            video_search_tag=character_data.get("video_search_tag"),
-            identity_images=character_data.get("identity_images", []),
-            created_at=character_data.get("created_at"),
-            updated_at=character_data.get("updated_at"),
+                character_id=character_data["character_id"],
+                name=character_data["name"],
+                description=character_data.get("description"),
+                video_clip_path=character_data.get("video_clip_path", ""),
+                voice_samples=[
+                    VoiceSample(
+                        sample_storage_path=s["sample_storage_path"],
+                        transcript=s["transcript"],
+                    )
+                    for s in character_data.get("voice_samples", [])
+                ],
+                video_search_tag=character_data.get("video_search_tag"),
+                identity_images=character_data.get("identity_images", []),
+                created_at=character_data.get("created_at"),
+                updated_at=character_data.get("updated_at"),
             )
             for cid, character_data in characters.items()
         }
@@ -809,10 +812,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
 
 
 async def _run_broadcast_generation(
-    job_id: str,
-    request: VideoGenerationRequest,
-    programmation_id: str,
-    user: str,
+        job_id: str,
+        request: VideoGenerationRequest,
+        programmation_id: str,
+        user: str,
 ):
     """
     Broadcast workflow: generate video, then add to playlist.
@@ -820,21 +823,21 @@ async def _run_broadcast_generation(
     """
     # Step 1: Run video generation (reuse existing, unmodified function)
     await _run_video_generation(job_id, request)
-    
+
     # Step 2: On success, add to playlist
     job_store = await get_global_job_store()
     job = await job_store.get_job(job_id)
-    
+
     if job is None or job["status"] != "completed":
         logger.warning(f"[Broadcast {job_id}] Generation failed, skipping playlist")
         return
-    
+
     result = job["result"]
     minio_video_key = result["metadata"]["minio_video_key"]
-    
+
     from virtual_streamer.streaming.store import get_streaming_store
     store = await get_streaming_store()
-    
+
     entry = await store.add_to_playlist(
         prog_id=programmation_id,
         video_key=minio_video_key,
@@ -845,7 +848,7 @@ async def _run_broadcast_generation(
             "story_template_id": request.story_template_id,
         }
     )
-    
+
     # Update job result with entry_id
     result["entry_id"] = entry.entry_id
     await job_store.update_job(job_id, result=result)
@@ -981,7 +984,7 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
 
 @router.post("/submit", response_model=VideoGenerationResponse)
 async def submit_video_generation(
-    request: VideoGenerationRequest, background_tasks: BackgroundTasks
+        request: VideoGenerationRequest, background_tasks: BackgroundTasks
 ):
     """
     Submit a video generation job.
@@ -1066,7 +1069,7 @@ async def delete_job(job_id: str):
 
 @router.post("/generate-ltx", response_model=LTXVideoGenerationResponse)
 async def generate_video_ltx(
-    request: LTXVideoGenerationRequest, background_tasks: BackgroundTasks
+        request: LTXVideoGenerationRequest, background_tasks: BackgroundTasks
 ):
     """
     Generate video from title using LTX-2 for video+audio.
@@ -1110,7 +1113,7 @@ MAX_PENDING_JOBS = 5
 
 @router.post("/generate-from-broadcast", response_model=GenerateFromBroadcastResponse)
 async def generate_from_broadcast(
-    request: GenerateFromBroadcastRequest, background_tasks: BackgroundTasks
+        request: GenerateFromBroadcastRequest, background_tasks: BackgroundTasks
 ):
     """
     Generate video from title using the active broadcast's story template.
