@@ -7,9 +7,11 @@ model:
   # Use Claude Sonnet for high-quality creative writing
   provider: anthropic
   model: claude-sonnet-4-5-20250929 # claude-opus-4-5-20251101 # claude-sonnet-4-5-20250929
+  #provider: openai
+  #model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
   parameters:
     temperature: 0.3  # Higher temperature for creativity
-    #host: http://100.114.182.89:808
+    #api_base: http://100.114.182.89:8082
     max_tokens: 4096
 
 metadata:
