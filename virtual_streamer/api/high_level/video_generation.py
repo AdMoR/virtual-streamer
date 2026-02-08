@@ -16,9 +16,9 @@ Architecture (LTX-2 Pipeline):
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
-import asyncio
+import json
 import uuid
 import os
 import logging
@@ -37,6 +37,7 @@ from virtual_streamer.agents.sentence_video_matcher import (
     SentenceVideoMatcherOutput,
     DialogLineMatch,
 )
+from virtual_streamer.utils.minio_client import MinIOClient
 from virtual_streamer.agents.common.state_keys import (
     TITLE,
     STORY_TEMPLATE_ID,
@@ -648,6 +649,10 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             story_output: StoryOutput = await run_story_generator(
                 request.title, story_template_id=request.story_template_id
             )
+            cli = MinIOClient(bucket="debug")
+            json.dump(story_output.model_dump(), open("temp.json", "w"))
+            await cli.upload_file("temp.json", f"story/{request.story_template_id}/{job_id}.json")
+
             logger.info(
                 f"[Job {job_id}] Story generated: {story_output.title} "
                 f"with {len(story_output.dialog)} dialog lines"

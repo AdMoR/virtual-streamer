@@ -95,7 +95,7 @@ Examples:
         "--programmation-id", required=True, help="Programmation ID to generate videos for"
     )
     parser.add_argument(
-        "--count", type=int, default=50, help="Number of titles to generate (default: 50)"
+        "--count", type=int, default=5, help="Number of titles to generate (default: 50)"
     )
     parser.add_argument(
         "--api-url",
@@ -105,7 +105,7 @@ Examples:
     parser.add_argument(
         "--delay",
         type=float,
-        default=1.0,
+        default=60.0,
         help="Delay in seconds between job submissions (default: 1.0)",
     )
     parser.add_argument(

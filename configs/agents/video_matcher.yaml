@@ -10,7 +10,7 @@ model:
   parameters:
     temperature: 0.3  # Lower temperature for consistent judgements
     max_tokens: 512
-    api_base: http://100.114.182.89:8081
+    api_base: http://100.114.182.89:8082
 
 metadata:
   version: "1.0.0"

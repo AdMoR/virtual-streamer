@@ -56,4 +56,3 @@ This script will be used to generate a humoristic video. Each entry like "Fred: 
 A sequence should convey a single idea, where Fred is doing a single Action.
 
 The story should be fast paced, one idea per sentence.
-

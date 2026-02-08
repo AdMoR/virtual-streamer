@@ -6,9 +6,11 @@ name: story_generator
 model:
   # Use Claude Sonnet for high-quality creative writing
   provider: anthropic
-  model: claude-opus-4-5-20251101 # claude-sonnet-4-5-20250929
-  temperature: 0.3  # Higher temperature for creativity
-  max_tokens: 4096
+  model: claude-sonnet-4-5-20250929 # claude-opus-4-5-20251101 # claude-sonnet-4-5-20250929
+  parameters:
+    temperature: 0.3  # Higher temperature for creativity
+    #host: http://100.114.182.89:808
+    max_tokens: 4096
 
 metadata:
   version: "1.0.0"

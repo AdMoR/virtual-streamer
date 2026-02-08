@@ -220,6 +220,7 @@ services:
     environment:
       # Browser source URL points to video_server
       - VIDEO_SERVER_URL=http://video_server:5000
+      - VNC_PASSWD=headless
     devices:
       - /dev/nvidia0:/dev/nvidia0
     volumes:
