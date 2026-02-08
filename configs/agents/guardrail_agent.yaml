@@ -1,0 +1,30 @@
+# Video Matcher Agent Configuration
+# Judges video-dialogue matching using vision LLM
+
+name: video_matcher
+
+model:
+  # Use Claude Haiku for fast vision processing
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3  # Lower temperature for consistent judgements
+    max_tokens: 512
+    api_base: http://100.114.182.89:8082
+
+metadata:
+  version: "1.0.0"
+  description: "Judges if video clips match dialogue using vision LLM"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - video-matching
+    - vision
+    - contextual-analysis
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
+
