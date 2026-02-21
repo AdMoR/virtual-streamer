@@ -212,8 +212,12 @@ class TwitchClient:
         self._on_user_join_callback: Optional[Callable[[str], Any]] = None
         self._on_new_message_callback: Optional[Callable[[str, str], Any]] = None
 
+        # Active websocket reference (set during connect_to_chat)
+        self._active_websocket = None
+
         # Feedback monitoring state
         self._pending_feedback: Dict[str, PendingFeedback] = {}
+        self._feedback_asked_users: set = set()  # Users already asked (ask at most once)
         self._last_played_check: datetime = datetime.utcnow()
 
         # Start token refresh thread
@@ -270,7 +274,7 @@ class TwitchClient:
             return False
 
     def _save_refresh_token(self):
-        """Save the current refresh token to a file."""
+        """Save the current refresh token to file and .env.local."""
         try:
             with open(self.token_file, "w") as f:
                 json.dump({
@@ -278,7 +282,30 @@ class TwitchClient:
                     "updated_at": datetime.now().isoformat(),
                 }, f)
         except Exception as e:
-            logger.error(f"Failed to save refresh token: {e}")
+            logger.error(f"Failed to save refresh token to file: {e}")
+
+        # Also update .env.local so credentials stay in sync across restarts
+        try:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+            for name in (".env.local", ".env"):
+                env_path = os.path.join(project_root, name)
+                if os.path.exists(env_path):
+                    with open(env_path, "r") as f:
+                        lines = f.read().splitlines()
+                    updated = False
+                    for i, line in enumerate(lines):
+                        if line.strip().startswith("refresh_token"):
+                            lines[i] = f'refresh_token="{self.refresh_token}"'
+                            updated = True
+                            break
+                    if not updated:
+                        lines.append(f'refresh_token="{self.refresh_token}"')
+                    with open(env_path, "w") as f:
+                        f.write("\n".join(lines) + "\n")
+                    logger.info(f"Updated refresh token in {name}")
+                    break
+        except Exception as e:
+            logger.error(f"Failed to update .env.local with refresh token: {e}")
 
     def ensure_token_valid(self) -> bool:
         """Check if the current token is valid and refresh if needed."""
@@ -308,8 +335,8 @@ class TwitchClient:
                             metadata = entry.get("metadata") or {}
                             user = metadata.get("user")
                             
-                            # Skip if no user or already pending
-                            if not user or user in self._pending_feedback:
+                            # Skip if no user, already pending, or already asked once
+                            if not user or user in self._pending_feedback or user in self._feedback_asked_users:
                                 continue
                             
                             self._pending_feedback[user] = PendingFeedback(
@@ -317,6 +344,7 @@ class TwitchClient:
                                 job_id=metadata.get("job_id", ""),
                                 expires_at=time.time() + FEEDBACK_TIMEOUT,
                             )
+                            self._feedback_asked_users.add(user)
                             
                             msg = f"{user}, ta video vient de passer! + ou - ?"
                             await websocket.send(f"PRIVMSG #{self.channel_name} :{msg}")
@@ -389,6 +417,29 @@ class TwitchClient:
             if asyncio.iscoroutine(result):
                 await result
 
+    async def send_chat_message(self, message: str) -> None:
+        """
+        Send a message to the connected Twitch channel.
+
+        Can be called externally while the WebSocket is active (e.g., from MCP tools).
+
+        Args:
+            message: The message to send to the chat
+
+        Raises:
+            RuntimeError: If not connected to Twitch chat
+        """
+        if self._active_websocket is None:
+            raise RuntimeError("Not connected to Twitch chat")
+        await self._active_websocket.send(
+            f"PRIVMSG #{self.channel_name} :{message}"
+        )
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether the client has an active WebSocket connection."""
+        return self._active_websocket is not None
+
     async def connect_to_chat(self):
         """Connect to Twitch chat via WebSocket."""
         if not self.ensure_token_valid():
@@ -398,6 +449,8 @@ class TwitchClient:
 
         try:
             async with websockets.connect(self.chat_url) as websocket:
+                self._active_websocket = websocket
+
                 # Authenticate
                 await websocket.send(f"PASS oauth:{self.access_token}")
                 await websocket.send(f"NICK {self.bot_username}")
@@ -436,6 +489,7 @@ class TwitchClient:
                             logger.error(f"Error in chat connection: {e}")
                             break
                 finally:
+                    self._active_websocket = None
                     monitor_task.cancel()
 
         except websockets.exceptions.InvalidStatusCode as e:
@@ -479,11 +533,17 @@ class TwitchClient:
             # Notify callback of new message
             await self.on_new_message(username, chat_message)
 
-            # Check for pending feedback first
+            # Parse command prefix early so !generate can take precedence over feedback
+            chat_lower = chat_message.lstrip(" ").lower()
+
+            # Check for pending feedback, but let !generate take precedence
             if username in self._pending_feedback:
                 pending = self._pending_feedback[username]
-                
-                if time.time() < pending.expires_at:
+
+                if chat_lower.startswith("!generate "):
+                    # !generate takes precedence: clear feedback and fall through to command handling
+                    del self._pending_feedback[username]
+                elif time.time() < pending.expires_at:
                     # User has pending feedback - capture their message as raw feedback
                     success = await submit_feedback_to_api(
                         pending.entry_id,
@@ -491,7 +551,7 @@ class TwitchClient:
                         chat_message  # Raw message
                     )
                     del self._pending_feedback[username]
-                    
+
                     response = "Merci pour ton retour!" if success else "Erreur, désolé!"
                     await websocket.send(f"PRIVMSG #{self.channel_name} :{response}")
                     return  # Don't process as command
@@ -500,8 +560,6 @@ class TwitchClient:
                     del self._pending_feedback[username]
 
             # Check for command prefix
-            chat_lower = chat_message.lstrip(" ").lower()
-            
             if chat_lower.startswith("!allo") or chat_lower.startswith("allo"):
                 # Extract the question
                 if chat_lower.startswith("!allo"):
@@ -519,9 +577,9 @@ class TwitchClient:
                         f"PRIVMSG #{self.channel_name} :{response}"
                     )
 
-            elif chat_lower.startswith("/generate "):
+            elif chat_lower.startswith("!generate "):
                 # Extract the title from the message
-                title = chat_message[10:].strip()  # len("/generate ") = 10
+                title = chat_message[10:].strip()  # len("!generate ") = 10
                 
                 if title:
                     # Submit to API using active broadcast's story template
@@ -550,8 +608,8 @@ class TwitchClient:
                 else:
                     # No title provided
                     response = (
-                        f"{username}, utilise /generate <titre> pour générer une vidéo. "
-                        "Ex: /generate Fred se lance dans la conquête spatiale"
+                        f"{username}, utilise !generate <titre> pour générer une vidéo. "
+                        "Ex: !generate Fred se lance dans la conquête spatiale"
                     )
                     await websocket.send(
                         f"PRIVMSG #{self.channel_name} :{response}"

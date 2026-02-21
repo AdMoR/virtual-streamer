@@ -26,6 +26,7 @@ dependencies = [
     "llama-index>=0.8.62",
     "llama-index-embeddings-huggingface>=0.6.1",
     "llama-index-retrievers-bm25>=0.6.5",
+    "mcp[cli]>=1.0.0",
     "mediapipe>=0.10.14",
     "mlflow>=3.1.4",
     "num2words>=0.5.14",
