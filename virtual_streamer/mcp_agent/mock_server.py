@@ -38,9 +38,9 @@ DEFAULT_CHAT: list[dict] = [
 
 DEFAULT_QUEUE: dict = {
     "programmation_id": "mock-prog-1",
-    "pending_count": 2,
+    "pending_count": 0,
     "played_count": 5,
-    "is_replaying": False,
+    "is_replaying": True,
 }
 
 # ---------------------------------------------------------------------------

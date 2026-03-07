@@ -79,15 +79,14 @@ class MCPAgentLoop:
 
     async def run(self) -> None:
         """Start the MCP subprocess and run the agentic loop forever."""
+        cmd = self.config.mcp_server_command
         server_params = StdioServerParameters(
-            command="python",
-            args=["-m", "virtual_streamer.mcp_server"],
+            command=cmd[0],
+            args=cmd[1:],
             env={**os.environ, **self.config.to_mcp_env()},
         )
 
-        logger.info(
-            "Starting MCP server subprocess: python -m virtual_streamer.mcp_server"
-        )
+        logger.info(f"Starting MCP server subprocess: {' '.join(cmd)}")
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()

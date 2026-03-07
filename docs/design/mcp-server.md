@@ -108,8 +108,10 @@ Resources provide read-only context that the agent can reference without explici
 | `virtual-streamer://chat/recent` | Last 50 chat messages | `ChatStore` |
 | `virtual-streamer://queue/status` | Pending/played video counts | `QueueInfoProvider` |
 | `virtual-streamer://system/status` | Workload & health | `WorkloadProvider` |
-| `virtual-streamer://stream/{id}/config` | Stream + active programmation | REST API |
+| `virtual-streamer://stream/config` | Stream + active programmation | REST API |
 | `virtual-streamer://templates/list` | Available story templates | REST API |
+
+> **Note:** The original design used `virtual-streamer://stream/{id}/config` with a path parameter. The implementation uses `virtual-streamer://stream/config` instead, since `stream_id` is always available from server config — no per-request ID needed.
 
 ## Module Structure
 

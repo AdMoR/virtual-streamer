@@ -4,6 +4,7 @@ MCP Agent configuration.
 All settings are loaded from environment variables.
 """
 
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Optional
@@ -12,6 +13,11 @@ from typing import Optional
 @dataclass
 class AgentConfig:
     """Configuration for the MCP-based agentic loop."""
+
+    # MCP server command (override for testing with mock server)
+    mcp_server_command: list[str] = field(
+        default_factory=lambda: _load_mcp_server_command()
+    )
 
     # LLM endpoint (OpenAI-compatible)
     llm_base_url: str = field(
@@ -78,3 +84,17 @@ class AgentConfig:
             env["TWITCH_CHANNEL"] = self.twitch_channel
         env["TWITCH_BOT_USERNAME"] = self.twitch_bot_username
         return env
+
+
+def _load_mcp_server_command() -> list[str]:
+    """Load MCP server command from MCP_SERVER_COMMAND env var or use default.
+
+    The env var is parsed as a JSON array if it starts with '[', otherwise
+    split on colons (e.g. "python:-m:virtual_streamer.mcp_agent.mock_server").
+    """
+    raw = os.environ.get("MCP_SERVER_COMMAND")
+    if not raw:
+        return ["python", "-m", "virtual_streamer.mcp_server"]
+    if raw.startswith("["):
+        return json.loads(raw)
+    return raw.split(":")
