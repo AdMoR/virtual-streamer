@@ -146,7 +146,7 @@ async def send_twitch_message(message: str) -> dict:
 # ===================================================================
 
 @mcp.tool()
-async def create_video(title: str, story_template_id: str = "cest_pas_sorcier") -> dict:
+async def create_video(title: str, story_template_id: str) -> dict:
     """Submit a video generation job with a title and story template.
 
     Args:
