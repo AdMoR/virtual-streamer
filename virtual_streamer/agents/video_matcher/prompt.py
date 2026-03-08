@@ -9,14 +9,12 @@ Examples:
 Please provide:
 Rating: CONTEXTUAL/NEUTRAL/NOT_CONTEXTUAL/FAILURE
 Grade: count the factors supporting one rating (for ranking, 0-10)
-Reasoning: brief explanation
 
 Next you will be provided a sentence and an image.
 Judge if the image is well framed to host the dialog line.
-Justify your reasoning by describing the image and how it does not fit the sentence.
-Describe the main character, background and main colours of the scene.
 
 If there is no image, use the FAILURE flag
+please provide a json response {"rating": "...", "grade": "..."}
  """
 
 

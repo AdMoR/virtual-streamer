@@ -221,6 +221,7 @@ async def submit_feedback(entry_id: str, user: str, feedback: str) -> dict:
 @mcp.tool()
 async def greet_viewer(user_name: str, character_id: str = "jesus_short") -> dict:
     """Generate a personalized greeting video for a viewer.
+    Use this tool when a use enters the channel for the first time
 
     The agent generates a greeting analyzing the viewer's username,
     then creates a TTS + lip-sync video.

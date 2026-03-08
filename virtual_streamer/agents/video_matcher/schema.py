@@ -46,10 +46,6 @@ class VideoJudgementOutput(BaseModel):
         ge=0,
         le=10,
     )
-    reasoning: str = Field(
-        description="Brief explanation of why this rating was given, "
-                    "describing what visual elements match or don't match the dialogue."
-    )
 
 
 class VideoMatchResult(BaseModel):
@@ -84,5 +80,5 @@ class VideoMatchResult(BaseModel):
             video_path=input_data.video_path,
             rating=output_data.rating,
             grade=output_data.grade,
-            reasoning=output_data.reasoning,
+            reasoning="",
         )
