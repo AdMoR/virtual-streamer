@@ -5,12 +5,12 @@ Provides complete video generation workflow from story/title to final video.
 This is a high-level application that orchestrates ADK agents and webservices.
 
 Architecture (Traditional Pipeline):
-    1. StoryGeneratorAgent (ADK) - generates story with DialogLines from title
+    1. StoryPipelineAgent (ADK) - two-step story generation (writer → formatter) with guardrail
     2. SentenceVideoMatcher (ADK) - matches each dialog line to a video
     3. script_to_video - TTS/Wav2Lip/STT via webservice + local video combination
 
 Architecture (LTX-2 Pipeline):
-    1. StoryGeneratorAgent (ADK) - generates story with DialogLines from title
+    1. StoryPipelineAgent (ADK) - two-step story generation (writer → formatter) with guardrail
     2. story_to_video - LTX-2 text-to-video for each dialog line (video + audio)
     3. Concatenate segments into final video
 """
@@ -37,14 +37,13 @@ from virtual_streamer.agents.common.state_keys import (
     VIDEO_MATCHES,
     VIDEO_COLLECTION,
 )
-from virtual_streamer.agents.safe_story_generator.agent import get_safe_story_generator
 from virtual_streamer.agents.sentence_video_matcher import (
     create_sentence_video_matcher,
     SentenceVideoMatcherOutput,
     DialogLineMatch
 )
 # Agent imports
-from virtual_streamer.agents.story_generator import get_story_generator
+from virtual_streamer.agents.story_pipeline import get_story_pipeline
 from virtual_streamer.agents.story_generator.schema import StoryOutput
 from virtual_streamer.utils.job_store import get_global_job_store
 from virtual_streamer.utils.minio_client import MinIOClient
@@ -101,21 +100,20 @@ async def run_story_generator(
         safe: bool = True,
 ) -> StoryOutput:
     """
-    Run the StoryGeneratorAgent to generate a story from a title.
+    Run the StoryPipelineAgent to generate a story from a title.
+
+    Uses the two-step pipeline (writer → formatter) for more robust structured output.
+    Guardrails are always included.
 
     Args:
         title: The title/topic for story generation
         story_template_id: Optional story template ID to customize generation
-        safe: if true, use story generator version with guardrails, else use one without
+        safe: kept for API compatibility (pipeline always runs with guardrails)
 
     Returns:
         StoryOutput with title, story_plan, and dialog
     """
-    # Get the story generator agent
-    if safe:
-        story_generator = get_safe_story_generator()
-    else:
-        story_generator = get_story_generator()
+    story_generator = get_story_pipeline()
 
     # Create session service and runner
     session_service = InMemorySessionService()

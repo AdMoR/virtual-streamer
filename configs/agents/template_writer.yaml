@@ -1,0 +1,27 @@
+# Template Writer Agent Configuration
+# First step of the story template builder pipeline:
+# generates a detailed free-text story template from a user idea
+
+name: template_writer
+
+model:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  parameters:
+    temperature: 0.5
+
+metadata:
+  version: "1.0.0"
+  description: "Generates a detailed story template prompt from a user's creative idea"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - template-building
+    - creative-writing
+    - french
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true

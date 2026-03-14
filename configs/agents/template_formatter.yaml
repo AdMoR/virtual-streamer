@@ -1,0 +1,28 @@
+# Template Formatter Agent Configuration
+# Second step of the story template builder pipeline:
+# formats the free-text template into the StoryTemplateOutput schema
+
+name: template_formatter
+
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3
+    max_output_tokens: 32000
+    api_base: http://100.114.182.89:8082
+
+metadata:
+  version: "1.0.0"
+  description: "Formats raw template text into structured StoryTemplateOutput schema"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - template-building
+    - structured-output
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
