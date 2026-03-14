@@ -1,0 +1,26 @@
+# Story Writer Agent Configuration
+# First step of the story pipeline: generates free-text story from title
+
+name: story_writer
+
+model:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  parameters:
+    temperature: 0.3
+
+metadata:
+  version: "1.0.0"
+  description: "Generates free-text C'est pas Sorcier parody stories from titles"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - story-generation
+    - creative-writing
+    - french
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true

@@ -21,7 +21,7 @@ from virtual_streamer.agents.story_generator.callback import (
 from virtual_streamer.agents.story_generator.schema import StoryOutput
 from virtual_streamer.agents.story_pipeline.callback import StoreRawStoryCallback
 from virtual_streamer.agents.story_pipeline.prompt import StoryFormatterInstructionProvider
-
+from virtual_streamer.agents.guardrails_agent.agent import get_story_generation_guardrail_agent
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +76,7 @@ class StoryPipelineAgent(SequentialAgent):
         super().__init__(
             name="story_pipeline",
             sub_agents=[
+                get_story_generation_guardrail_agent(),
                 StoryWriterAgent(),
                 StoryFormatterAgent(),
             ],

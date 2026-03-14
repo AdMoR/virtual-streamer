@@ -1,0 +1,28 @@
+# Story Formatter Agent Configuration
+# Second step of the story pipeline: formats free-text story into StoryOutput schema
+
+name: story_formatter
+
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3
+    max_output_tokens: 32000
+    api_base: http://100.114.182.89:8082
+
+metadata:
+  version: "1.0.0"
+  description: "Formats raw story text into structured StoryOutput schema"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - story-generation
+    - structured-output
+    - french
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true

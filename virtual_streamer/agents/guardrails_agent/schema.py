@@ -9,4 +9,3 @@ class GuardrailFlag(Enum):
 
 class GuardrailsOutput(BaseModel):
     flag: GuardrailFlag
-    justification: str
