@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atari Game Loop — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-orange: #d29922;
+            --accent-purple: #a371f7;
+            --accent-red:    #f85149;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ──────────────────────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .header-icon {
+            width: 34px; height: 34px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; flex-shrink: 0;
+        }
+        header h1 {
+            font-size: 1.2rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header-spacer { flex: 1; }
+        .conn-status {
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: 0.78rem; color: var(--text-secondary);
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-secondary);
+            transition: background 0.3s;
+        }
+        .status-dot.live { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
+
+        /* ── Layout ──────────────────────────────────────────────────── */
+        .layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Sidebar ─────────────────────────────────────────────────── */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .section {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .section-title {
+            font-size: 0.7rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .count-badge {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0 0.45rem;
+            font-size: 0.65rem;
+            color: var(--text-primary);
+        }
+
+        /* ── Form ─────────────────────────────────────────────────────── */
+        .form-row { display: flex; gap: 0.5rem; }
+        input[type="text"] {
+            flex: 1; min-width: 0;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            padding: 0.45rem 0.65rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        input[type="text"]:focus { border-color: var(--accent-cyan); }
+
+        /* ── Buttons ──────────────────────────────────────────────────── */
+        button {
+            display: flex; align-items: center; gap: 0.35rem;
+            border: none; border-radius: 6px;
+            cursor: pointer; font-family: 'Outfit', sans-serif;
+            font-size: 0.8rem; font-weight: 500;
+            padding: 0.45rem 0.85rem;
+            transition: opacity 0.15s, transform 0.1s;
+            white-space: nowrap;
+        }
+        button:active { transform: scale(0.97); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-start { background: var(--accent-green); color: #000; }
+        .btn-stop  { background: var(--accent-red);   color: #fff; padding: 0.28rem 0.6rem; font-size: 0.72rem; }
+        .btn-view  { background: var(--bg-tertiary); color: var(--accent-cyan);
+                     border: 1px solid var(--border-color); padding: 0.28rem 0.6rem; font-size: 0.72rem; }
+        .btn-view.active-view { background: rgba(88,166,255,0.12); border-color: var(--accent-cyan); }
+
+        /* ── Sessions list ────────────────────────────────────────────── */
+        .sessions-list {
+            flex: 1; overflow-y: auto;
+            padding: 0.75rem;
+            display: flex; flex-direction: column; gap: 0.5rem;
+        }
+        .session-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.65rem 0.75rem;
+            transition: border-color 0.15s;
+        }
+        .session-card.active { border-color: var(--accent-cyan); background: rgba(88,166,255,0.05); }
+        .session-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+        .session-id {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+            color: var(--accent-cyan);
+        }
+        .session-rom {
+            font-size: 0.74rem; color: var(--text-secondary);
+            margin-top: 0.2rem; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .status-badge {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; font-weight: 600;
+            padding: 0.15rem 0.45rem; border-radius: 3px; flex-shrink: 0;
+        }
+        .status-badge.running { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+        .status-badge.stopped { background: rgba(248,81,73,0.12);  color: var(--accent-red); }
+        .card-actions { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
+        .empty-state { color: var(--text-secondary); font-size: 0.8rem; text-align: center; padding: 1.5rem 0; }
+
+        /* ── Main area ───────────────────────────────────────────────── */
+        .main { display: flex; flex-direction: column; overflow: hidden; }
+
+        .game-view {
+            flex: 1; min-height: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: #050508; position: relative; overflow: hidden;
+        }
+        #game-frame {
+            max-width: 100%; max-height: 100%;
+            image-rendering: pixelated; image-rendering: crisp-edges;
+            display: none;
+        }
+        .placeholder {
+            display: flex; flex-direction: column;
+            align-items: center; gap: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .placeholder .icon { font-size: 2.5rem; }
+        .placeholder p { font-size: 0.85rem; }
+
+        /* ── Info bar ─────────────────────────────────────────────────── */
+        .info-bar {
+            display: flex; align-items: stretch;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary); flex-shrink: 0;
+        }
+        .info-cell {
+            padding: 0.6rem 1rem;
+            border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column; gap: 0.15rem;
+            min-width: 0;
+        }
+        .info-cell:last-child { border-right: none; flex: 1; }
+        .info-label {
+            font-size: 0.62rem; text-transform: uppercase;
+            letter-spacing: 0.07em; color: var(--text-secondary); font-weight: 600;
+        }
+        .info-value {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+            color: var(--text-primary); white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .info-value.green { color: var(--accent-green); }
+        .info-value.red   { color: var(--accent-red); }
+
+        /* ── Action chips ─────────────────────────────────────────────── */
+        .actions-wrap { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+        .action-chip {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+            padding: 0.15rem 0.4rem; border-radius: 3px;
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        /* ── Toast ───────────────────────────────────────────────────── */
+        #toast {
+            position: fixed; bottom: 1.5rem; right: 1.5rem;
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 8px; padding: 0.6rem 1rem;
+            font-size: 0.82rem; color: var(--text-primary);
+            opacity: 0; transform: translateY(8px);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none; z-index: 100; max-width: 300px;
+        }
+        #toast.show { opacity: 1; transform: translateY(0); }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-icon">🕹️</div>
+    <h1>Atari Game Loop</h1>
+    <div class="header-spacer"></div>
+    <div class="conn-status">
+        <div class="status-dot" id="conn-dot"></div>
+        <span id="conn-label">offline</span>
+    </div>
+</header>
+
+<div class="layout">
+
+    <aside class="sidebar">
+        <div class="section">
+            <div class="section-title">Start Game</div>
+            <div class="form-row">
+                <input id="rom-input" type="text"
+                    value="ALE/Breakout-v5"
+                    placeholder="e.g. ALE/Pong-v5" />
+                <button class="btn-start" id="btn-start" onclick="startSession()">▶ Start</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">
+                Sessions
+                <span class="count-badge" id="count">0</span>
+            </div>
+        </div>
+
+        <div class="sessions-list" id="sessions-list">
+            <div class="empty-state">No sessions yet</div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="game-view">
+            <div class="placeholder" id="placeholder">
+                <div class="icon">👾</div>
+                <p>Select or start a session to watch</p>
+            </div>
+            <img id="game-frame" alt="game frame" />
+        </div>
+
+        <div class="info-bar">
+            <div class="info-cell" style="min-width:110px">
+                <div class="info-label">Session</div>
+                <div class="info-value" id="info-id">—</div>
+            </div>
+            <div class="info-cell" style="min-width:80px">
+                <div class="info-label">Status</div>
+                <div class="info-value" id="info-status">—</div>
+            </div>
+            <div class="info-cell" style="min-width:65px">
+                <div class="info-label">FPS</div>
+                <div class="info-value green" id="info-fps">—</div>
+            </div>
+            <div class="info-cell">
+                <div class="info-label">Legal Actions</div>
+                <div id="info-actions" class="info-value">—</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+    // All video_server calls proxied through nginx /game/ → video_server:5000/
+    const BASE = '/game/api/sessions';
+
+    const FRAME_MS = 100;   // 10 fps cap
+    const POLL_MS  = 3000;  // session list background refresh
+
+    // ── State ─────────────────────────────────────────────────────────
+    let sessions       = [];     // last known session list
+    let viewId         = null;   // session currently displayed
+    let frameCtrl      = null;   // AbortController for active frame loop
+    let prevBlobUrl    = null;
+    let fpsCount       = 0;
+    let fpsTs          = performance.now();
+    const actionCache  = {};     // session_id → action_meanings[]
+
+    // ── Toast ──────────────────────────────────────────────────────────
+    let toastTimer;
+    function toast(msg, color) {
+        const el = document.getElementById('toast');
+        el.textContent      = msg;
+        el.style.borderColor = color || 'var(--border-color)';
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // ── API ────────────────────────────────────────────────────────────
+    async function apiReq(path, opts) {
+        const resp = await fetch(BASE + path, opts);
+        if (!resp.ok) {
+            const txt = await resp.text().catch(() => String(resp.status));
+            throw new Error(txt);
+        }
+        return resp;
+    }
+
+    // ── Start session ──────────────────────────────────────────────────
+    async function startSession() {
+        const rom = document.getElementById('rom-input').value.trim();
+        if (!rom) return;
+        const btn = document.getElementById('btn-start');
+        btn.disabled = true;
+        try {
+            const resp = await apiReq('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rom_name: rom }),
+            });
+            const data = await resp.json();
+            if (data.action_meanings) actionCache[data.session_id] = data.action_meanings;
+            toast(`Session ${data.session_id} started`, 'var(--accent-green)');
+            await loadSessions();
+            watchSession(data.session_id);
+        } catch (e) {
+            toast(`Start failed: ${e.message}`, 'var(--accent-red)');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // ── Stop session ───────────────────────────────────────────────────
+    async function stopSession(id) {
+        try {
+            await apiReq(`/${id}`, { method: 'DELETE' });
+            toast(`Session ${id} stopped`, 'var(--accent-orange)');
+            await loadSessions();
+        } catch (e) {
+            toast(`Stop failed: ${e.message}`, 'var(--accent-red)');
+        }
+    }
+
+    // ── Session list ───────────────────────────────────────────────────
+    async function loadSessions() {
+        try {
+            const resp = await apiReq('');
+            sessions = await resp.json();
+            renderSessions();
+            setConnStatus(true);
+        } catch {
+            setConnStatus(false);
+        }
+    }
+
+    function renderSessions() {
+        document.getElementById('count').textContent = sessions.length;
+        const el = document.getElementById('sessions-list');
+
+        if (sessions.length === 0) {
+            el.innerHTML = '<div class="empty-state">No sessions yet</div>';
+            return;
+        }
+
+        const sorted = [...sessions].sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at)
+        );
+
+        el.innerHTML = sorted.map(s => `
+            <div class="session-card ${viewId === s.session_id ? 'active' : ''}">
+                <div class="session-row">
+                    <span class="session-id">${s.session_id}</span>
+                    <span class="status-badge ${s.status}">${s.status}</span>
+                </div>
+                <div class="session-rom" title="${s.rom_name}">${s.rom_name}</div>
+                <div class="card-actions">
+                    <button class="btn-view ${viewId === s.session_id ? 'active-view' : ''}"
+                            onclick="watchSession('${s.session_id}')">👁 View</button>
+                    ${s.status === 'running'
+                        ? `<button class="btn-stop" onclick="stopSession('${s.session_id}')">■ Stop</button>`
+                        : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ── Watch a session ────────────────────────────────────────────────
+    function watchSession(id) {
+        if (viewId === id) return;
+
+        // Cancel any running frame loop
+        if (frameCtrl) { frameCtrl.abort(); frameCtrl = null; }
+
+        viewId = id;
+        renderSessions();
+
+        document.getElementById('info-id').textContent = id;
+        setConnStatus(false);
+
+        const meanings = actionCache[id];
+        const actionsEl = document.getElementById('info-actions');
+        if (meanings && meanings.length) {
+            actionsEl.innerHTML = `<div class="actions-wrap">${
+                meanings.map(a => `<span class="action-chip">${a}</span>`).join('')
+            }</div>`;
+        } else {
+            actionsEl.textContent = '—';
+        }
+
+        // Kick off the frame loop
+        const ctrl = new AbortController();
+        frameCtrl = ctrl;
+        runFrameLoop(ctrl, id);
+    }
+
+    async function runFrameLoop(ctrl, id) {
+        const img    = document.getElementById('game-frame');
+        const holder = document.getElementById('placeholder');
+        fpsCount = 0; fpsTs = performance.now();
+
+        while (!ctrl.signal.aborted) {
+            const t0 = performance.now();
+
+            try {
+                const resp = await fetch(`${BASE}/${id}/frame`, { signal: ctrl.signal });
+
+                if (resp.status === 404) {
+                    // Session removed — stop watching
+                    clearFrameDisplay();
+                    break;
+                }
+
+                if (resp.ok) {
+                    const blob   = await resp.blob();
+                    const newUrl = URL.createObjectURL(blob);
+                    img.src           = newUrl;
+                    img.style.display = 'block';
+                    holder.style.display = 'none';
+                    if (prevBlobUrl) URL.revokeObjectURL(prevBlobUrl);
+                    prevBlobUrl = newUrl;
+
+                    fpsCount++;
+                    const now = performance.now();
+                    if (now - fpsTs >= 1000) {
+                        const fps = (fpsCount / ((now - fpsTs) / 1000)).toFixed(1);
+                        document.getElementById('info-fps').textContent = fps;
+                        fpsCount = 0; fpsTs = now;
+                    }
+                }
+                // 204 = frame not yet ready; just wait
+            } catch (e) {
+                if (ctrl.signal.aborted) break;
+            }
+
+            // Sync status from local session list
+            syncStatusBadge(id);
+
+            const elapsed = performance.now() - t0;
+            await sleep(Math.max(0, FRAME_MS - elapsed));
+        }
+    }
+
+    function syncStatusBadge(id) {
+        const s  = sessions.find(x => x.session_id === id);
+        const el = document.getElementById('info-status');
+        if (!s) { el.textContent = '—'; el.className = 'info-value'; return; }
+        el.textContent = s.status;
+        el.className   = 'info-value ' + (s.status === 'running' ? 'green' : 'red');
+        document.getElementById('conn-dot').className  = 'status-dot' + (s.status === 'running' ? ' live' : '');
+        document.getElementById('conn-label').textContent = s.status === 'running' ? 'live' : 'stopped';
+    }
+
+    function clearFrameDisplay() {
+        const img = document.getElementById('game-frame');
+        img.style.display = 'none';
+        document.getElementById('placeholder').style.display = 'flex';
+        document.getElementById('info-id').textContent     = '—';
+        document.getElementById('info-status').textContent = '—';
+        document.getElementById('info-fps').textContent    = '—';
+        document.getElementById('info-actions').textContent = '—';
+        document.getElementById('conn-dot').className  = 'status-dot';
+        document.getElementById('conn-label').textContent = 'offline';
+        viewId = null;
+    }
+
+    function setConnStatus(ok) {
+        if (viewId) return;   // conn dot managed by frame loop when watching
+        document.getElementById('conn-dot').className       = 'status-dot' + (ok ? ' live' : '');
+        document.getElementById('conn-label').textContent   = ok ? 'online' : 'offline';
+    }
+
+    // ── Background session poller ──────────────────────────────────────
+    (async function poll() {
+        while (true) {
+            await loadSessions();
+            await sleep(POLL_MS);
+        }
+    })();
+</script>
+</body>
+</html>

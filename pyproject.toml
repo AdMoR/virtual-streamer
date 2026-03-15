@@ -50,6 +50,7 @@ dependencies = [
     "uvicorn[standard]>=0.35.0",
     "ale-py>=0.10.1",
     "shimmy[atari]>=2.0.0",
+    "gymnasium>=1.2.3",
 ]
 
 [build-system]

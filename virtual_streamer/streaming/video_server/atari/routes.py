@@ -56,7 +56,9 @@ class CreateSessionRequest(BaseModel):
 
 def _init_env(rom_name: str):
     """Create a gymnasium Atari env (blocking — run in executor)."""
+    import ale_py
     import gymnasium as gym
+    gym.register_envs(ale_py)
     return gym.make(rom_name, render_mode="rgb_array")
 
 
@@ -76,6 +78,7 @@ async def create_game_session(req: CreateSessionRequest):
 
     # Init the gymnasium env in the executor thread (blocks I/O)
     loop = asyncio.get_event_loop()
+    logger.info("Creating new game session {} : {}".format(session_id, req.rom_name))
     try:
         env = await loop.run_in_executor(executor, _init_env, req.rom_name)
     except Exception as e:

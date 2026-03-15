@@ -77,4 +77,4 @@ async def ale_step(runtime: ALERuntime, action: int) -> bytes:
 
 def load_action_meanings(ale: Any) -> list:
     """Return list of action name strings for the loaded ROM (gymnasium env)."""
-    return list(ale.get_action_meanings())
+    return list(ale.unwrapped.get_action_meanings())
