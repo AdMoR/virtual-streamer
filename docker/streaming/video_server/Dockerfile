@@ -1,15 +1,31 @@
 # Video Server Dockerfile
-# Pure API proxy for OBS video streaming
+# API proxy + Atari game agent
 
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-RUN pip install --no-cache-dir fastapi uvicorn httpx
+# System libs for opencv and ALE
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the video server module
-COPY virtual_streamer/streaming/video_server/ /app/
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# Copy project files
+COPY pyproject.toml ./
+COPY virtual_streamer/ ./virtual_streamer/
+COPY configs/ ./configs/
+
+# Install the full package (includes ale-py and shimmy[atari])
+RUN uv pip install --system --no-cache .
 
 # Expose port
 EXPOSE 5000
@@ -19,4 +35,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:5000/health')" || exit 1
 
 # Run the server
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "virtual_streamer.streaming.video_server.app:app", "--host", "0.0.0.0", "--port", "5000"]

@@ -63,6 +63,12 @@ def _get_answering_jesus():
     return get_answering_jesus_agent()
 
 
+@register_agent("atari_action_agent")
+def _get_atari_action_agent():
+    from virtual_streamer.agents.atari_action_agent.agent import get_atari_action_agent
+    return get_atari_action_agent()
+
+
 # Add more agents here as needed:
 # @register_agent("story_generator")
 # def _get_story_generator():

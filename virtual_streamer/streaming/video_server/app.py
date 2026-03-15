@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse
 import httpx
 
+from virtual_streamer.streaming.video_server.atari.routes import router as atari_router
+
 # Configuration from environment
 API_URL = os.environ.get("API_URL", "http://virtual_streamer_api:8000")
 STREAM_ID = os.environ.get("STREAM_ID", "default")
@@ -33,6 +35,8 @@ app = FastAPI(
     description="Pure API proxy for OBS video streaming",
     version="1.0.0",
 )
+
+app.include_router(atari_router)
 
 
 @app.get("/api/next")

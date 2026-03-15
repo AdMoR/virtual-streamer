@@ -80,8 +80,17 @@ Claude Desktop / External Agent
 |------|--------|--------|
 | `list_story_templates` | EXISTING | `GET /api/v1/story-templates` |
 | `get_story_template` | EXISTING | `GET /api/v1/story-templates/{id}` |
+| `create_story_template` | EXISTING | `POST /api/v1/story-template-generation/generate` |
 | `fetch_news` | EXISTING (no REST) | Direct call to `news/fetcher.py` `RSSFetcher` |
 | `list_characters` | EXISTING | `GET /api/v1/characters` |
+
+**`create_story_template(story_concept: str)`**
+- Runs a multi-step ADK agent pipeline (guardrail → writer → formatter) to produce a
+  named, prompted, and target-lined story template.
+- **Fixed parameters** — always uses `collection="random"` (generic video pool) and
+  `character="narrator"` (off-screen voice, no on-screen asset).
+- The template is persisted immediately and its `template_id` can be passed to `create_video`.
+- ⚠ Slow (~30–60 s) — uses a 120 s HTTP timeout. Do not call during time-sensitive interactions.
 
 ### Category E: System Monitoring (Medium Priority)
 
@@ -97,7 +106,7 @@ Claude Desktop / External Agent
 |------|--------|--------|
 | `check_content_safety` | EXISTING (no REST) | Direct call to `GuardrailAgent` |
 
-**Total: 22 tools — 20 wrapping existing functionality, 1 new (`get_chat_messages`), 1 existing needing wiring (`send_twitch_message`)**
+**Total: 23 tools — 21 wrapping existing functionality, 1 new (`get_chat_messages`), 1 existing needing wiring (`send_twitch_message`)**
 
 ## MCP Resources
 
