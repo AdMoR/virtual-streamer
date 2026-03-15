@@ -8,7 +8,7 @@ model:
   model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
   parameters:
     temperature: 0.3
-    max_output_tokens: 32000
+    max_output_tokens: 64000
     api_base: http://100.114.182.89:8082
 
 metadata:

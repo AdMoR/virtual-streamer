@@ -56,12 +56,12 @@ async def _api_get(path: str, params: dict | None = None) -> dict:
         return resp.json()
 
 
-async def _api_post(path: str, body: dict | None = None) -> dict:
+async def _api_post(path: str, body: dict | None = None, timeout: float = 30.0) -> dict:
     """Make a POST request to the REST API."""
     import httpx
 
     cfg = _get_config()
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{cfg.api_url}{path}", json=body)
         resp.raise_for_status()
         return resp.json()
@@ -390,6 +390,39 @@ async def get_story_template(template_id: str) -> dict:
         template_id: The story template ID
     """
     return await _api_get(f"/api/v1/story-templates/{template_id}")
+
+
+@mcp.tool()
+async def create_story_template(story_concept: str) -> dict:
+    """Generate and register a new story template from a creative concept.
+
+    Runs an AI agent pipeline (guardrail → writer → formatter) to produce a
+    fully-formed story template, then persists it in the database.
+
+    **Fixed parameters** (not configurable via this tool):
+    - `collection`: always `"random"` — videos are drawn from the generic random
+      pool, not from a character- or show-specific collection.
+    - `character`: always `"narrator"` — an off-screen voice with no on-screen
+      character asset. The generated content is designed for narrator-only delivery.
+
+    The returned template can immediately be used with `create_video` as the
+    `story_template_id`. The `template_id` is derived from the generated name
+    (lowercased, spaces replaced with underscores).
+
+    ⚠ This call is slow (~30–60 s) because it runs a multi-step LLM pipeline.
+    Do not call it during time-sensitive interactions.
+
+    Args:
+        story_concept: Creative description of the story idea — tone, scenario
+            type, comedic style, and any thematic constraints. Example:
+            "A parody documentary where an AI tries to understand why humans
+            love eating cereal at midnight."
+    """
+    return await _api_post(
+        "/api/v1/story-template-generation/generate",
+        {"story_concept": story_concept},
+        timeout=120.0,
+    )
 
 
 @mcp.tool()

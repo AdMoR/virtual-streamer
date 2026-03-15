@@ -269,6 +269,58 @@ async def update_character(
     )
 
 
+@router.post("/{character_id}/identity-images", response_model=Character)
+async def add_identity_images(
+    character_id: str,
+    identity_files: List[UploadFile] = File(..., description="Image files to append"),
+):
+    """Appends new identity images to an existing Character without replacing existing ones."""
+    storage = get_storage_client()
+    repo = get_entity_repository()
+
+    existing = await repo.get_character(character_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Character not found"
+        )
+
+    existing_images = existing.get("identity_images", [])
+
+    new_paths = []
+    for img_file in identity_files:
+        file_content = await img_file.read()
+        content_type = "image/jpeg"
+        if img_file.filename.lower().endswith(".png"):
+            content_type = "image/png"
+        elif img_file.filename.lower().endswith(".webp"):
+            content_type = "image/webp"
+        storage_key = f"{PREFIX_IDENTITY_IMAGES}{character_id}/{img_file.filename}"
+        await storage.put_object(storage_key, file_content, content_type=content_type)
+        new_paths.append(storage_key)
+
+    character_data = await repo.update_character(
+        character_id, identity_images=existing_images + new_paths
+    )
+
+    return Character(
+        character_id=character_data["character_id"],
+        name=character_data["name"],
+        description=character_data["description"],
+        video_clip_path=character_data["video_clip_path"],
+        voice_samples=[
+            VoiceSample(
+                sample_storage_path=s["sample_storage_path"],
+                transcript=s["transcript"],
+            )
+            for s in character_data["voice_samples"]
+        ],
+        video_search_tag=character_data.get("video_search_tag"),
+        identity_images=character_data.get("identity_images", []),
+        created_at=character_data["created_at"],
+        updated_at=character_data["updated_at"],
+    )
+
+
 @router.delete("/{character_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_character(character_id: str):
     """Deletes a Character definition (metadata only, files remain in MinIO)."""

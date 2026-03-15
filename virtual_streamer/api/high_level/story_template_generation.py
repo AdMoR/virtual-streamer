@@ -12,7 +12,6 @@ Orchestrates the full workflow:
 
 import logging
 import uuid
-from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from google.adk.runners import Runner
@@ -38,6 +37,10 @@ APP_NAME = "story_template_generation"
 # =============================================================================
 
 
+FIXED_COLLECTION = "random"
+FIXED_CHARACTER_ID = "narrator"
+
+
 class StoryTemplateGenerationRequest(BaseModel):
     """Request to generate and register a new story template."""
 
@@ -45,20 +48,8 @@ class StoryTemplateGenerationRequest(BaseModel):
         ...,
         description=(
             "The creative idea for the story template. "
-            "Describe the tone, characters, scenario type, and comedic style you want. "
+            "Describe the tone, scenario type, and comedic style you want. "
             "Example: 'A parody of C\\'est pas Sorcier where Fred launches a startup.'"
-        ),
-    )
-    collection: str = Field(
-        ...,
-        description="Qdrant collection name for video search (e.g. 'cps_videos').",
-    )
-    character_ids: List[str] = Field(
-        default_factory=list,
-        description=(
-            "Character IDs to associate with this template. "
-            "The agent will suggest characters in the prompt text, "
-            "but only IDs listed here are wired to the template for TTS/video lookup."
         ),
     )
 
@@ -150,31 +141,21 @@ async def generate_story_template(request: StoryTemplateGenerationRequest):
     """
     Generate a new story template from a creative concept and register it.
 
+    **Fixed parameters** (not configurable via this endpoint):
+    - `collection`: always `"random"` — videos are drawn from the generic random pool,
+      not from a character- or show-specific collection.
+    - `character_ids`: always `["narrator"]` — the narrator is an off-screen voice
+      with no on-screen character asset. No other characters are wired to this template.
+
     **Workflow**:
     1. Runs `StoryTemplateBuilderAgent` (guardrail → writer → formatter).
-       The writer fetches available characters from the API and injects them
-       into the prompt to guide character selection.
+       The writer generates a narrator-driven prompt suited for off-screen delivery.
     2. The agent produces `name`, `prompt`, and `target_lines`.
-    3. These are combined with the `collection` and `character_ids` from the
-       request and persisted via the same repository as `POST /story-templates`.
+    3. These are persisted with the fixed `collection="random"` and
+       `character_ids=["narrator"]` via the same repository as `POST /story-templates`.
     4. The created `StoryTemplate` is returned alongside the raw agent output.
-
-    **Note**: `character_ids` must reference characters that already exist.
-    The agent will describe characters in the prompt text, but only IDs
-    you provide here are wired to the template for TTS and video lookup.
     """
-    # Step 1: verify character_ids exist before running the (expensive) agent
-    if request.character_ids:
-        repo = get_entity_repository()
-        for char_id in request.character_ids:
-            char = await repo.get_character(char_id)
-            if char is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Character '{char_id}' not found. Create it first.",
-                )
-
-    # Step 2: run the agent pipeline
+    # Run the agent pipeline
     try:
         agent_output = await _run_template_builder(request.story_concept)
     except RuntimeError as e:
@@ -185,19 +166,19 @@ async def generate_story_template(request: StoryTemplateGenerationRequest):
         f"({agent_output.target_lines} lines)"
     )
 
-    # Step 3: derive template_id from name (same logic as low-level endpoint)
+    # Derive template_id from name (same logic as low-level endpoint)
     template_id = agent_output.name.lower().replace(" ", "_").replace("-", "_")
 
-    # Step 4: persist via repository
+    # Persist via repository with fixed collection and narrator character
     repo = get_entity_repository()
     try:
         template_data = await repo.create_story_template(
             template_id=template_id,
             name=agent_output.name,
             prompt=agent_output.prompt,
-            collection=request.collection,
+            collection=FIXED_COLLECTION,
             target_lines=agent_output.target_lines,
-            character_ids=request.character_ids,
+            character_ids=[FIXED_CHARACTER_ID],
         )
     except Exception as e:
         logger.error(f"Failed to persist story template: {e}", exc_info=True)
