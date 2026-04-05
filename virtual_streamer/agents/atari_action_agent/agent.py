@@ -14,12 +14,14 @@ from pydantic import BaseModel
 from virtual_streamer.lib.agents import BaseLlmAgent
 from virtual_streamer.agents.atari_action_agent.prompt import ATARI_ACTION_PROMPT
 
+# Key shared with atari_planning_agent (avoid circular import by inlining)
+_SESSION_KEY_PLAN = "atari_plan"
+
 logger = logging.getLogger(__name__)
 
 
 class AtariActionOutput(BaseModel):
     action: str       # must match a legal action name exactly
-    reasoning: str
 
 
 class InjectGameFrameCallback:
@@ -45,20 +47,41 @@ class InjectGameFrameCallback:
         return None
 
 
+class InjectPlanCallback:
+    """BeforeModelCallback: injects the current plan from ADK session state as text."""
+
+    async def __call__(
+        self,
+        callback_context: CallbackContext,
+        llm_request: LlmRequest,
+    ) -> Optional[types.Content]:
+        plan_json = callback_context.state.get(_SESSION_KEY_PLAN)
+        if plan_json:
+            llm_request.contents[0].parts.append(
+                types.Part(text=f"\nCurrent strategic plan: {plan_json}")
+            )
+        return None
+
+
 class AtariActionAgent(BaseLlmAgent):
 
     def __init__(self):
-        self._cb = InjectGameFrameCallback()
+        _frame_cb = InjectGameFrameCallback()
         super().__init__(
             name="atari_action_agent",
             instruction=ATARI_ACTION_PROMPT,
-            output_schema=AtariActionOutput,
-            before_model_callback=self._cb,
+            #output_schema=AtariActionOutput,
+            before_model_callback=[InjectPlanCallback(), _frame_cb],
         )
+        # Keep a reference to the frame callback for set_frame()
+        self._frame_cb = _frame_cb
 
     def set_frame(self, jpeg: bytes) -> None:
-        self._cb.set_frame(jpeg)
+        self._frame_cb.set_frame(jpeg)
 
 
 def get_atari_action_agent() -> AtariActionAgent:
     return AtariActionAgent()
+
+
+root_agent = get_atari_action_agent()

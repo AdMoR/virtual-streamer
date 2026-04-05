@@ -50,10 +50,10 @@ def _step_env(env: Any, action: int):
 
 
 def _encode_frame(rgb: np.ndarray) -> bytes:
-    """Resize to 320×210, JPEG quality=75. Returns bytes."""
-    img = cv2.resize(rgb, (320, 210))
+    """Upscale to 640×420 with nearest-neighbour (crisp pixels), JPEG quality=90. Returns bytes."""
+    img = cv2.resize(rgb, (640, 420), interpolation=cv2.INTER_NEAREST)
     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    _, buf = cv2.imencode(".jpg", img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+    _, buf = cv2.imencode(".jpg", img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
     return buf.tobytes()
 
 

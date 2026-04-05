@@ -133,7 +133,9 @@
         button:active { transform: scale(0.97); }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-start { background: var(--accent-green); color: #000; }
-        .btn-stop  { background: var(--accent-red);   color: #fff; padding: 0.28rem 0.6rem; font-size: 0.72rem; }
+        .btn-stop   { background: var(--accent-red);    color: #fff; padding: 0.28rem 0.6rem; font-size: 0.72rem; }
+        .btn-delete { background: var(--bg-tertiary);  color: var(--accent-red);
+                      border: 1px solid rgba(248,81,73,0.4); padding: 0.28rem 0.6rem; font-size: 0.72rem; }
         .btn-view  { background: var(--bg-tertiary); color: var(--accent-cyan);
                      border: 1px solid var(--border-color); padding: 0.28rem 0.6rem; font-size: 0.72rem; }
         .btn-view.active-view { background: rgba(88,166,255,0.12); border-color: var(--accent-cyan); }
@@ -180,7 +182,8 @@
             background: #050508; position: relative; overflow: hidden;
         }
         #game-frame {
-            max-width: 100%; max-height: 100%;
+            width: 100%; height: 100%;
+            object-fit: contain;
             image-rendering: pixelated; image-rendering: crisp-edges;
             display: none;
         }
@@ -316,8 +319,8 @@
     // All video_server calls proxied through nginx /game/ → video_server:5000/
     const BASE = '/game/api/sessions';
 
-    const FRAME_MS = 100;   // 10 fps cap
-    const POLL_MS  = 3000;  // session list background refresh
+    const FRAME_MS = 1000;   // 10 fps cap
+    const POLL_MS  = 5000;  // session list background refresh
 
     // ── State ─────────────────────────────────────────────────────────
     let sessions       = [];     // last known session list
@@ -375,7 +378,7 @@
         }
     }
 
-    // ── Stop session ───────────────────────────────────────────────────
+    // ── Stop session (running → stopped) ──────────────────────────────
     async function stopSession(id) {
         try {
             await apiReq(`/${id}`, { method: 'DELETE' });
@@ -383,6 +386,18 @@
             await loadSessions();
         } catch (e) {
             toast(`Stop failed: ${e.message}`, 'var(--accent-red)');
+        }
+    }
+
+    // ── Delete session (stopped → removed from store) ──────────────────
+    async function deleteSession(id) {
+        try {
+            await apiReq(`/${id}`, { method: 'DELETE' });
+            toast(`Session ${id} deleted`, 'var(--text-secondary)');
+            if (viewId === id) clearFrameDisplay();
+            await loadSessions();
+        } catch (e) {
+            toast(`Delete failed: ${e.message}`, 'var(--accent-red)');
         }
     }
 
@@ -422,8 +437,8 @@
                     <button class="btn-view ${viewId === s.session_id ? 'active-view' : ''}"
                             onclick="watchSession('${s.session_id}')">👁 View</button>
                     ${s.status === 'running'
-                        ? `<button class="btn-stop" onclick="stopSession('${s.session_id}')">■ Stop</button>`
-                        : ''}
+                        ? `<button class="btn-stop"   onclick="stopSession('${s.session_id}')">■ Stop</button>`
+                        : `<button class="btn-delete" onclick="deleteSession('${s.session_id}')">🗑 Delete</button>`}
                 </div>
             </div>
         `).join('');

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Atari Player</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+        }
+
+        #frame {
+            /* Scale up the 320×210 ALE frame to fill the viewport while
+               keeping pixels crisp — ideal for OBS browser source */
+            max-width: 100vw;
+            max-height: 100vh;
+            width: auto;
+            height: auto;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .badge {
+            background: rgba(0, 0, 0, 0.65);
+            color: #e0e0e0;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            letter-spacing: 0.04em;
+        }
+
+        .badge.live {
+            color: #ff4444;
+        }
+
+        #status-screen {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: #0a0a0a;
+        }
+
+        #status-screen .title {
+            color: #ff4444;
+            font-size: 18px;
+            font-weight: bold;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        #status-screen .sub {
+            color: #666;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+        }
+
+        .dot {
+            display: inline-block;
+            animation: blink 1.2s step-start infinite;
+        }
+        .dot:nth-child(2) { animation-delay: 0.4s; }
+        .dot:nth-child(3) { animation-delay: 0.8s; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<img id="frame" alt="" />
+
+<div id="overlay">
+    <span class="badge live" id="badge-game">—</span>
+    <span class="badge" id="badge-fps">— fps</span>
+</div>
+
+<div id="status-screen">
+    <div class="title">ATARI</div>
+    <div class="sub" id="status-msg">
+        Waiting for session<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+    </div>
+</div>
+
+<script>
+    const FRAME_INTERVAL_MS = 100;   // 10 fps cap
+    const SESSION_POLL_MS   = 4000;  // re-check session list every 4 s
+
+    const frameImg     = document.getElementById('frame');
+    const overlay      = document.getElementById('overlay');
+    const statusScreen = document.getElementById('status-screen');
+    const statusMsg    = document.getElementById('status-msg');
+    const badgeGame    = document.getElementById('badge-game');
+    const badgeFps     = document.getElementById('badge-fps');
+
+    let currentSessionId = null;
+    let prevBlobUrl      = null;
+    let running          = false;
+
+    // FPS tracking
+    let fpsFrameCount = 0;
+    let fpsLastTime   = performance.now();
+
+    function updateFps() {
+        const now  = performance.now();
+        const diff = (now - fpsLastTime) / 1000;
+        if (diff >= 1) {
+            const fps = (fpsFrameCount / diff).toFixed(1);
+            badgeFps.textContent = fps + ' fps';
+            fpsFrameCount = 0;
+            fpsLastTime   = now;
+        }
+    }
+
+    function showStatus(msg) {
+        statusScreen.style.display = 'flex';
+        overlay.style.display      = 'none';
+        statusMsg.innerHTML = msg;
+    }
+
+    function showGame(romName) {
+        statusScreen.style.display = 'none';
+        overlay.style.display      = 'flex';
+        badgeGame.textContent      = romName || '—';
+    }
+
+    // -----------------------------------------------------------------------
+    // Session discovery: returns the latest running session or null
+    // -----------------------------------------------------------------------
+    async function findLatestSession() {
+        try {
+            const resp = await fetch('/api/sessions');
+            if (!resp.ok) return null;
+            const sessions = await resp.json();
+            const active = sessions.filter(s => s.status === 'running');
+            if (active.length === 0) return null;
+            active.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            return active[0];
+        } catch {
+            return null;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Frame fetch loop — runs until session disappears or stops
+    // -----------------------------------------------------------------------
+    async function frameLoop(sessionId, romName) {
+        showGame(romName);
+
+        while (currentSessionId === sessionId) {
+            const t0 = performance.now();
+
+            try {
+                const resp = await fetch(`/api/sessions/${sessionId}/frame`);
+
+                if (resp.status === 204) {
+                    // Frame not yet available — first iteration
+                } else if (resp.ok) {
+                    const blob   = await resp.blob();
+                    const newUrl = URL.createObjectURL(blob);
+                    frameImg.src = newUrl;
+                    if (prevBlobUrl) URL.revokeObjectURL(prevBlobUrl);
+                    prevBlobUrl = newUrl;
+                    fpsFrameCount++;
+                    updateFps();
+                } else if (resp.status === 404) {
+                    // Session gone
+                    break;
+                }
+            } catch {
+                // Network hiccup — keep trying
+            }
+
+            // Enforce 10 fps cap
+            const elapsed = performance.now() - t0;
+            const delay   = Math.max(0, FRAME_INTERVAL_MS - elapsed);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Session watcher — polls for the latest running session
+    // -----------------------------------------------------------------------
+    async function sessionWatcher() {
+        while (true) {
+            const session = await findLatestSession();
+
+            if (!session) {
+                // No active session
+                if (currentSessionId !== null) {
+                    currentSessionId = null;
+                    showStatus('Waiting for session<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>');
+                }
+            } else if (session.session_id !== currentSessionId) {
+                // New (or first) session found — switch to it
+                currentSessionId = session.session_id;
+                frameLoop(session.session_id, session.rom_name);
+            }
+
+            await new Promise(r => setTimeout(r, SESSION_POLL_MS));
+        }
+    }
+
+    sessionWatcher();
+</script>
+</body>
+</html>

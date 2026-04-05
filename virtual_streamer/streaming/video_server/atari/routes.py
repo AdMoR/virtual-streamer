@@ -108,12 +108,20 @@ async def create_game_session(req: CreateSessionRequest):
 
 @router.delete("/{session_id}")
 async def stop_game_session(session_id: str):
-    """Stop a running session. The game loop exits on its next iteration."""
+    """
+    Stop a running session (sets status=stopped, loop exits on next iteration).
+    If the session is already stopped, delete it from the store entirely.
+    """
     session = get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    set_status(session_id, GameStatus.STOPPED)
-    return {"status": "stopped"}
+
+    if session.status == GameStatus.RUNNING:
+        set_status(session_id, GameStatus.STOPPED)
+        return {"status": "stopped"}
+    else:
+        delete_session(session_id)
+        return {"status": "deleted"}
 
 
 @router.get("")
