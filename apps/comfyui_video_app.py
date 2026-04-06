@@ -1,7 +1,7 @@
 """
-ComfyUI Video Generator - Streamlit App
+LTX Video Generator - Streamlit App
 
-A web interface for generating videos using LTX-2 through ComfyUI.
+A web interface for generating videos using LTX-2 via WanGP (Gradio API).
 
 Features:
 - Single Prompt Mode: Generate a single video from a text prompt
@@ -26,7 +26,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from virtual_streamer.video_generation.ltx_client import (
-    LTXVideoClient,
+    WanGPLTXClient,
     LTXVideoConfig,
     VideoGenerationParams,
     VideoGenerationResult,
@@ -128,7 +128,7 @@ async def generate_video_async(
         st.session_state.status_message = message
         progress_placeholder.progress(progress, text=message)
     
-    async with LTXVideoClient(config) as client:
+    async with WanGPLTXClient(config) as client:
         result = await client.generate_video(
             params=params,
             output_dir=output_dir,
@@ -157,7 +157,7 @@ async def generate_story_video_async(
     
     result = await story_to_video(
         story_output=story_output,
-        comfyui_config=config,
+        ltx_config=config,
         video_params=video_params,
         output_dir=output_dir,
         progress_callback=progress_callback,
@@ -297,7 +297,7 @@ def render_main_content(config_values: dict):
     st.markdown("""
     # 🎬 LTX-2 Video Generator
     
-    Generate AI videos from text prompts using the LTX-2 model through ComfyUI.
+    Generate AI videos from text prompts using the LTX-2 model via WanGP.
     """)
     
     # Create tabs for different modes
@@ -775,7 +775,7 @@ def main():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: #888;'>"
-        "Powered by LTX-2 & ComfyUI | "
+        "Powered by LTX-2 & WanGP | "
         "<a href='https://docs.ltx.video'>LTX Documentation</a>"
         "</div>",
         unsafe_allow_html=True

@@ -67,19 +67,17 @@ from .visualizer import (
 )
 
 from .ltx_client import (
-    # LTX Video API client
-    LTXVideoClient,
+    # Interface
+    LTXClientInterface,
+    # Implementation
+    WanGPLTXClient,
+    # Configuration
     LTXVideoConfig,
-    LTXJobRequest,
-    LTXJobResponse,
-    LTXJobStatusResponse,
-    JobStatus,
+    # User-facing models
     VideoGenerationParams,
     VideoGenerationResult,
+    # Convenience function
     generate_video,
-    # Backward compatibility aliases
-    ComfyUIClient,
-    ComfyUIConfig,
 )
 
 from .ltx_prompt_builder import (
@@ -135,19 +133,13 @@ __all__ = [
     # Visualizer functions
     "create_html_report",
     "create_html_report_from_dump",
-    # LTX Video API client
-    "LTXVideoClient",
+    # LTX client interface and implementation
+    "LTXClientInterface",
+    "WanGPLTXClient",
     "LTXVideoConfig",
-    "LTXJobRequest",
-    "LTXJobResponse",
-    "LTXJobStatusResponse",
-    "JobStatus",
     "VideoGenerationParams",
     "VideoGenerationResult",
     "generate_video",
-    # Backward compatibility aliases
-    "ComfyUIClient",
-    "ComfyUIConfig",
     # LTX prompt builder
     "build_ltx_prompt",
     "build_ltx_prompt_detailed",

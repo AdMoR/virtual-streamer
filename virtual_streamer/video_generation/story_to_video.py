@@ -10,7 +10,7 @@ Usage:
     
     final_video = await story_to_video(
         story_output=story,
-        comfyui_config=ComfyUIConfig(server_url="http://localhost:8188"),
+        ltx_config=LTXVideoConfig(),
         output_dir="./output",
     )
 """
@@ -26,7 +26,7 @@ from typing import Callable, List, Optional
 
 from virtual_streamer.video_generation.config import DialogLine, StoryOutput
 from virtual_streamer.video_generation.ltx_client import (
-    LTXVideoClient,
+    WanGPLTXClient,
     LTXVideoConfig,
     VideoGenerationParams,
     VideoGenerationResult,
@@ -126,7 +126,7 @@ def concatenate_videos(
 
 
 async def generate_segment(
-    client: LTXVideoClient,
+    client: WanGPLTXClient,
     dialog_line: DialogLine,
     index: int,
     output_dir: str,
@@ -137,7 +137,7 @@ async def generate_segment(
     Generate a single video segment for a DialogLine.
     
     Args:
-        client: ComfyUI client instance
+        client: WanGP LTX client instance
         dialog_line: The DialogLine to generate video for
         index: Segment index (for naming)
         output_dir: Directory to save the segment
@@ -191,7 +191,7 @@ async def generate_segment(
 
 async def story_to_video(
     story_output: StoryOutput,
-    comfyui_config: Optional[LTXVideoConfig] = None,
+    ltx_config: Optional[LTXVideoConfig] = None,
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
@@ -199,15 +199,15 @@ async def story_to_video(
 ) -> StoryVideoResult:
     """
     Convert a generated story to video using LTX-2.
-    
+
     This is the main pipeline function that:
     1. Takes a StoryOutput with DialogLines
-    2. Generates a video segment for each DialogLine using LTX-2
+    2. Generates a video segment for each DialogLine using LTX-2 via WanGP
     3. Concatenates all segments into a final video
-    
+
     Args:
         story_output: StoryOutput containing title, story_plan, and dialog lines
-        comfyui_config: ComfyUI server configuration (defaults to localhost:8188)
+        ltx_config: WanGP LTX server configuration (defaults to localhost:7860)
         video_params: Base video generation parameters for each segment
         output_dir: Directory to save output files
         progress_callback: Optional callback(current, total, message) for progress
@@ -230,7 +230,7 @@ async def story_to_video(
         print(f"Final video: {result.final_video_path}")
     """
     # Use defaults if not provided
-    config = comfyui_config or LTXVideoConfig()
+    config = ltx_config or LTXVideoConfig()
     params = video_params or VideoGenerationParams(
         prompt="",  # Will be overwritten per segment
         duration_seconds=5.0,
@@ -252,7 +252,7 @@ async def story_to_video(
     
     logger.info(f"Starting story-to-video for '{story_output.title}' with {total_lines} dialog lines")
     
-    async with LTXVideoClient(config) as client:
+    async with WanGPLTXClient(config) as client:
         for i, dialog_line in enumerate(story_output.dialog):
             if progress_callback:
                 progress_callback(i, total_lines, f"Generating segment {i+1}/{total_lines}")
@@ -305,23 +305,23 @@ async def story_to_video(
 async def title_to_video(
     title: str,
     story_template_id: Optional[str] = None,
-    comfyui_config: Optional[LTXVideoConfig] = None,
+    ltx_config: Optional[LTXVideoConfig] = None,
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> StoryVideoResult:
     """
     Generate a complete video from just a title.
-    
+
     This is the end-to-end pipeline that:
     1. Runs StoryGeneratorAgent to create a story from the title
-    2. Generates video for each dialog line using LTX-2
+    2. Generates video for each dialog line using LTX-2 via WanGP
     3. Concatenates into final video
-    
+
     Args:
         title: Topic/title for story generation
         story_template_id: Optional story template ID to use
-        comfyui_config: ComfyUI server configuration
+        ltx_config: WanGP LTX server configuration
         video_params: Video generation parameters
         output_dir: Output directory
         progress_callback: Progress callback
@@ -348,7 +348,7 @@ async def title_to_video(
     # Convert story to video
     return await story_to_video(
         story_output=story_output,
-        comfyui_config=comfyui_config,
+        ltx_config=ltx_config,
         video_params=video_params,
         output_dir=output_dir,
         progress_callback=progress_callback,

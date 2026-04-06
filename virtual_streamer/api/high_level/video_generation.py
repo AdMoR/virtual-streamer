@@ -64,7 +64,7 @@ from virtual_streamer.video_generation import (
 )
 from virtual_streamer.video_generation.config import LTXConfig
 from virtual_streamer.video_generation.ltx_client import (
-    LTXVideoClient,
+    WanGPLTXClient,
     LTXVideoConfig,
     VideoGenerationParams,
 )
@@ -307,7 +307,7 @@ async def generate_ltx_fallback_video(
     segment_dir = os.path.join(output_dir, f"ltx_segment_{segment_index:03d}")
     os.makedirs(segment_dir, exist_ok=True)
 
-    async with LTXVideoClient(api_config) as ltx_client:
+    async with WanGPLTXClient(api_config) as ltx_client:
         result = await ltx_client.generate_video(
             params=params,
             output_dir=segment_dir,
@@ -533,9 +533,9 @@ class LTXVideoGenerationRequest(BaseModel):
     # Story template (required - defines characters, prompt)
     story_template_id: str
 
-    # ComfyUI server configuration
-    comfyui_server_url: str = "http://localhost:8188"
-    comfyui_timeout: float = 600.0
+    # WanGP LTX server configuration
+    ltx_server_url: str = "http://gx10-cbc5:8081/"
+    ltx_timeout: float = 600.0
 
     # Video generation parameters
     video_width: int = 1280
@@ -868,9 +868,9 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
             )
 
         # Build LTX Video API configuration
-        comfyui_config = LTXVideoConfig(
-            server_url=request.comfyui_server_url,
-            timeout=request.comfyui_timeout,
+        ltx_config = LTXVideoConfig(
+            server_url=request.ltx_server_url,
+            timeout=request.ltx_timeout,
         )
 
         # Build video generation parameters
@@ -915,7 +915,7 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
 
         result: StoryVideoResult = await story_to_video(
             story_output=story_output,
-            comfyui_config=comfyui_config,
+            ltx_config=ltx_config,
             video_params=video_params,
             output_dir=output_dir,
             progress_callback=progress_callback,
@@ -1072,7 +1072,7 @@ async def generate_video_ltx(
     """
     Generate video from title using LTX-2 for video+audio.
 
-    This endpoint uses the LTX-2 text-to-video model via ComfyUI to generate
+    This endpoint uses the LTX-2 text-to-video model via WanGP (Gradio API) to generate
     video segments with synchronized audio. The pipeline:
 
     1. StoryGeneratorAgent generates a story with DialogLines from the title
