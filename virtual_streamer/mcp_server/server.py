@@ -184,6 +184,44 @@ async def create_video_from_broadcast(title: str, user: str = "mcp_agent") -> di
 
 
 @mcp.tool()
+async def create_video_ltx(
+    story_template_id: str,
+    title: str | None = None,
+    story_text: str | None = None,
+    comfyui_server_url: str = "http://localhost:8188",
+    video_width: int = 1280,
+    video_height: int = 720,
+    video_duration_seconds: float = 5.0,
+) -> dict:
+    """Generate a video from a story template using LTX-2 text-to-video.
+
+    Uses ComfyUI + LTX-2 to generate video with synchronized audio.
+    Returns a job_id that can be tracked with get_job_status.
+
+    Args:
+        story_template_id: Required. Story template defining characters and prompt.
+        title: Video title/topic (used to generate the story). Mutually exclusive with story_text.
+        story_text: Pre-written story text. Mutually exclusive with title.
+        comfyui_server_url: URL of the ComfyUI server running LTX-2.
+        video_width: Output video width in pixels (default 1280).
+        video_height: Output video height in pixels (default 720).
+        video_duration_seconds: Duration per video segment in seconds (default 5.0).
+    """
+    body: dict = {
+        "story_template_id": story_template_id,
+        "comfyui_server_url": comfyui_server_url,
+        "video_width": video_width,
+        "video_height": video_height,
+        "video_duration_seconds": video_duration_seconds,
+    }
+    if title is not None:
+        body["title"] = title
+    if story_text is not None:
+        body["story_text"] = story_text
+    return await _api_post("/api/v1/video-generation/generate-ltx", body, timeout=7200.0)
+
+
+@mcp.tool()
 async def get_job_status(job_id: str) -> dict:
     """Check the status of a video generation job.
 

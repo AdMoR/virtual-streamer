@@ -1,0 +1,18 @@
+name: atari_planning_agent
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3
+    max_output_tokens: 1024
+    api_base: http://100.114.182.89:8082
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
+
+metadata:
+  description: "Vision agent that plans the next 10 Atari moves from the current frame"
+  tags: [atari, vision, planning]

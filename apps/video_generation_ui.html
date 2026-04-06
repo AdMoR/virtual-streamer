@@ -736,6 +736,63 @@
                             </div>
                         </div>
 
+S                        <!-- LTX Settings -->
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
+                                🎬 LTX Video Settings
+                            </div>
+                            <div class="collapsible-content">
+                                <div class="form-group">
+                                    <label>ComfyUI Server URL</label>
+                                    <input type="text" id="ltxServerUrl" value="http://localhost:8188">
+                                </div>
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label>Width</label>
+                                        <input type="number" id="ltxWidth" value="1280" step="64">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Height</label>
+                                        <input type="number" id="ltxHeight" value="720" step="64">
+                                    </div>
+                                </div>
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label>Duration (s)</label>
+                                        <input type="number" id="ltxDuration" value="5.0" step="0.5" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>FPS</label>
+                                        <input type="number" id="ltxFps" value="24" min="8" max="60">
+                                    </div>
+                                </div>
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label>Steps</label>
+                                        <input type="number" id="ltxSteps" value="20" min="1" max="100">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>CFG Scale</label>
+                                        <input type="number" id="ltxCfgScale" value="4.0" step="0.5" min="1">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Seed (-1 = random)</label>
+                                    <input type="number" id="ltxSeed" value="-1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Style Suffix</label>
+                                    <input type="text" id="ltxStyleSuffix" value="Cinematic quality, smooth motion, natural lighting.">
+                                </div>
+                                <div class="form-group">
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="ltxEnableAudio" style="width: auto;" checked>
+                                        Enable Audio
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Advanced Settings -->
                         <div class="collapsible">
                             <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
@@ -814,6 +871,10 @@
                                         <input type="radio" name="inputMethod" value="text">
                                         Paste Story Text
                                     </label>
+                                    <label class="radio-option" onclick="selectInputMethod('ltx')">
+                                        <input type="radio" name="inputMethod" value="ltx">
+                                        🎬 LTX Video
+                                    </label>
                                 </div>
                             </div>
 
@@ -856,6 +917,27 @@
                                 </div>
                                 <button class="btn btn-primary btn-block" onclick="submitJob('text')">
                                     🚀 Generate Video
+                                </button>
+                            </div>
+
+                            <!-- LTX Video Input -->
+                            <div id="input-ltx" class="input-section" style="display: none;">
+                                <div class="form-group">
+                                    <label>Story Template <span style="color: var(--error);">*</span></label>
+                                    <select id="ltxTemplateSelect">
+                                        <option value="">Select a template...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Title (optional)</label>
+                                    <input type="text" id="ltxTitleInput" placeholder="e.g., 'Fred découvre ComfyUI'">
+                                </div>
+                                <div class="form-group">
+                                    <label>Story Text (optional, overrides template)</label>
+                                    <textarea id="ltxStoryText" placeholder="Or paste your story text directly..." rows="6"></textarea>
+                                </div>
+                                <button class="btn btn-primary btn-block" onclick="submitLtxJob()">
+                                    🎬 Generate LTX Video
                                 </button>
                             </div>
 
@@ -979,17 +1061,22 @@
 
         async function loadTemplates() {
             const result = await apiCall('GET', '/story-templates');
-            const select = document.getElementById('templateSelect');
-            
+            const selects = [
+                document.getElementById('templateSelect'),
+                document.getElementById('ltxTemplateSelect'),
+            ];
+
             if (result.ok && Array.isArray(result.data)) {
                 state.templates = result.data;
-                select.innerHTML = '<option value="">Select a template...</option>';
-                result.data.forEach(tpl => {
-                    const option = document.createElement('option');
-                    option.value = tpl.template_id;
-                    const chars = (tpl.character_ids || []).join(', ') || 'No characters';
-                    option.textContent = `${tpl.name} (${chars})`;
-                    select.appendChild(option);
+                selects.forEach(select => {
+                    select.innerHTML = '<option value="">Select a template...</option>';
+                    result.data.forEach(tpl => {
+                        const option = document.createElement('option');
+                        option.value = tpl.template_id;
+                        const chars = (tpl.character_ids || []).join(', ') || 'No characters';
+                        option.textContent = `${tpl.name} (${chars})`;
+                        select.appendChild(option);
+                    });
                 });
             }
         }
@@ -1147,6 +1234,84 @@
                     </div>
                 `;
                 showToast('Submission failed', 'error');
+            }
+        }
+
+        // =============================================================================
+        // LTX Video Submission
+        // =============================================================================
+        async function submitLtxJob() {
+            const templateId = document.getElementById('ltxTemplateSelect').value;
+            if (!templateId) {
+                showToast('Please select a story template', 'error');
+                return;
+            }
+
+            const requestData = {
+                story_template_id: templateId,
+                comfyui_server_url: document.getElementById('ltxServerUrl').value || undefined,
+                video_width: parseInt(document.getElementById('ltxWidth').value) || undefined,
+                video_height: parseInt(document.getElementById('ltxHeight').value) || undefined,
+                video_duration_seconds: parseFloat(document.getElementById('ltxDuration').value) || undefined,
+                video_fps: parseInt(document.getElementById('ltxFps').value) || undefined,
+                video_steps: parseInt(document.getElementById('ltxSteps').value) || undefined,
+                video_cfg_scale: parseFloat(document.getElementById('ltxCfgScale').value) || undefined,
+                video_seed: parseInt(document.getElementById('ltxSeed').value),
+                style_suffix: document.getElementById('ltxStyleSuffix').value || undefined,
+                enable_audio: document.getElementById('ltxEnableAudio').checked,
+                llm_provider: document.getElementById('llmProvider').value || undefined,
+                llm_model: document.getElementById('llmModel').value || undefined,
+                output_dir: document.getElementById('outputDir').value || undefined,
+            };
+
+            const title = document.getElementById('ltxTitleInput').value.trim();
+            if (title) requestData.title = title;
+
+            const storyText = document.getElementById('ltxStoryText').value.trim();
+            if (storyText) requestData.story_text = storyText;
+
+            // Remove undefined values
+            Object.keys(requestData).forEach(k => requestData[k] === undefined && delete requestData[k]);
+
+            const resultDiv = document.getElementById('submitResult');
+            resultDiv.innerHTML = `
+                <div class="result-panel">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner"></div>
+                        <span>Submitting LTX job...</span>
+                    </div>
+                </div>
+            `;
+
+            const result = await apiCall('POST', '/video-generation/generate-ltx', requestData);
+
+            if (result.ok && result.data.job_id) {
+                const jobId = result.data.job_id;
+                state.currentJobId = jobId;
+                resultDiv.innerHTML = `
+                    <div class="result-panel success">
+                        <div class="result-header">
+                            <span style="font-size: 1.5rem;">✅</span>
+                            <h4>LTX Job Submitted!</h4>
+                        </div>
+                        <p>Job ID: <code style="background: var(--bg-dark); padding: 4px 8px; border-radius: 4px;">${jobId}</code></p>
+                        <button class="btn btn-secondary" style="margin-top: 16px;" onclick="monitorJob('${jobId}')">
+                            📊 Monitor Job
+                        </button>
+                    </div>
+                `;
+                showToast('LTX job submitted!', 'success');
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="result-panel error">
+                        <div class="result-header">
+                            <span style="font-size: 1.5rem;">❌</span>
+                            <h4>Submission Failed</h4>
+                        </div>
+                        <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
+                    </div>
+                `;
+                showToast('LTX submission failed', 'error');
             }
         }
 
