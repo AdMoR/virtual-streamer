@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Generation — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-purple: #a371f7;
+            --accent-pink:   #f778ba;
+            --accent-red:    #f85149;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ─────────────────────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        header a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        header a:hover { color: var(--accent-cyan); }
+        header .sep { color: var(--border-color); }
+
+        header h1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent-red);
+            margin-left: auto;
+            transition: background 0.3s;
+        }
+        .status-dot.ok { background: var(--accent-green); }
+        .status-label { font-size: 0.78rem; color: var(--text-secondary); }
+
+        /* ── Layout ─────────────────────────────────────────────────── */
+        .layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 0;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* ── Left panel (controls) ───────────────────────────────────── */
+        .controls {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 1.25rem;
+            gap: 1.25rem;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 4px;
+        }
+        .tab {
+            flex: 1;
+            padding: 0.5rem;
+            text-align: center;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .tab.active {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+
+        /* Form groups */
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 0.8rem; color: var(--text-secondary); font-weight: 500; }
+
+        textarea, input[type=text], input[type=number] {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            padding: 0.55rem 0.75rem;
+            width: 100%;
+            resize: vertical;
+            transition: border-color 0.15s;
+        }
+        textarea:focus, input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+        /* Image drop zone */
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            background: rgba(88, 166, 255, 0.04);
+        }
+        .drop-zone input[type=file] {
+            position: absolute; inset: 0;
+            opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        }
+        .drop-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+
+        /* Thumbnail strip */
+        .thumbnails {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 0;
+        }
+        .thumb {
+            position: relative;
+            width: 72px; height: 72px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+        .thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .thumb .remove {
+            position: absolute; top: 2px; right: 2px;
+            width: 18px; height: 18px;
+            background: rgba(248, 81, 73, 0.85);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+            color: #fff;
+            line-height: 1;
+        }
+
+        /* Generate button */
+        .btn-generate {
+            padding: 0.75rem;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-generate:hover { opacity: 0.85; }
+        .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* ── Right panel (output) ────────────────────────────────────── */
+        .output {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            gap: 1rem;
+            position: relative;
+        }
+
+        .placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .placeholder-icon { font-size: 4rem; opacity: 0.3; }
+
+        /* Spinner */
+        .spinner {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-secondary);
+        }
+        .spinner.visible { display: flex; }
+        .spin-ring {
+            width: 48px; height: 48px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Result image */
+        #result-wrap { display: none; flex-direction: column; align-items: center; gap: 1rem; max-width: 100%; }
+        #result-wrap.visible { display: flex; }
+
+        #result-img {
+            max-width: 100%;
+            max-height: calc(100vh - 200px);
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+
+        .meta {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .btn-download {
+            padding: 0.5rem 1.25rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: border-color 0.15s;
+            text-decoration: none;
+        }
+        .btn-download:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+        /* Error toast */
+        #error-toast {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            z-index: 999;
+            max-width: 480px;
+            text-align: center;
+        }
+        #error-toast.visible { display: block; }
+
+        /* Section label */
+        .section-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.4rem;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="index.html">Apps</a>
+    <span class="sep">/</span>
+    <h1>Image Generation</h1>
+    <span class="status-label" id="status-label">checking…</span>
+    <div class="status-dot" id="status-dot"></div>
+</header>
+
+<div class="layout">
+    <!-- ── Controls ─────────────────────────────────────────── -->
+    <aside class="controls">
+
+        <!-- Mode tabs -->
+        <div class="tabs">
+            <div class="tab active" data-mode="txt2image">Text → Image</div>
+            <div class="tab" data-mode="edit">Image Edit</div>
+        </div>
+
+        <!-- Prompt -->
+        <div class="field">
+            <label>Prompt</label>
+            <textarea id="prompt" rows="4" placeholder="Describe what you want to generate or how to edit the image…"></textarea>
+        </div>
+
+        <!-- Image upload (edit mode only) -->
+        <div id="upload-section" style="display:none;" class="field">
+            <label>Reference images</label>
+            <div class="drop-zone" id="drop-zone">
+                <input type="file" id="file-input" accept="image/*" multiple>
+                <div class="drop-icon">🖼️</div>
+                <div>Drop images here or click to browse</div>
+                <div style="font-size:0.75rem; margin-top:4px;">Multiple images are tiled before conditioning</div>
+            </div>
+            <div class="thumbnails" id="thumbnails"></div>
+        </div>
+
+        <!-- Resolution (txt2image only) -->
+        <div id="resolution-section">
+            <div class="section-label" style="margin-bottom:0.75rem;">Resolution</div>
+            <div class="row">
+                <div class="field">
+                    <label>Width</label>
+                    <input type="number" id="width" value="680" min="64" max="2048" step="8">
+                </div>
+                <div class="field">
+                    <label>Height</label>
+                    <input type="number" id="height" value="496" min="64" max="2048" step="8">
+                </div>
+            </div>
+        </div>
+
+        <!-- Params -->
+        <div>
+            <div class="section-label" style="margin-bottom:0.75rem;">Parameters</div>
+            <div class="row">
+                <div class="field">
+                    <label>Steps</label>
+                    <input type="number" id="steps" value="50" min="1" max="200">
+                </div>
+                <div class="field">
+                    <label>Guidance</label>
+                    <input type="number" id="guidance" value="3.5" min="0" max="20" step="0.1">
+                </div>
+            </div>
+            <div class="field" style="margin-top:0.75rem;">
+                <label>Seed (-1 = random)</label>
+                <input type="number" id="seed" value="-1">
+            </div>
+        </div>
+
+        <button class="btn-generate" id="btn-generate">Generate</button>
+
+        <!-- Server URL -->
+        <div class="field" style="margin-top:auto;">
+            <label>Server URL</label>
+            <input type="text" id="server-url" value="http://localhost:8010">
+        </div>
+
+    </aside>
+
+    <!-- ── Output ────────────────────────────────────────────── -->
+    <main class="output">
+        <div class="placeholder" id="placeholder">
+            <div class="placeholder-icon">🎨</div>
+            <div>Output will appear here</div>
+        </div>
+
+        <div class="spinner" id="spinner">
+            <div class="spin-ring"></div>
+            <div id="spinner-label">Generating…</div>
+        </div>
+
+        <div id="result-wrap">
+            <img id="result-img" src="" alt="Generated image">
+            <div class="meta">
+                <span id="meta-size"></span>
+                <span id="meta-seed"></span>
+            </div>
+            <a class="btn-download" id="btn-download" download="generated.png">Download</a>
+        </div>
+    </main>
+</div>
+
+<div id="error-toast"></div>
+
+<script>
+    const SERVER_URL_INPUT = document.getElementById('server-url');
+    const STATUS_DOT       = document.getElementById('status-dot');
+    const STATUS_LABEL     = document.getElementById('status-label');
+    const BTN_GENERATE     = document.getElementById('btn-generate');
+    const PROMPT           = document.getElementById('prompt');
+    const STEPS            = document.getElementById('steps');
+    const GUIDANCE         = document.getElementById('guidance');
+    const SEED             = document.getElementById('seed');
+    const WIDTH            = document.getElementById('width');
+    const HEIGHT           = document.getElementById('height');
+    const RESULT_WRAP      = document.getElementById('result-wrap');
+    const RESULT_IMG       = document.getElementById('result-img');
+    const META_SIZE        = document.getElementById('meta-size');
+    const META_SEED        = document.getElementById('meta-seed');
+    const BTN_DOWNLOAD     = document.getElementById('btn-download');
+    const PLACEHOLDER      = document.getElementById('placeholder');
+    const SPINNER          = document.getElementById('spinner');
+    const SPINNER_LABEL    = document.getElementById('spinner-label');
+    const ERROR_TOAST      = document.getElementById('error-toast');
+    const UPLOAD_SECTION   = document.getElementById('upload-section');
+    const RESOLUTION_SECTION = document.getElementById('resolution-section');
+    const FILE_INPUT       = document.getElementById('file-input');
+    const DROP_ZONE        = document.getElementById('drop-zone');
+    const THUMBNAILS       = document.getElementById('thumbnails');
+
+    let currentMode = 'txt2image';   // 'txt2image' | 'edit'
+    let uploadedFiles = [];           // array of { file, dataUrl }
+
+    // ── Tab switching ──────────────────────────────────────────────
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentMode = tab.dataset.mode;
+            UPLOAD_SECTION.style.display   = currentMode === 'edit' ? 'flex' : 'none';
+            RESOLUTION_SECTION.style.display = currentMode === 'txt2image' ? 'block' : 'none';
+            GUIDANCE.value = currentMode === 'edit' ? '2.5' : '3.5';
+        });
+    });
+
+    // ── Health check ───────────────────────────────────────────────
+    async function checkHealth() {
+        try {
+            const r = await fetch(`${SERVER_URL_INPUT.value}/health`);
+            if (!r.ok) throw new Error();
+            const d = await r.json();
+            const ok = d.model_loaded;
+            STATUS_DOT.className   = `status-dot ${ok ? 'ok' : ''}`;
+            STATUS_LABEL.textContent = ok ? 'model ready' : 'model loading…';
+        } catch {
+            STATUS_DOT.className   = 'status-dot';
+            STATUS_LABEL.textContent = 'unreachable';
+        }
+    }
+
+    checkHealth();
+    setInterval(checkHealth, 15000);
+    SERVER_URL_INPUT.addEventListener('change', checkHealth);
+
+    // ── File upload / drag-and-drop ────────────────────────────────
+    function addFiles(files) {
+        Array.from(files).forEach(file => {
+            if (!file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                uploadedFiles.push({ file, dataUrl: e.target.result });
+                renderThumbs();
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    FILE_INPUT.addEventListener('change', e => addFiles(e.target.files));
+
+    DROP_ZONE.addEventListener('dragover', e => { e.preventDefault(); DROP_ZONE.classList.add('drag-over'); });
+    DROP_ZONE.addEventListener('dragleave', () => DROP_ZONE.classList.remove('drag-over'));
+    DROP_ZONE.addEventListener('drop', e => {
+        e.preventDefault();
+        DROP_ZONE.classList.remove('drag-over');
+        addFiles(e.dataTransfer.files);
+    });
+
+    function renderThumbs() {
+        THUMBNAILS.innerHTML = '';
+        uploadedFiles.forEach((entry, idx) => {
+            const div = document.createElement('div');
+            div.className = 'thumb';
+            div.innerHTML = `<img src="${entry.dataUrl}">
+                             <div class="remove" data-idx="${idx}">✕</div>`;
+            THUMBNAILS.appendChild(div);
+        });
+        THUMBNAILS.querySelectorAll('.remove').forEach(btn => {
+            btn.addEventListener('click', () => {
+                uploadedFiles.splice(parseInt(btn.dataset.idx), 1);
+                renderThumbs();
+            });
+        });
+    }
+
+    // ── Strip data-url prefix → raw base64 ────────────────────────
+    function dataUrlToB64(dataUrl) {
+        return dataUrl.split(',')[1];
+    }
+
+    // ── Error toast ────────────────────────────────────────────────
+    let toastTimer;
+    function showError(msg) {
+        ERROR_TOAST.textContent = msg;
+        ERROR_TOAST.classList.add('visible');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ERROR_TOAST.classList.remove('visible'), 6000);
+    }
+
+    // ── Generate ───────────────────────────────────────────────────
+    BTN_GENERATE.addEventListener('click', async () => {
+        const prompt = PROMPT.value.trim();
+        if (!prompt) { showError('Please enter a prompt.'); return; }
+        if (currentMode === 'edit' && uploadedFiles.length === 0) {
+            showError('Upload at least one reference image for editing.'); return;
+        }
+
+        BTN_GENERATE.disabled = true;
+        PLACEHOLDER.style.display = 'none';
+        RESULT_WRAP.classList.remove('visible');
+        SPINNER.classList.add('visible');
+        SPINNER_LABEL.textContent = currentMode === 'edit' ? 'Editing image…' : 'Generating…';
+
+        const baseUrl = SERVER_URL_INPUT.value.replace(/\/$/, '');
+
+        try {
+            let body, endpoint;
+            if (currentMode === 'txt2image') {
+                endpoint = '/txt2image';
+                body = {
+                    prompt,
+                    width:               parseInt(WIDTH.value),
+                    height:              parseInt(HEIGHT.value),
+                    num_inference_steps: parseInt(STEPS.value),
+                    guidance_scale:      parseFloat(GUIDANCE.value),
+                    seed:                parseInt(SEED.value),
+                };
+            } else {
+                endpoint = '/edit';
+                body = {
+                    prompt,
+                    images_b64:          uploadedFiles.map(f => dataUrlToB64(f.dataUrl)),
+                    num_inference_steps: parseInt(STEPS.value),
+                    guidance_scale:      parseFloat(GUIDANCE.value),
+                    seed:                parseInt(SEED.value),
+                };
+            }
+
+            const resp = await fetch(`${baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            if (!resp.ok) {
+                const detail = (await resp.json().catch(() => ({}))).detail || resp.statusText;
+                throw new Error(detail);
+            }
+
+            const data = await resp.json();
+            const imgSrc = `data:image/png;base64,${data.image_b64}`;
+
+            RESULT_IMG.src = imgSrc;
+            META_SIZE.textContent = `${data.width} × ${data.height}`;
+            META_SEED.textContent = `seed: ${data.seed}`;
+            BTN_DOWNLOAD.href = imgSrc;
+            BTN_DOWNLOAD.download = `image_${data.seed}.png`;
+
+            SPINNER.classList.remove('visible');
+            RESULT_WRAP.classList.add('visible');
+
+        } catch (err) {
+            SPINNER.classList.remove('visible');
+            PLACEHOLDER.style.display = 'flex';
+            showError(`Error: ${err.message}`);
+        } finally {
+            BTN_GENERATE.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>
