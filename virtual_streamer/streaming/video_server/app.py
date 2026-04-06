@@ -96,6 +96,16 @@ async def config():
     }
 
 
+# Serve atari.html at /atari — designed for OBS browser source
+@app.get("/atari", response_class=HTMLResponse)
+async def atari_player():
+    """Serve the Atari game viewer (OBS browser source)."""
+    page = STATIC_DIR / "atari.html"
+    if page.exists():
+        return HTMLResponse(content=page.read_text())
+    raise HTTPException(status_code=404, detail="atari.html not found")
+
+
 # Serve index.html for root path
 @app.get("/", response_class=HTMLResponse)
 async def root():

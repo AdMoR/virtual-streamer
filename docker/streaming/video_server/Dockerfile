@@ -19,16 +19,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv
 RUN pip install --no-cache-dir uv
 
+# Expose port
+EXPOSE 5000
+
 # Copy project files
 COPY pyproject.toml ./
-COPY virtual_streamer/ ./virtual_streamer/
-COPY configs/ ./configs/
+COPY requirements.txt ./
+
 
 # Install the full package (includes ale-py and shimmy[atari])
 RUN uv pip install --system --no-cache .
 
-# Expose port
-EXPOSE 5000
+COPY configs/ ./configs/
+COPY virtual_streamer/ ./virtual_streamer/
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
