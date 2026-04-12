@@ -1,27 +1,30 @@
 """
-Stable Diffusion WebUI-compatible Image Generation Client
+Stable Diffusion CPP Image Generation Client
 
-Client for a stable-diffusion.cpp server using the AUTOMATIC1111-compatible
-WebUI API surface.
+Client for a stable-diffusion.cpp server using the OpenAI-compatible API.
 
 Abstract interface
 ------------------
 :class:`ImageGenerationClientInterface` defines two operations:
 
   - :meth:`txt2image` — generate an image from a text prompt only
-  - :meth:`image_edit` — edit / transform a reference image guided by a text
-                          prompt (img2img)
+  - :meth:`image_edit` — edit / transform reference images guided by a text
+                          prompt
 
 Both methods accept typed Pydantic parameter models and return an
 :class:`ImageGenerationResult`.
 
 Concrete implementation
 -----------------------
-:class:`StableDiffusionCppClient` implements the interface using the WebUI
-compatibility endpoints:
+:class:`StableDiffusionCppClient` implements the interface using the
+OpenAI-compatible endpoints:
 
-  POST /sdapi/v1/txt2img  — text-to-image (synchronous)
-  POST /sdapi/v1/img2img  — image-to-image (synchronous)
+  POST /v1/images/generations  — text-to-image (JSON body)
+  POST /v1/images/edits        — image editing  (multipart/form-data)
+
+Advanced stable-diffusion.cpp parameters (steps, cfg_scale, seed, sampler,
+scheduler, negative_prompt, …) are injected into the prompt string using the
+``<sd_cpp_extra_args>`` tag understood by sd.cpp.
 
 Usage
 -----
@@ -38,13 +41,13 @@ Usage
         )
         print(result.image_path)
 
-    # Image editing (img2img)
+    # Image editing
     async with StableDiffusionCppClient(StableDiffusionCppConfig()) as client:
         result = await client.image_edit(
             ImageEditParams(
                 prompt="Make the sky purple and add stars",
                 image_paths=["photo.jpg"],
-                denoising_strength=0.75,
+                extra_args={"denoising_strength": 0.75},
             ),
             output_dir="./output",
         )
@@ -54,6 +57,7 @@ Usage
 import asyncio
 import base64
 import io
+import json
 import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -86,7 +90,7 @@ class StableDiffusionCppConfig(BaseModel):
 # =============================================================================
 
 class Txt2ImageParams(BaseModel):
-    """Parameters for text-to-image generation (POST /sdapi/v1/txt2img)."""
+    """Parameters for text-to-image generation (POST /v1/images/generations)."""
 
     prompt: str = Field(description="Text prompt describing the desired image")
     negative_prompt: str = Field(default="")
@@ -95,33 +99,38 @@ class Txt2ImageParams(BaseModel):
     steps: int = Field(default=20, ge=1, le=200)
     cfg_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1, description="-1 for a random seed")
-    sampler_name: str = Field(default="Euler a")
-    scheduler: str = Field(default="Automatic")
-    batch_size: int = Field(default=1, ge=1, le=16)
+    sampler_name: str = Field(default="euler_a")
+    scheduler: str = Field(default="default")
+    n: int = Field(default=1, ge=1, le=8, description="Number of images to generate")
+    output_format: str = Field(default="png")
+    output_compression: int = Field(default=100, ge=0, le=100)
+    extra_args: Optional[dict] = Field(
+        default=None,
+        description="Additional sd.cpp-specific params injected via sd_cpp_extra_args tag",
+    )
 
 
 class ImageEditParams(BaseModel):
-    """Parameters for img2img editing (POST /sdapi/v1/img2img)."""
+    """Parameters for image editing (POST /v1/images/edits)."""
 
     prompt: str = Field(description="Editing instruction")
     image_paths: List[str] = Field(
-        description="Local paths to one or more reference images (tiled when multiple)",
+        description="Local paths to one or more reference images",
         min_length=1,
     )
     negative_prompt: str = Field(default="")
-    denoising_strength: float = Field(
-        default=0.75,
-        ge=0.0,
-        le=1.0,
-        description="Denoising strength: 0 = no change, 1 = full redraw",
-    )
-    width: int = Field(default=512, ge=64, le=2048)
-    height: int = Field(default=512, ge=64, le=2048)
     steps: int = Field(default=20, ge=1, le=200)
     cfg_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1, description="-1 for a random seed")
-    sampler_name: str = Field(default="Euler a")
-    scheduler: str = Field(default="Automatic")
+    sampler_name: str = Field(default="euler_a")
+    scheduler: str = Field(default="default")
+    n: int = Field(default=1, ge=1, le=8, description="Number of images to generate")
+    output_format: str = Field(default="png")
+    output_compression: int = Field(default=100, ge=0, le=100)
+    extra_args: Optional[dict] = Field(
+        default=None,
+        description="Additional sd.cpp-specific params (e.g. denoising_strength)",
+    )
 
 
 # =============================================================================
@@ -134,7 +143,7 @@ class ImageGenerationResult(BaseModel):
     image_path: str = Field(description="Local path to the saved output image")
     width: int
     height: int
-    seed: int
+    seed: int = Field(default=-1)
     prompt_id: str = Field(description="Unique identifier for this generation")
 
 
@@ -155,44 +164,17 @@ class ImageGenerationClientInterface(ABC):
         self,
         params: Txt2ImageParams,
         output_dir: str = "./output",
-    ) -> ImageGenerationResult:
-        """
-        Generate an image from *params.prompt* with no conditioning image.
-
-        Args:
-            params:     Generation parameters (prompt, resolution, steps…)
-            output_dir: Local directory where the output PNG will be saved.
-
-        Returns:
-            :class:`ImageGenerationResult` with the local image path and metadata.
-        """
-        ...
+    ) -> ImageGenerationResult: ...
 
     @abstractmethod
     async def image_edit(
         self,
         params: ImageEditParams,
         output_dir: str = "./output",
-    ) -> ImageGenerationResult:
-        """
-        Edit a reference image guided by a text prompt (img2img).
-
-        When multiple images are supplied they are tiled side-by-side before
-        being sent to the server.
-
-        Args:
-            params:     Edit parameters (prompt, image_paths, strength, steps…)
-            output_dir: Local directory where the output PNG will be saved.
-
-        Returns:
-            :class:`ImageGenerationResult` with the local image path and metadata.
-        """
-        ...
+    ) -> ImageGenerationResult: ...
 
     @abstractmethod
-    async def close(self) -> None:
-        """Release any held resources (HTTP connections, …)."""
-        ...
+    async def close(self) -> None: ...
 
     async def __aenter__(self) -> "ImageGenerationClientInterface":
         return self
@@ -202,18 +184,16 @@ class ImageGenerationClientInterface(ABC):
 
 
 # =============================================================================
-# Stable Diffusion WebUI-compatible implementation
+# Stable Diffusion CPP OpenAI-compatible implementation
 # =============================================================================
 
 class StableDiffusionCppClient(ImageGenerationClientInterface):
     """
-    Image generation / editing client using the WebUI-compatible API of a
+    Image generation / editing client using the OpenAI-compatible API of a
     stable-diffusion.cpp server.
 
-    Both endpoints are synchronous — the server blocks until generation is
-    complete and returns the image directly in the response body.
-
-    The HTTP client is created lazily on first use and reused across calls.
+    Advanced sd.cpp parameters are injected into the prompt using the
+    ``<sd_cpp_extra_args>{...}</sd_cpp_extra_args>`` tag.
     """
 
     def __init__(self, config: Optional[StableDiffusionCppConfig] = None) -> None:
@@ -233,27 +213,9 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         return self._http
 
     @staticmethod
-    def _images_to_b64_grid(paths: List[str]) -> str:
-        """
-        Load one or more images and return a single base64-encoded PNG.
-
-        Multiple images are tiled side-by-side into a horizontal strip.
-        """
-        imgs = [Image.open(p).convert("RGB") for p in paths]
-        if len(imgs) == 1:
-            combined = imgs[0]
-        else:
-            total_w = sum(i.width for i in imgs)
-            max_h = max(i.height for i in imgs)
-            combined = Image.new("RGB", (total_w, max_h))
-            x = 0
-            for img in imgs:
-                combined.paste(img, (x, 0))
-                x += img.width
-
-        buf = io.BytesIO()
-        combined.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode()
+    def _build_prompt(prompt: str, extra: dict) -> str:
+        """Append sd_cpp_extra_args tag to *prompt* with *extra* as JSON."""
+        return f"{prompt}\n<sd_cpp_extra_args>{json.dumps(extra)}</sd_cpp_extra_args>"
 
     @staticmethod
     def _save_b64_image(b64: str, output_dir: str) -> tuple[str, int, int]:
@@ -266,17 +228,6 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         fpath = out / fname
         img.save(fpath)
         return str(fpath), img.width, img.height
-
-    @staticmethod
-    def _parse_seed(body: dict, fallback: int) -> int:
-        """
-        Extract the seed from the response.
-
-        The WebUI ``info`` field is currently always an empty string.
-        The ``parameters`` field echoes the outer request body, so we read
-        ``seed`` from there.
-        """
-        return body.get("parameters", {}).get("seed", fallback)
 
     # ------------------------------------------------------------------
     # Interface implementation
@@ -293,7 +244,7 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         output_dir: str = "./output",
     ) -> ImageGenerationResult:
         """
-        Generate an image from a text prompt via ``POST /sdapi/v1/txt2img``.
+        Generate an image from a text prompt via ``POST /v1/images/generations``.
 
         Args:
             params:     Generation parameters.
@@ -305,35 +256,39 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         Raises:
             httpx.HTTPStatusError: If the server returns a non-2xx response.
         """
-        payload = {
-            "prompt":          params.prompt,
+        extra = {
             "negative_prompt": params.negative_prompt,
-            "width":           params.width,
-            "height":          params.height,
-            "steps":           params.steps,
-            "cfg_scale":       params.cfg_scale,
-            "seed":            params.seed,
-            "sampler_name":    params.sampler_name,
-            "scheduler":       params.scheduler,
-            "batch_size":      params.batch_size,
+            "steps": params.steps,
+            "cfg_scale": params.cfg_scale,
+            "seed": params.seed,
+            "sampler_name": params.sampler_name,
+            "scheduler": params.scheduler,
+            **(params.extra_args or {}),
+        }
+        full_prompt = self._build_prompt(params.prompt, extra)
+
+        payload = {
+            "prompt": full_prompt,
+            "n": params.n,
+            "size": f"{params.width}x{params.height}",
+            "output_format": params.output_format,
+            "output_compression": params.output_compression,
         }
 
         http = self._get_http()
-        resp = await http.post("/sdapi/v1/txt2img", json=payload)
+        resp = await http.post("/v1/images/generations", json=payload)
         resp.raise_for_status()
         body = resp.json()
 
-        b64 = body["images"][0]
+        b64 = body["data"][0]["b64_json"]
         image_path, w, h = await asyncio.to_thread(
             self._save_b64_image, b64, output_dir
         )
-        seed = self._parse_seed(body, params.seed)
-
         return ImageGenerationResult(
             image_path=image_path,
             width=w,
             height=h,
-            seed=seed,
+            seed=params.seed,
             prompt_id=Path(image_path).stem,
         )
 
@@ -343,10 +298,9 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         output_dir: str = "./output",
     ) -> ImageGenerationResult:
         """
-        Edit a reference image via ``POST /sdapi/v1/img2img``.
+        Edit reference images via ``POST /v1/images/edits`` (multipart).
 
-        All images in *params.image_paths* are tiled into a horizontal grid
-        before being sent to the server.
+        Each path in *params.image_paths* is uploaded as an ``image[]`` field.
 
         Args:
             params:     Edit parameters (prompt + one or more image paths).
@@ -358,40 +312,49 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         Raises:
             httpx.HTTPStatusError: If the server returns a non-2xx response.
         """
-        init_image_b64 = await asyncio.to_thread(
-            self._images_to_b64_grid, params.image_paths
-        )
+        extra = {
+            "negative_prompt": params.negative_prompt,
+            "steps": params.steps,
+            "cfg_scale": params.cfg_scale,
+            "seed": params.seed,
+            "sampler_name": params.sampler_name,
+            "scheduler": params.scheduler,
+            **(params.extra_args or {}),
+        }
+        full_prompt = self._build_prompt(params.prompt, extra)
 
-        payload = {
-            "prompt":              params.prompt,
-            "negative_prompt":     params.negative_prompt,
-            "init_images":         [init_image_b64],
-            "denoising_strength":  params.denoising_strength,
-            "width":               params.width,
-            "height":              params.height,
-            "steps":               params.steps,
-            "cfg_scale":           params.cfg_scale,
-            "seed":                params.seed,
-            "sampler_name":        params.sampler_name,
-            "scheduler":           params.scheduler,
+        # Build multipart form — read image files in a thread
+        def _build_multipart():
+            files = []
+            for path in params.image_paths:
+                data = Path(path).read_bytes()
+                files.append(("image[]", (Path(path).name, data, "image/png")))
+            return files
+
+        image_files = await asyncio.to_thread(_build_multipart)
+
+        form_data = {
+            "prompt": full_prompt,
+            "n": str(params.n),
+            "size": f"{512}x{512}",  # sd.cpp uses input image size for edits
+            "output_format": params.output_format,
+            "output_compression": str(params.output_compression),
         }
 
         http = self._get_http()
-        resp = await http.post("/sdapi/v1/img2img", json=payload)
+        resp = await http.post("/v1/images/edits", data=form_data, files=image_files)
         resp.raise_for_status()
         body = resp.json()
 
-        b64 = body["images"][0]
+        b64 = body["data"][0]["b64_json"]
         image_path, w, h = await asyncio.to_thread(
             self._save_b64_image, b64, output_dir
         )
-        seed = self._parse_seed(body, params.seed)
-
         return ImageGenerationResult(
             image_path=image_path,
             width=w,
             height=h,
-            seed=seed,
+            seed=params.seed,
             prompt_id=Path(image_path).stem,
         )
 

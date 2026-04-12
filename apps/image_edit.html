@@ -302,6 +302,56 @@
             border-bottom: 1px solid var(--border-color);
             padding-bottom: 0.4rem;
         }
+
+        /* Backend switcher */
+        .backend-switch {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 4px;
+        }
+        .backend-btn {
+            flex: 1;
+            padding: 0.4rem 0.6rem;
+            text-align: center;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border-radius: 5px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s;
+            user-select: none;
+            border: none;
+            background: transparent;
+        }
+        .backend-btn.active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        .backend-btn.openai.active {
+            background: linear-gradient(135deg, #10a37f22, #10a37f44);
+            color: #10a37f;
+        }
+
+        /* Password-style input */
+        input[type=password] {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            padding: 0.55rem 0.75rem;
+            width: 100%;
+            transition: border-color 0.15s;
+        }
+        input[type=password]:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
     </style>
 </head>
 <body>
@@ -317,6 +367,12 @@
 <div class="layout">
     <!-- ── Controls ─────────────────────────────────────────── -->
     <aside class="controls">
+
+        <!-- Backend switcher -->
+        <div class="backend-switch">
+            <button class="backend-btn active" data-backend="sdcpp">SD.cpp (OpenAI)</button>
+            <button class="backend-btn openai" data-backend="openai">OpenAI GPT</button>
+        </div>
 
         <!-- Mode tabs -->
         <div class="tabs">
@@ -357,8 +413,21 @@
             </div>
         </div>
 
-        <!-- Negative prompt -->
-        <div class="field">
+        <!-- OpenAI settings (shown when backend = openai) -->
+        <div id="openai-settings" style="display:none;">
+            <div class="section-label" style="margin-bottom:0.75rem;">OpenAI</div>
+            <div class="field">
+                <label>API Key</label>
+                <input type="password" id="openai-api-key" placeholder="sk-…" autocomplete="off">
+            </div>
+            <div class="field" style="margin-top:0.75rem;">
+                <label>Model</label>
+                <input type="text" id="openai-model" value="gpt-image-1">
+            </div>
+        </div>
+
+        <!-- Negative prompt (SD.cpp only) -->
+        <div id="negative-prompt-section" class="field">
             <label>Negative prompt</label>
             <textarea id="negative-prompt" rows="2" placeholder="Things to avoid…"></textarea>
         </div>
@@ -369,8 +438,8 @@
             <input type="number" id="strength" value="0.75" min="0" max="1" step="0.05">
         </div>
 
-        <!-- Params -->
-        <div>
+        <!-- SD.cpp sampling params -->
+        <div id="sdcpp-params">
             <div class="section-label" style="margin-bottom:0.75rem;">Parameters</div>
             <div class="row">
                 <div class="field">
@@ -385,11 +454,11 @@
             <div class="row" style="margin-top:0.75rem;">
                 <div class="field">
                     <label>Sampler</label>
-                    <input type="text" id="sampler" value="euler_a">
+                    <input type="text" id="sampler" value="Euler a">
                 </div>
                 <div class="field">
                     <label>Scheduler</label>
-                    <input type="text" id="scheduler" value="discrete">
+                    <input type="text" id="scheduler" value="Automatic">
                 </div>
             </div>
             <div class="field" style="margin-top:0.75rem;">
@@ -400,8 +469,8 @@
 
         <button class="btn-generate" id="btn-generate">Generate</button>
 
-        <!-- Server URL -->
-        <div class="field" style="margin-top:auto;">
+        <!-- Server URL (SD.cpp only) -->
+        <div id="server-url-section" class="field" style="margin-top:auto;">
             <label>Server URL</label>
             <input type="text" id="server-url" value="http://gx10-cbc5:1234">
         </div>
@@ -434,38 +503,70 @@
 <div id="error-toast"></div>
 
 <script>
-    const SERVER_URL_INPUT   = document.getElementById('server-url');
-    const STATUS_DOT         = document.getElementById('status-dot');
-    const STATUS_LABEL       = document.getElementById('status-label');
-    const BTN_GENERATE       = document.getElementById('btn-generate');
-    const PROMPT             = document.getElementById('prompt');
-    const NEGATIVE_PROMPT    = document.getElementById('negative-prompt');
-    const STEPS              = document.getElementById('steps');
-    const CFG_SCALE          = document.getElementById('cfg-scale');
-    const SAMPLER            = document.getElementById('sampler');
-    const SCHEDULER          = document.getElementById('scheduler');
-    const SEED               = document.getElementById('seed');
-    const WIDTH              = document.getElementById('width');
-    const HEIGHT             = document.getElementById('height');
-    const STRENGTH           = document.getElementById('strength');
-    const RESULT_WRAP        = document.getElementById('result-wrap');
-    const RESULT_IMG         = document.getElementById('result-img');
-    const META_SIZE          = document.getElementById('meta-size');
-    const META_SEED          = document.getElementById('meta-seed');
-    const BTN_DOWNLOAD       = document.getElementById('btn-download');
-    const PLACEHOLDER        = document.getElementById('placeholder');
-    const SPINNER            = document.getElementById('spinner');
-    const SPINNER_LABEL      = document.getElementById('spinner-label');
-    const ERROR_TOAST        = document.getElementById('error-toast');
-    const UPLOAD_SECTION     = document.getElementById('upload-section');
-    const RESOLUTION_SECTION = document.getElementById('resolution-section');
-    const STRENGTH_SECTION   = document.getElementById('strength-section');
-    const FILE_INPUT         = document.getElementById('file-input');
-    const DROP_ZONE          = document.getElementById('drop-zone');
-    const THUMBNAILS         = document.getElementById('thumbnails');
+    const SERVER_URL_INPUT      = document.getElementById('server-url');
+    const STATUS_DOT            = document.getElementById('status-dot');
+    const STATUS_LABEL          = document.getElementById('status-label');
+    const BTN_GENERATE          = document.getElementById('btn-generate');
+    const PROMPT                = document.getElementById('prompt');
+    const NEGATIVE_PROMPT       = document.getElementById('negative-prompt');
+    const STEPS                 = document.getElementById('steps');
+    const CFG_SCALE             = document.getElementById('cfg-scale');
+    const SAMPLER               = document.getElementById('sampler');
+    const SCHEDULER             = document.getElementById('scheduler');
+    const SEED                  = document.getElementById('seed');
+    const WIDTH                 = document.getElementById('width');
+    const HEIGHT                = document.getElementById('height');
+    const STRENGTH              = document.getElementById('strength');
+    const OPENAI_API_KEY        = document.getElementById('openai-api-key');
+    const OPENAI_MODEL          = document.getElementById('openai-model');
+    const RESULT_WRAP           = document.getElementById('result-wrap');
+    const RESULT_IMG            = document.getElementById('result-img');
+    const META_SIZE             = document.getElementById('meta-size');
+    const META_SEED             = document.getElementById('meta-seed');
+    const BTN_DOWNLOAD          = document.getElementById('btn-download');
+    const PLACEHOLDER           = document.getElementById('placeholder');
+    const SPINNER               = document.getElementById('spinner');
+    const SPINNER_LABEL         = document.getElementById('spinner-label');
+    const ERROR_TOAST           = document.getElementById('error-toast');
+    const UPLOAD_SECTION        = document.getElementById('upload-section');
+    const RESOLUTION_SECTION    = document.getElementById('resolution-section');
+    const STRENGTH_SECTION      = document.getElementById('strength-section');
+    const SDCPP_PARAMS          = document.getElementById('sdcpp-params');
+    const OPENAI_SETTINGS       = document.getElementById('openai-settings');
+    const NEGATIVE_PROMPT_SEC   = document.getElementById('negative-prompt-section');
+    const SERVER_URL_SECTION    = document.getElementById('server-url-section');
+    const FILE_INPUT            = document.getElementById('file-input');
+    const DROP_ZONE             = document.getElementById('drop-zone');
+    const THUMBNAILS            = document.getElementById('thumbnails');
 
-    let currentMode = 'txt2image';   // 'txt2image' | 'edit'
-    let uploadedFiles = [];           // array of { file, dataUrl }
+    let currentMode    = 'txt2image';   // 'txt2image' | 'edit'
+    let currentBackend = 'sdcpp';       // 'sdcpp' | 'openai'
+    let uploadedFiles  = [];            // array of { file, dataUrl }
+
+    // ── Backend switching ──────────────────────────────────────────
+    function applyBackend(backend) {
+        currentBackend = backend;
+        const isOpenAI = backend === 'openai';
+        OPENAI_SETTINGS.style.display     = isOpenAI ? 'block' : 'none';
+        NEGATIVE_PROMPT_SEC.style.display = isOpenAI ? 'none'  : 'flex';
+        SDCPP_PARAMS.style.display        = isOpenAI ? 'none'  : 'block';
+        SERVER_URL_SECTION.style.display  = isOpenAI ? 'none'  : 'flex';
+        // Resolution section only relevant for SD.cpp txt2image
+        RESOLUTION_SECTION.style.display  =
+            (!isOpenAI && currentMode === 'txt2image') ? 'block' : 'none';
+        // Strength only for SD.cpp edit
+        STRENGTH_SECTION.style.display    =
+            (!isOpenAI && currentMode === 'edit') ? 'flex' : 'none';
+        checkHealth();
+    }
+
+    document.querySelectorAll('.backend-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.backend-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            applyBackend(btn.dataset.backend);
+        });
+    });
 
     // ── Tab switching ──────────────────────────────────────────────
     document.querySelectorAll('.tab').forEach(tab => {
@@ -473,21 +574,34 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentMode = tab.dataset.mode;
+            const isOpenAI = currentBackend === 'openai';
             UPLOAD_SECTION.style.display     = currentMode === 'edit' ? 'flex' : 'none';
-            RESOLUTION_SECTION.style.display = currentMode === 'txt2image' ? 'block' : 'none';
-            STRENGTH_SECTION.style.display   = currentMode === 'edit' ? 'flex' : 'none';
+            RESOLUTION_SECTION.style.display =
+                (!isOpenAI && currentMode === 'txt2image') ? 'block' : 'none';
+            STRENGTH_SECTION.style.display   =
+                (!isOpenAI && currentMode === 'edit') ? 'flex' : 'none';
         });
     });
 
-    // ── Health check via GET /sdapi/v1/sd-models ──────────────────
+    // ── Health check ───────────────────────────────────────────────
     async function checkHealth() {
+        if (currentBackend === 'openai') {
+            const key = OPENAI_API_KEY.value.trim();
+            if (key) {
+                STATUS_DOT.className     = 'status-dot ok';
+                STATUS_LABEL.textContent = 'API key set';
+            } else {
+                STATUS_DOT.className     = 'status-dot';
+                STATUS_LABEL.textContent = 'no API key';
+            }
+            return;
+        }
         try {
-            const r = await fetch(`${SERVER_URL_INPUT.value.replace(/\/$/, '')}/sdapi/v1/sd-models`);
+            const r = await fetch(`${SERVER_URL_INPUT.value.replace(/\/$/, '')}/v1/models`);
             if (!r.ok) throw new Error();
             const models = await r.json();
-            const label = models.length ? models[0].model_name : 'ready';
             STATUS_DOT.className     = 'status-dot ok';
-            STATUS_LABEL.textContent = label;
+            STATUS_LABEL.textContent = models.data?.length ? models.data[0].id : 'ready';
         } catch {
             STATUS_DOT.className     = 'status-dot';
             STATUS_LABEL.textContent = 'unreachable';
@@ -495,8 +609,9 @@
     }
 
     checkHealth();
-    setInterval(checkHealth, 15000);
+    setInterval(checkHealth, 150000);
     SERVER_URL_INPUT.addEventListener('change', checkHealth);
+    OPENAI_API_KEY.addEventListener('input', checkHealth);
 
     // ── File upload / drag-and-drop ────────────────────────────────
     function addFiles(files) {
@@ -552,7 +667,107 @@
         toastTimer = setTimeout(() => ERROR_TOAST.classList.remove('visible'), 6000);
     }
 
-    // ── Generate ───────────────────────────────────────────────────
+    // ── Generate: SD.cpp OpenAI-compatible API path ───────────────
+    async function generateSdcpp(prompt) {
+        const baseUrl = SERVER_URL_INPUT.value.replace(/\/$/, '');
+        const requestedSeed = parseInt(SEED.value);
+
+        // Advanced params embedded via sd_cpp_extra_args tag
+        const extraArgs = {
+            negative_prompt: NEGATIVE_PROMPT.value.trim(),
+            steps:           parseInt(STEPS.value),
+            cfg_scale:       parseFloat(CFG_SCALE.value),
+            seed:            requestedSeed,
+            sampler_name:    SAMPLER.value.trim(),
+            scheduler:       SCHEDULER.value.trim(),
+        };
+        const fullPrompt = `${prompt}\n<sd_cpp_extra_args>${JSON.stringify(extraArgs)}</sd_cpp_extra_args>`;
+
+        let resp;
+        if (currentMode === 'txt2image') {
+            resp = await fetch(`${baseUrl}/v1/images/generations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt:       fullPrompt,
+                    n:            1,
+                    size:         `${parseInt(WIDTH.value)}x${parseInt(HEIGHT.value)}`,
+                    output_format: 'png',
+                }),
+            });
+        } else {
+            const form = new FormData();
+            form.append('prompt', fullPrompt);
+            form.append('n', '1');
+            form.append('output_format', 'png');
+            for (const f of uploadedFiles) {
+                const blob = await fetch(f.dataUrl).then(r => r.blob());
+                form.append('image[]', blob, f.file.name);
+            }
+            resp = await fetch(`${baseUrl}/v1/images/edits`, {
+                method: 'POST',
+                body: form,
+            });
+        }
+
+        if (!resp.ok) {
+            const detail = (await resp.json().catch(() => ({}))).error?.message || resp.statusText;
+            throw new Error(detail);
+        }
+
+        const data = await resp.json();
+        const b64 = (data.data || [])[0]?.b64_json;
+        if (!b64) throw new Error('Server returned no image data');
+
+        const w = currentMode === 'txt2image' ? parseInt(WIDTH.value) : '?';
+        const h = currentMode === 'txt2image' ? parseInt(HEIGHT.value) : '?';
+        return { b64, seed: requestedSeed, w, h };
+    }
+
+    // ── Generate: OpenAI Responses API path ───────────────────────
+    async function generateOpenAI(prompt) {
+        const apiKey = OPENAI_API_KEY.value.trim();
+        if (!apiKey) throw new Error('Enter an OpenAI API key first.');
+        const model = OPENAI_MODEL.value.trim() || 'gpt-image-1';
+
+        let input;
+        if (currentMode === 'txt2image') {
+            input = prompt;
+        } else {
+            const content = [{ type: 'input_text', text: prompt }];
+            for (const f of uploadedFiles) {
+                content.push({ type: 'input_image', image_url: f.dataUrl });
+            }
+            input = [{ role: 'user', content }];
+        }
+
+        const resp = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model,
+                input,
+                tools: [{ type: 'image_generation' }],
+            }),
+        });
+        if (!resp.ok) {
+            const err = (await resp.json().catch(() => ({}))).error?.message || resp.statusText;
+            throw new Error(err);
+        }
+
+        const data = await resp.json();
+        const b64 = (data.output || [])
+            .filter(o => o.type === 'image_generation_call')
+            .map(o => o.result)[0];
+        if (!b64) throw new Error('OpenAI response contained no image_generation_call output');
+
+        return { b64, seed: 'n/a', w: '?', h: '?' };
+    }
+
+    // ── Generate: dispatcher ──────────────────────────────────────
     BTN_GENERATE.addEventListener('click', async () => {
         const prompt = PROMPT.value.trim();
         if (!prompt) { showError('Please enter a prompt.'); return; }
@@ -566,63 +781,15 @@
         SPINNER.classList.add('visible');
         SPINNER_LABEL.textContent = currentMode === 'edit' ? 'Editing image…' : 'Generating…';
 
-        const baseUrl = SERVER_URL_INPUT.value.replace(/\/$/, '');
-        const requestedSeed = parseInt(SEED.value);
-
-        // Shared params (flat — WebUI schema)
-        const common = {
-            prompt,
-            negative_prompt: NEGATIVE_PROMPT.value.trim(),
-            steps:           parseInt(STEPS.value),
-            cfg_scale:       parseFloat(CFG_SCALE.value),
-            seed:            requestedSeed,
-            sampler_name:    SAMPLER.value.trim(),
-            scheduler:       SCHEDULER.value.trim(),
-        };
-
         try {
-            let endpoint, body;
-            if (currentMode === 'txt2image') {
-                endpoint = '/sdapi/v1/txt2img';
-                body = {
-                    ...common,
-                    width:  parseInt(WIDTH.value),
-                    height: parseInt(HEIGHT.value),
-                };
-            } else {
-                endpoint = '/sdapi/v1/img2img';
-                body = {
-                    ...common,
-                    init_images:        uploadedFiles.map(f => f.dataUrl),   // data URLs accepted
-                    denoising_strength: parseFloat(STRENGTH.value),
-                };
-            }
-
-            const resp = await fetch(`${baseUrl}${endpoint}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            if (!resp.ok) {
-                const detail = (await resp.json().catch(() => ({}))).detail || resp.statusText;
-                throw new Error(detail);
-            }
-
-            const data = await resp.json();
-            const b64 = (data.images || [])[0];
-            if (!b64) throw new Error('Server returned no image data');
-
-            // info is always empty string per spec; seed comes from parameters echo
-            const seed = data.parameters?.seed ?? requestedSeed;
-            // width/height from parameters echo (txt2img) or derive from image
-            const w = data.parameters?.width  ?? '?';
-            const h = data.parameters?.height ?? '?';
+            const { b64, seed, w, h } = currentBackend === 'openai'
+                ? await generateOpenAI(prompt)
+                : await generateSdcpp(prompt);
 
             const imgSrc = `data:image/png;base64,${b64}`;
             RESULT_IMG.src = imgSrc;
-            META_SIZE.textContent = `${w} × ${h}`;
-            META_SEED.textContent = `seed: ${seed}`;
+            META_SIZE.textContent = w !== '?' ? `${w} × ${h}` : '';
+            META_SEED.textContent = seed !== 'n/a' ? `seed: ${seed}` : '';
             BTN_DOWNLOAD.href = imgSrc;
             BTN_DOWNLOAD.download = `image_${seed}.png`;
 
