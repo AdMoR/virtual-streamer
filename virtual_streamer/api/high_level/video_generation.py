@@ -15,14 +15,16 @@ Architecture (LTX-2 Pipeline):
     3. Concatenate segments into final video
 """
 
+import base64
 import json
 import logging
 import os
+import tempfile
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, File, Form, HTTPException, BackgroundTasks, UploadFile
 # ADK imports
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -1254,3 +1256,189 @@ async def health():
         "storage_backend": os.environ.get("JOB_STORAGE_BACKEND", "memory"),
         "api_base_url": os.environ.get("API_BASE_URL", "http://localhost:8000"),
     }
+
+
+# ============================================================================
+# Single-Clip Generation (image + audio → video)
+# ============================================================================
+
+class SingleClipResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+
+
+# Internal dataclass passed from the endpoint to the background task.
+# Not a FastAPI model — just a plain container for already-read file bytes.
+class _SingleClipJob:
+    def __init__(
+        self,
+        prompt: str,
+        negative_prompt: str,
+        image_bytes: Optional[bytes],
+        audio_bytes: Optional[bytes],
+        wangp_url: str,
+        wangp_timeout: float,
+        model_type: str,
+        resolution: str,
+        duration_seconds: float,
+        fps: int,
+        steps: int,
+        guidance_scale: float,
+        flow_shift: float,
+        seed: int,
+        audio_scale: float,
+        audio_guidance: float,
+    ):
+        self.prompt           = prompt
+        self.negative_prompt  = negative_prompt
+        self.image_bytes      = image_bytes
+        self.audio_bytes      = audio_bytes
+        self.wangp_url        = wangp_url
+        self.wangp_timeout    = wangp_timeout
+        self.model_type       = model_type
+        self.resolution       = resolution
+        self.duration_seconds = duration_seconds
+        self.fps              = fps
+        self.steps            = steps
+        self.guidance_scale   = guidance_scale
+        self.flow_shift       = flow_shift
+        self.seed             = seed
+        self.audio_scale      = audio_scale
+        self.audio_guidance   = audio_guidance
+
+
+async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
+    """Background task: write uploaded files to temp dir, generate video, store b64 result."""
+    job_store = await get_global_job_store()
+    try:
+        await job_store.update_job(job_id, status="running")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path: Optional[str] = None
+            audio_path: Optional[str] = None
+
+            if job.image_bytes:
+                image_path = os.path.join(tmpdir, "input_image.png")
+                with open(image_path, "wb") as fh:
+                    fh.write(job.image_bytes)
+
+            if job.audio_bytes:
+                audio_path = os.path.join(tmpdir, "input_audio.wav")
+                with open(audio_path, "wb") as fh:
+                    fh.write(job.audio_bytes)
+
+            config = LTXVideoConfig(
+                server_url=job.wangp_url,
+                timeout=job.wangp_timeout,
+            )
+            params = VideoGenerationParams(
+                prompt=job.prompt,
+                negative_prompt=job.negative_prompt,
+                image_path=image_path,
+                audio_path=audio_path,
+                model_type=job.model_type,
+                resolution=job.resolution,
+                duration_seconds=job.duration_seconds,
+                fps=job.fps,
+                steps=job.steps,
+                guidance_scale=job.guidance_scale,
+                flow_shift=job.flow_shift,
+                seed=job.seed,
+                audio_scale=job.audio_scale,
+                audio_guidance=job.audio_guidance,
+            )
+
+            output_dir = os.path.join(tmpdir, "output")
+            async with WanGPLTXClient(config) as client:
+                result = await client.generate_video(params, output_dir=output_dir)
+
+            with open(result.video_path, "rb") as fh:
+                video_b64 = base64.b64encode(fh.read()).decode()
+
+        await job_store.update_job(
+            job_id,
+            status="completed",
+            result={
+                "video_b64": video_b64,
+                "duration_seconds": result.duration_seconds,
+                "width": result.width,
+                "height": result.height,
+                "fps": result.fps,
+                "prompt_id": result.prompt_id,
+            },
+        )
+
+    except Exception as exc:
+        logger.error(f"single-clip job {job_id} failed: {exc}", exc_info=True)
+        await job_store.update_job(job_id, status="failed", error=str(exc))
+
+
+@router.post("/single-clip", response_model=SingleClipResponse)
+async def generate_single_clip(
+    background_tasks: BackgroundTasks,
+    prompt:           str          = Form(...),
+    negative_prompt:  str          = Form("worst quality, inconsistent motion, blurry, jittery, distorted"),
+    wangp_url:        str          = Form("http://gx10-cbc5:8081/"),
+    wangp_timeout:    float        = Form(600.0),
+    model_type:       str          = Form("ltx2_22B_distilled"),
+    resolution:       str          = Form("1280x720"),
+    duration_seconds: float        = Form(4.0),
+    fps:              int          = Form(24),
+    steps:            int          = Form(8),
+    guidance_scale:   float        = Form(3.0),
+    flow_shift:       float        = Form(3.0),
+    seed:             int          = Form(-1),
+    audio_scale:      float        = Form(1.0),
+    audio_guidance:   float        = Form(4.5),
+    image:            Optional[UploadFile] = File(default=None),
+    audio:            Optional[UploadFile] = File(default=None),
+):
+    """
+    Generate a single video clip from an optional conditioning image and/or audio.
+
+    Accepts ``multipart/form-data`` — no base64 encoding required, no body-size issues.
+
+    Modes:
+    - Text-to-video:          prompt only, no image, no audio
+    - Image-to-video (i2v):   prompt + image file
+    - Audio-conditioned i2v:  prompt + image file + audio file
+
+    The job runs asynchronously. Poll ``GET /api/v1/video-generation/jobs/{job_id}``
+    until ``status == "completed"``.  The result contains ``video_b64``
+    (base64-encoded MP4) plus duration/resolution metadata.
+    """
+    image_bytes = await image.read() if image else None
+    audio_bytes = await audio.read() if audio else None
+
+    job = _SingleClipJob(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        image_bytes=image_bytes,
+        audio_bytes=audio_bytes,
+        wangp_url=wangp_url,
+        wangp_timeout=wangp_timeout,
+        model_type=model_type,
+        resolution=resolution,
+        duration_seconds=duration_seconds,
+        fps=fps,
+        steps=steps,
+        guidance_scale=guidance_scale,
+        flow_shift=flow_shift,
+        seed=seed,
+        audio_scale=audio_scale,
+        audio_guidance=audio_guidance,
+    )
+
+    job_store = await get_global_job_store()
+    job_id = str(uuid.uuid4())
+    await job_store.create_job(job_id, {
+        "prompt": prompt, "resolution": resolution,
+        "duration_seconds": duration_seconds, "model_type": model_type,
+    })
+    background_tasks.add_task(_run_single_clip, job_id, job)
+    return SingleClipResponse(
+        job_id=job_id,
+        status="pending",
+        message="Single-clip generation job submitted",
+    )
