@@ -1,9 +1,0 @@
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
-diffusers>=0.33.0
-transformers>=4.45.0
-accelerate>=0.30.0
-gguf>=0.10.0
-Pillow>=10.0.0
-pydantic>=2.0.0
-httpx>=0.27.0

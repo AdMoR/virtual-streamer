@@ -1,45 +1,50 @@
 """
-Flux Kontext Image Generation Client
+Stable Diffusion WebUI-compatible Image Generation Client
 
-Client for the Flux Kontext image-edit inference server.
+Client for a stable-diffusion.cpp server using the AUTOMATIC1111-compatible
+WebUI API surface.
 
 Abstract interface
 ------------------
 :class:`ImageGenerationClientInterface` defines two operations:
 
   - :meth:`txt2image` — generate an image from a text prompt only
-  - :meth:`image_edit` — edit / transform one or several reference images
-                          guided by a text prompt
+  - :meth:`image_edit` — edit / transform a reference image guided by a text
+                          prompt (img2img)
 
 Both methods accept typed Pydantic parameter models and return an
 :class:`ImageGenerationResult`.
 
 Concrete implementation
 -----------------------
-:class:`FluxKontextClient` implements the interface by calling the REST API
-exposed by ``virtual_streamer/image_generation/flux_kontext_server/app.py``.
+:class:`StableDiffusionCppClient` implements the interface using the WebUI
+compatibility endpoints:
+
+  POST /sdapi/v1/txt2img  — text-to-image (synchronous)
+  POST /sdapi/v1/img2img  — image-to-image (synchronous)
 
 Usage
 -----
-    from virtual_streamer.image_generation.flux_kontext_client import (
-        FluxKontextClient, FluxKontextConfig,
+    from virtual_streamer.image_generation.stable_cpp_client import (
+        StableDiffusionCppClient, StableDiffusionCppConfig,
         Txt2ImageParams, ImageEditParams,
     )
 
     # Text-to-image
-    async with FluxKontextClient(FluxKontextConfig()) as client:
+    async with StableDiffusionCppClient(StableDiffusionCppConfig()) as client:
         result = await client.txt2image(
             Txt2ImageParams(prompt="A fox in a snowy forest"),
             output_dir="./output",
         )
         print(result.image_path)
 
-    # Image editing (one or several reference images)
-    async with FluxKontextClient(FluxKontextConfig()) as client:
+    # Image editing (img2img)
+    async with StableDiffusionCppClient(StableDiffusionCppConfig()) as client:
         result = await client.image_edit(
             ImageEditParams(
                 prompt="Make the sky purple and add stars",
                 image_paths=["photo.jpg"],
+                denoising_strength=0.75,
             ),
             output_dir="./output",
         )
@@ -63,12 +68,12 @@ from pydantic import BaseModel, Field
 # Configuration
 # =============================================================================
 
-class FluxKontextConfig(BaseModel):
-    """Connection settings for the Flux Kontext inference server."""
+class StableDiffusionCppConfig(BaseModel):
+    """Connection settings for the stable-diffusion.cpp inference server."""
 
     server_url: str = Field(
-        default="http://localhost:8010",
-        description="Base URL of the running Flux Kontext server",
+        default="http://gx10-cbc5:1234",
+        description="Base URL of the running stable-diffusion.cpp server",
     )
     timeout: float = Field(
         default=300.0,
@@ -81,27 +86,42 @@ class FluxKontextConfig(BaseModel):
 # =============================================================================
 
 class Txt2ImageParams(BaseModel):
-    """Parameters for text-to-image generation (no conditioning image)."""
+    """Parameters for text-to-image generation (POST /sdapi/v1/txt2img)."""
 
     prompt: str = Field(description="Text prompt describing the desired image")
-    width: int = Field(default=680, ge=64, le=2048)
-    height: int = Field(default=496, ge=64, le=2048)
-    num_inference_steps: int = Field(default=50, ge=1, le=200)
-    guidance_scale: float = Field(default=3.5, ge=0.0, le=20.0)
+    negative_prompt: str = Field(default="")
+    width: int = Field(default=512, ge=64, le=2048)
+    height: int = Field(default=512, ge=64, le=2048)
+    steps: int = Field(default=20, ge=1, le=200)
+    cfg_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1, description="-1 for a random seed")
+    sampler_name: str = Field(default="Euler a")
+    scheduler: str = Field(default="Automatic")
+    batch_size: int = Field(default=1, ge=1, le=16)
 
 
 class ImageEditParams(BaseModel):
-    """Parameters for image editing conditioned on one or several reference images."""
+    """Parameters for img2img editing (POST /sdapi/v1/img2img)."""
 
     prompt: str = Field(description="Editing instruction")
     image_paths: List[str] = Field(
-        description="Local paths to one or more reference images",
+        description="Local paths to one or more reference images (tiled when multiple)",
         min_length=1,
     )
-    num_inference_steps: int = Field(default=50, ge=1, le=200)
-    guidance_scale: float = Field(default=2.5, ge=0.0, le=20.0)
+    negative_prompt: str = Field(default="")
+    denoising_strength: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description="Denoising strength: 0 = no change, 1 = full redraw",
+    )
+    width: int = Field(default=512, ge=64, le=2048)
+    height: int = Field(default=512, ge=64, le=2048)
+    steps: int = Field(default=20, ge=1, le=200)
+    cfg_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1, description="-1 for a random seed")
+    sampler_name: str = Field(default="Euler a")
+    scheduler: str = Field(default="Automatic")
 
 
 # =============================================================================
@@ -155,13 +175,13 @@ class ImageGenerationClientInterface(ABC):
         output_dir: str = "./output",
     ) -> ImageGenerationResult:
         """
-        Edit or transform one or several reference images guided by a text prompt.
+        Edit a reference image guided by a text prompt (img2img).
 
-        When multiple images are supplied they are tiled into a grid before
+        When multiple images are supplied they are tiled side-by-side before
         being sent to the server.
 
         Args:
-            params:     Edit parameters (prompt, image_paths, steps…)
+            params:     Edit parameters (prompt, image_paths, strength, steps…)
             output_dir: Local directory where the output PNG will be saved.
 
         Returns:
@@ -182,18 +202,22 @@ class ImageGenerationClientInterface(ABC):
 
 
 # =============================================================================
-# Flux Kontext implementation
+# Stable Diffusion WebUI-compatible implementation
 # =============================================================================
 
-class FluxKontextClient(ImageGenerationClientInterface):
+class StableDiffusionCppClient(ImageGenerationClientInterface):
     """
-    Image generation / editing client backed by the Flux Kontext REST server.
+    Image generation / editing client using the WebUI-compatible API of a
+    stable-diffusion.cpp server.
+
+    Both endpoints are synchronous — the server blocks until generation is
+    complete and returns the image directly in the response body.
 
     The HTTP client is created lazily on first use and reused across calls.
     """
 
-    def __init__(self, config: Optional[FluxKontextConfig] = None) -> None:
-        self.config = config or FluxKontextConfig()
+    def __init__(self, config: Optional[StableDiffusionCppConfig] = None) -> None:
+        self.config = config or StableDiffusionCppConfig()
         self._http: Optional[httpx.AsyncClient] = None
 
     # ------------------------------------------------------------------
@@ -209,12 +233,27 @@ class FluxKontextClient(ImageGenerationClientInterface):
         return self._http
 
     @staticmethod
-    def _image_to_b64(path: str) -> str:
-        with Image.open(path) as img:
-            img = img.convert("RGB")
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            return base64.b64encode(buf.getvalue()).decode()
+    def _images_to_b64_grid(paths: List[str]) -> str:
+        """
+        Load one or more images and return a single base64-encoded PNG.
+
+        Multiple images are tiled side-by-side into a horizontal strip.
+        """
+        imgs = [Image.open(p).convert("RGB") for p in paths]
+        if len(imgs) == 1:
+            combined = imgs[0]
+        else:
+            total_w = sum(i.width for i in imgs)
+            max_h = max(i.height for i in imgs)
+            combined = Image.new("RGB", (total_w, max_h))
+            x = 0
+            for img in imgs:
+                combined.paste(img, (x, 0))
+                x += img.width
+
+        buf = io.BytesIO()
+        combined.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
 
     @staticmethod
     def _save_b64_image(b64: str, output_dir: str) -> tuple[str, int, int]:
@@ -227,6 +266,17 @@ class FluxKontextClient(ImageGenerationClientInterface):
         fpath = out / fname
         img.save(fpath)
         return str(fpath), img.width, img.height
+
+    @staticmethod
+    def _parse_seed(body: dict, fallback: int) -> int:
+        """
+        Extract the seed from the response.
+
+        The WebUI ``info`` field is currently always an empty string.
+        The ``parameters`` field echoes the outer request body, so we read
+        ``seed`` from there.
+        """
+        return body.get("parameters", {}).get("seed", fallback)
 
     # ------------------------------------------------------------------
     # Interface implementation
@@ -243,7 +293,7 @@ class FluxKontextClient(ImageGenerationClientInterface):
         output_dir: str = "./output",
     ) -> ImageGenerationResult:
         """
-        Generate an image from a text prompt via the ``/txt2image`` endpoint.
+        Generate an image from a text prompt via ``POST /sdapi/v1/txt2img``.
 
         Args:
             params:     Generation parameters.
@@ -255,27 +305,35 @@ class FluxKontextClient(ImageGenerationClientInterface):
         Raises:
             httpx.HTTPStatusError: If the server returns a non-2xx response.
         """
-        http = self._get_http()
-
         payload = {
-            "prompt": params.prompt,
-            "width": params.width,
-            "height": params.height,
-            "num_inference_steps": params.num_inference_steps,
-            "guidance_scale": params.guidance_scale,
-            "seed": params.seed,
+            "prompt":          params.prompt,
+            "negative_prompt": params.negative_prompt,
+            "width":           params.width,
+            "height":          params.height,
+            "steps":           params.steps,
+            "cfg_scale":       params.cfg_scale,
+            "seed":            params.seed,
+            "sampler_name":    params.sampler_name,
+            "scheduler":       params.scheduler,
+            "batch_size":      params.batch_size,
         }
 
-        resp = await http.post("/txt2image", json=payload)
+        http = self._get_http()
+        resp = await http.post("/sdapi/v1/txt2img", json=payload)
         resp.raise_for_status()
         body = resp.json()
 
-        image_path, w, h = self._save_b64_image(body["image_b64"], output_dir)
+        b64 = body["images"][0]
+        image_path, w, h = await asyncio.to_thread(
+            self._save_b64_image, b64, output_dir
+        )
+        seed = self._parse_seed(body, params.seed)
+
         return ImageGenerationResult(
             image_path=image_path,
             width=w,
             height=h,
-            seed=body["seed"],
+            seed=seed,
             prompt_id=Path(image_path).stem,
         )
 
@@ -285,10 +343,10 @@ class FluxKontextClient(ImageGenerationClientInterface):
         output_dir: str = "./output",
     ) -> ImageGenerationResult:
         """
-        Edit reference images via the ``/edit`` endpoint.
+        Edit a reference image via ``POST /sdapi/v1/img2img``.
 
-        All images in *params.image_paths* are base64-encoded and sent to the
-        server, which tiles them into a grid when more than one is provided.
+        All images in *params.image_paths* are tiled into a horizontal grid
+        before being sent to the server.
 
         Args:
             params:     Edit parameters (prompt + one or more image paths).
@@ -300,30 +358,40 @@ class FluxKontextClient(ImageGenerationClientInterface):
         Raises:
             httpx.HTTPStatusError: If the server returns a non-2xx response.
         """
-        http = self._get_http()
-
-        images_b64 = await asyncio.to_thread(
-            lambda: [self._image_to_b64(p) for p in params.image_paths]
+        init_image_b64 = await asyncio.to_thread(
+            self._images_to_b64_grid, params.image_paths
         )
 
         payload = {
-            "prompt": params.prompt,
-            "images_b64": images_b64,
-            "num_inference_steps": params.num_inference_steps,
-            "guidance_scale": params.guidance_scale,
-            "seed": params.seed,
+            "prompt":              params.prompt,
+            "negative_prompt":     params.negative_prompt,
+            "init_images":         [init_image_b64],
+            "denoising_strength":  params.denoising_strength,
+            "width":               params.width,
+            "height":              params.height,
+            "steps":               params.steps,
+            "cfg_scale":           params.cfg_scale,
+            "seed":                params.seed,
+            "sampler_name":        params.sampler_name,
+            "scheduler":           params.scheduler,
         }
 
-        resp = await http.post("/edit", json=payload)
+        http = self._get_http()
+        resp = await http.post("/sdapi/v1/img2img", json=payload)
         resp.raise_for_status()
         body = resp.json()
 
-        image_path, w, h = self._save_b64_image(body["image_b64"], output_dir)
+        b64 = body["images"][0]
+        image_path, w, h = await asyncio.to_thread(
+            self._save_b64_image, b64, output_dir
+        )
+        seed = self._parse_seed(body, params.seed)
+
         return ImageGenerationResult(
             image_path=image_path,
             width=w,
             height=h,
-            seed=body["seed"],
+            seed=seed,
             prompt_id=Path(image_path).stem,
         )
 
@@ -335,13 +403,13 @@ class FluxKontextClient(ImageGenerationClientInterface):
 async def txt2image(
     prompt: str,
     output_dir: str = "./output",
-    server_url: str = "http://localhost:8010",
+    server_url: str = "http://gx10-cbc5:1234",
     **kwargs,
 ) -> ImageGenerationResult:
     """Generate an image from a text prompt with a single async call."""
-    config = FluxKontextConfig(server_url=server_url)
+    config = StableDiffusionCppConfig(server_url=server_url)
     params = Txt2ImageParams(prompt=prompt, **kwargs)
-    async with FluxKontextClient(config) as client:
+    async with StableDiffusionCppClient(config) as client:
         return await client.txt2image(params, output_dir=output_dir)
 
 
@@ -349,11 +417,11 @@ async def image_edit(
     prompt: str,
     image_paths: List[str],
     output_dir: str = "./output",
-    server_url: str = "http://localhost:8010",
+    server_url: str = "http://gx10-cbc5:1234",
     **kwargs,
 ) -> ImageGenerationResult:
     """Edit one or several reference images with a single async call."""
-    config = FluxKontextConfig(server_url=server_url)
+    config = StableDiffusionCppConfig(server_url=server_url)
     params = ImageEditParams(prompt=prompt, image_paths=image_paths, **kwargs)
-    async with FluxKontextClient(config) as client:
+    async with StableDiffusionCppClient(config) as client:
         return await client.image_edit(params, output_dir=output_dir)
