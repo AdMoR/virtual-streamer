@@ -847,6 +847,9 @@ S                        <!-- LTX Settings -->
                             <button class="tab" data-tab="recent" onclick="switchTab('recent')">
                                 📋 Recent Jobs
                             </button>
+                            <button class="tab" data-tab="templates" onclick="switchTab('templates')">
+                                📄 Templates
+                            </button>
                         </div>
 
                         <!-- Create Tab -->
@@ -898,6 +901,10 @@ S                        <!-- LTX Settings -->
                                     </select>
                                 </div>
                                 <div id="templateDetails" style="display: none; margin-bottom: 16px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-size: 0.8rem; color: var(--text-muted);">Template preview</span>
+                                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;" onclick="editSelectedTemplate()">✏️ Edit Template</button>
+                                    </div>
                                     <div class="code-block" id="templatePreview"></div>
                                 </div>
                                 <div class="form-group">
@@ -991,6 +998,59 @@ S                        <!-- LTX Settings -->
                                 </div>
                             </div>
                         </div>
+                        <!-- Templates Tab -->
+                        <div class="tab-panel" id="tab-templates">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="color: var(--text-bright); margin: 0;">Story Templates</h3>
+                                <div style="display: flex; gap: 10px;">
+                                    <button class="btn btn-secondary" onclick="loadTemplates()">🔄 Refresh</button>
+                                    <button class="btn btn-primary" onclick="openTemplateEditor(null)">➕ New Template</button>
+                                </div>
+                            </div>
+
+                            <!-- Inline editor (hidden until Edit / New is clicked) -->
+                            <div id="templateEditor" style="display: none; margin-bottom: 24px;">
+                                <div style="background: var(--bg-input); border: 1px solid var(--border-focus); border-radius: 8px; padding: 20px;">
+                                    <h4 id="templateEditorTitle" style="color: var(--text-bright); margin-bottom: 16px;"></h4>
+                                    <input type="hidden" id="editTemplateId">
+                                    <div class="form-group">
+                                        <label>Name</label>
+                                        <input type="text" id="editTemplateName" placeholder="My template">
+                                    </div>
+                                    <div class="grid-2">
+                                        <div class="form-group">
+                                            <label>Collection</label>
+                                            <input type="text" id="editTemplateCollection" placeholder="e.g. random">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Target Lines</label>
+                                            <input type="number" id="editTemplateTargetLines" value="6" min="1" max="30">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Character IDs <span style="color: var(--text-muted); font-weight: normal;">(comma-separated)</span></label>
+                                        <input type="text" id="editTemplateCharacters" placeholder="e.g. fred, jamy">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Prompt</label>
+                                        <textarea id="editTemplatePrompt" rows="12" placeholder="Story generation prompt..."></textarea>
+                                    </div>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <button class="btn btn-primary" onclick="saveTemplate()">💾 Save</button>
+                                        <button class="btn btn-secondary" onclick="closeTemplateEditor()">Cancel</button>
+                                        <button id="deleteTemplateBtn" class="btn" style="margin-left: auto; background: rgba(248,81,73,0.12); color: var(--error); border: 1px solid var(--error);" onclick="deleteTemplate()">🗑️ Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Template list -->
+                            <div id="templatesList">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📄</div>
+                                    <p>Click Refresh to load templates</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -1037,6 +1097,20 @@ S                        <!-- LTX Settings -->
             }
         }
 
+        // FormData variant — used for PUT/POST endpoints that declare Form(...) params
+        async function formApiCall(method, endpoint, formData = null) {
+            const url = `${getApiUrl()}${endpoint}`;
+            const options = { method };
+            if (formData) options.body = formData;
+            try {
+                const response = await fetch(url, options);
+                const data = response.status !== 204 ? await response.json() : null;
+                return { ok: response.ok, status: response.status, data };
+            } catch (error) {
+                return { ok: false, status: 0, error: error.message };
+            }
+        }
+
         // =============================================================================
         // Characters & Templates
         // =============================================================================
@@ -1078,6 +1152,127 @@ S                        <!-- LTX Settings -->
                         select.appendChild(option);
                     });
                 });
+                renderTemplateList();
+            }
+        }
+
+        function renderTemplateList() {
+            const container = document.getElementById('templatesList');
+            if (!container) return;
+
+            if (!state.templates.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p>No templates yet. Create one with ➕ New Template.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = state.templates.map(tpl => `
+                <div class="job-card" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 600; color: var(--text-bright);">${tpl.name}</div>
+                        <div style="color: var(--text-muted); font-size: 0.83rem; margin-top: 4px;">
+                            <code style="color: var(--accent);">${tpl.template_id}</code>
+                            &nbsp;·&nbsp; ${tpl.target_lines || 6} lines
+                            &nbsp;·&nbsp; ${(tpl.character_ids || []).join(', ') || 'no characters'}
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 6px; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; opacity: 0.7;">
+                            ${(tpl.prompt || '').substring(0, 140).replace(/</g, '&lt;')}…
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" style="flex-shrink: 0;" onclick="openTemplateEditor('${tpl.template_id}')">
+                        ✏️ Edit
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function openTemplateEditor(templateId) {
+            const editor = document.getElementById('templateEditor');
+            const titleEl = document.getElementById('templateEditorTitle');
+            const deleteBtn = document.getElementById('deleteTemplateBtn');
+
+            editor.style.display = 'block';
+            editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            if (templateId === null) {
+                titleEl.textContent = '➕ New Template';
+                document.getElementById('editTemplateId').value = '';
+                document.getElementById('editTemplateName').value = '';
+                document.getElementById('editTemplateCollection').value = 'random';
+                document.getElementById('editTemplateTargetLines').value = '6';
+                document.getElementById('editTemplateCharacters').value = '';
+                document.getElementById('editTemplatePrompt').value = '';
+                deleteBtn.style.display = 'none';
+            } else {
+                const tpl = state.templates.find(t => t.template_id === templateId);
+                if (!tpl) return;
+                titleEl.textContent = `✏️ Edit: ${tpl.name}`;
+                document.getElementById('editTemplateId').value = tpl.template_id;
+                document.getElementById('editTemplateName').value = tpl.name || '';
+                document.getElementById('editTemplateCollection').value = tpl.collection || '';
+                document.getElementById('editTemplateTargetLines').value = tpl.target_lines || 6;
+                document.getElementById('editTemplateCharacters').value = (tpl.character_ids || []).join(', ');
+                document.getElementById('editTemplatePrompt').value = tpl.prompt || '';
+                deleteBtn.style.display = 'inline-flex';
+            }
+        }
+
+        function closeTemplateEditor() {
+            document.getElementById('templateEditor').style.display = 'none';
+        }
+
+        async function saveTemplate() {
+            const templateId = document.getElementById('editTemplateId').value;
+            const name = document.getElementById('editTemplateName').value.trim();
+            const collection = document.getElementById('editTemplateCollection').value.trim();
+            const targetLines = document.getElementById('editTemplateTargetLines').value;
+            const charInput = document.getElementById('editTemplateCharacters').value;
+            const prompt = document.getElementById('editTemplatePrompt').value.trim();
+
+            if (!name || !prompt) {
+                showToast('Name and Prompt are required', 'error');
+                return;
+            }
+
+            const characterIds = charInput.split(',').map(s => s.trim()).filter(Boolean);
+
+            const fd = new FormData();
+            fd.append('name', name);
+            fd.append('prompt', prompt);
+            fd.append('collection', collection || 'random');
+            fd.append('target_lines', targetLines);
+            characterIds.forEach(id => fd.append('character_ids', id));
+
+            const result = templateId
+                ? await formApiCall('PUT', `/story-templates/${templateId}`, fd)
+                : await formApiCall('POST', `/story-templates`, fd);
+
+            if (result.ok) {
+                showToast(templateId ? 'Template updated ✓' : 'Template created ✓', 'success');
+                closeTemplateEditor();
+                await loadTemplates();
+            } else {
+                const msg = result.data?.detail || JSON.stringify(result.data) || 'Save failed';
+                showToast(`Error: ${msg}`, 'error');
+            }
+        }
+
+        async function deleteTemplate() {
+            const templateId = document.getElementById('editTemplateId').value;
+            if (!templateId) return;
+            const tpl = state.templates.find(t => t.template_id === templateId);
+            if (!confirm(`Delete template "${tpl?.name || templateId}"? This cannot be undone.`)) return;
+
+            const result = await formApiCall('DELETE', `/story-templates/${templateId}`);
+            if (result.ok) {
+                showToast('Template deleted', 'success');
+                closeTemplateEditor();
+                await loadTemplates();
+            } else {
+                showToast('Delete failed', 'error');
             }
         }
 
@@ -1085,22 +1280,28 @@ S                        <!-- LTX Settings -->
             const templateId = this.value;
             const detailsDiv = document.getElementById('templateDetails');
             const previewDiv = document.getElementById('templatePreview');
-            
+
             if (templateId) {
                 const template = state.templates.find(t => t.template_id === templateId);
                 if (template) {
                     detailsDiv.style.display = 'block';
-                    previewDiv.textContent = JSON.stringify({
-                        template_id: template.template_id,
-                        target_lines: template.target_lines || 6,
-                        characters: template.character_ids || [],
-                        prompt_preview: (template.prompt || '').substring(0, 300) + '...'
-                    }, null, 2);
+                    previewDiv.textContent =
+                        `id: ${template.template_id}\n` +
+                        `lines: ${template.target_lines || 6}  |  characters: ${(template.character_ids || []).join(', ') || 'none'}\n\n` +
+                        (template.prompt || '');
                 }
             } else {
                 detailsDiv.style.display = 'none';
             }
         });
+
+        function editSelectedTemplate() {
+            const templateId = document.getElementById('templateSelect').value;
+            if (!templateId) return;
+            switchTab('templates');
+            // Small delay so the tab panel becomes visible before scrolling
+            setTimeout(() => openTemplateEditor(templateId), 50);
+        }
 
         // =============================================================================
         // UI Helpers

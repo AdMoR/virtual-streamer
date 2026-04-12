@@ -357,17 +357,39 @@
             </div>
         </div>
 
+        <!-- Negative prompt -->
+        <div class="field">
+            <label>Negative prompt</label>
+            <textarea id="negative-prompt" rows="2" placeholder="Things to avoid…"></textarea>
+        </div>
+
+        <!-- Strength (edit mode only) -->
+        <div id="strength-section" style="display:none;" class="field">
+            <label>Denoising strength</label>
+            <input type="number" id="strength" value="0.75" min="0" max="1" step="0.05">
+        </div>
+
         <!-- Params -->
         <div>
             <div class="section-label" style="margin-bottom:0.75rem;">Parameters</div>
             <div class="row">
                 <div class="field">
                     <label>Steps</label>
-                    <input type="number" id="steps" value="50" min="1" max="200">
+                    <input type="number" id="steps" value="20" min="1" max="200">
                 </div>
                 <div class="field">
-                    <label>Guidance</label>
-                    <input type="number" id="guidance" value="3.5" min="0" max="20" step="0.1">
+                    <label>CFG Scale</label>
+                    <input type="number" id="cfg-scale" value="7.0" min="0" max="30" step="0.5">
+                </div>
+            </div>
+            <div class="row" style="margin-top:0.75rem;">
+                <div class="field">
+                    <label>Sampler</label>
+                    <input type="text" id="sampler" value="euler_a">
+                </div>
+                <div class="field">
+                    <label>Scheduler</label>
+                    <input type="text" id="scheduler" value="discrete">
                 </div>
             </div>
             <div class="field" style="margin-top:0.75rem;">
@@ -381,7 +403,7 @@
         <!-- Server URL -->
         <div class="field" style="margin-top:auto;">
             <label>Server URL</label>
-            <input type="text" id="server-url" value="http://localhost:8010">
+            <input type="text" id="server-url" value="http://gx10-cbc5:1234">
         </div>
 
     </aside>
@@ -412,30 +434,35 @@
 <div id="error-toast"></div>
 
 <script>
-    const SERVER_URL_INPUT = document.getElementById('server-url');
-    const STATUS_DOT       = document.getElementById('status-dot');
-    const STATUS_LABEL     = document.getElementById('status-label');
-    const BTN_GENERATE     = document.getElementById('btn-generate');
-    const PROMPT           = document.getElementById('prompt');
-    const STEPS            = document.getElementById('steps');
-    const GUIDANCE         = document.getElementById('guidance');
-    const SEED             = document.getElementById('seed');
-    const WIDTH            = document.getElementById('width');
-    const HEIGHT           = document.getElementById('height');
-    const RESULT_WRAP      = document.getElementById('result-wrap');
-    const RESULT_IMG       = document.getElementById('result-img');
-    const META_SIZE        = document.getElementById('meta-size');
-    const META_SEED        = document.getElementById('meta-seed');
-    const BTN_DOWNLOAD     = document.getElementById('btn-download');
-    const PLACEHOLDER      = document.getElementById('placeholder');
-    const SPINNER          = document.getElementById('spinner');
-    const SPINNER_LABEL    = document.getElementById('spinner-label');
-    const ERROR_TOAST      = document.getElementById('error-toast');
-    const UPLOAD_SECTION   = document.getElementById('upload-section');
+    const SERVER_URL_INPUT   = document.getElementById('server-url');
+    const STATUS_DOT         = document.getElementById('status-dot');
+    const STATUS_LABEL       = document.getElementById('status-label');
+    const BTN_GENERATE       = document.getElementById('btn-generate');
+    const PROMPT             = document.getElementById('prompt');
+    const NEGATIVE_PROMPT    = document.getElementById('negative-prompt');
+    const STEPS              = document.getElementById('steps');
+    const CFG_SCALE          = document.getElementById('cfg-scale');
+    const SAMPLER            = document.getElementById('sampler');
+    const SCHEDULER          = document.getElementById('scheduler');
+    const SEED               = document.getElementById('seed');
+    const WIDTH              = document.getElementById('width');
+    const HEIGHT             = document.getElementById('height');
+    const STRENGTH           = document.getElementById('strength');
+    const RESULT_WRAP        = document.getElementById('result-wrap');
+    const RESULT_IMG         = document.getElementById('result-img');
+    const META_SIZE          = document.getElementById('meta-size');
+    const META_SEED          = document.getElementById('meta-seed');
+    const BTN_DOWNLOAD       = document.getElementById('btn-download');
+    const PLACEHOLDER        = document.getElementById('placeholder');
+    const SPINNER            = document.getElementById('spinner');
+    const SPINNER_LABEL      = document.getElementById('spinner-label');
+    const ERROR_TOAST        = document.getElementById('error-toast');
+    const UPLOAD_SECTION     = document.getElementById('upload-section');
     const RESOLUTION_SECTION = document.getElementById('resolution-section');
-    const FILE_INPUT       = document.getElementById('file-input');
-    const DROP_ZONE        = document.getElementById('drop-zone');
-    const THUMBNAILS       = document.getElementById('thumbnails');
+    const STRENGTH_SECTION   = document.getElementById('strength-section');
+    const FILE_INPUT         = document.getElementById('file-input');
+    const DROP_ZONE          = document.getElementById('drop-zone');
+    const THUMBNAILS         = document.getElementById('thumbnails');
 
     let currentMode = 'txt2image';   // 'txt2image' | 'edit'
     let uploadedFiles = [];           // array of { file, dataUrl }
@@ -446,23 +473,23 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentMode = tab.dataset.mode;
-            UPLOAD_SECTION.style.display   = currentMode === 'edit' ? 'flex' : 'none';
+            UPLOAD_SECTION.style.display     = currentMode === 'edit' ? 'flex' : 'none';
             RESOLUTION_SECTION.style.display = currentMode === 'txt2image' ? 'block' : 'none';
-            GUIDANCE.value = currentMode === 'edit' ? '2.5' : '3.5';
+            STRENGTH_SECTION.style.display   = currentMode === 'edit' ? 'flex' : 'none';
         });
     });
 
-    // ── Health check ───────────────────────────────────────────────
+    // ── Health check via GET /sdapi/v1/sd-models ──────────────────
     async function checkHealth() {
         try {
-            const r = await fetch(`${SERVER_URL_INPUT.value}/health`);
+            const r = await fetch(`${SERVER_URL_INPUT.value.replace(/\/$/, '')}/sdapi/v1/sd-models`);
             if (!r.ok) throw new Error();
-            const d = await r.json();
-            const ok = d.model_loaded;
-            STATUS_DOT.className   = `status-dot ${ok ? 'ok' : ''}`;
-            STATUS_LABEL.textContent = ok ? 'model ready' : 'model loading…';
+            const models = await r.json();
+            const label = models.length ? models[0].model_name : 'ready';
+            STATUS_DOT.className     = 'status-dot ok';
+            STATUS_LABEL.textContent = label;
         } catch {
-            STATUS_DOT.className   = 'status-dot';
+            STATUS_DOT.className     = 'status-dot';
             STATUS_LABEL.textContent = 'unreachable';
         }
     }
@@ -540,27 +567,34 @@
         SPINNER_LABEL.textContent = currentMode === 'edit' ? 'Editing image…' : 'Generating…';
 
         const baseUrl = SERVER_URL_INPUT.value.replace(/\/$/, '');
+        const requestedSeed = parseInt(SEED.value);
+
+        // Shared params (flat — WebUI schema)
+        const common = {
+            prompt,
+            negative_prompt: NEGATIVE_PROMPT.value.trim(),
+            steps:           parseInt(STEPS.value),
+            cfg_scale:       parseFloat(CFG_SCALE.value),
+            seed:            requestedSeed,
+            sampler_name:    SAMPLER.value.trim(),
+            scheduler:       SCHEDULER.value.trim(),
+        };
 
         try {
-            let body, endpoint;
+            let endpoint, body;
             if (currentMode === 'txt2image') {
-                endpoint = '/txt2image';
+                endpoint = '/sdapi/v1/txt2img';
                 body = {
-                    prompt,
-                    width:               parseInt(WIDTH.value),
-                    height:              parseInt(HEIGHT.value),
-                    num_inference_steps: parseInt(STEPS.value),
-                    guidance_scale:      parseFloat(GUIDANCE.value),
-                    seed:                parseInt(SEED.value),
+                    ...common,
+                    width:  parseInt(WIDTH.value),
+                    height: parseInt(HEIGHT.value),
                 };
             } else {
-                endpoint = '/edit';
+                endpoint = '/sdapi/v1/img2img';
                 body = {
-                    prompt,
-                    images_b64:          uploadedFiles.map(f => dataUrlToB64(f.dataUrl)),
-                    num_inference_steps: parseInt(STEPS.value),
-                    guidance_scale:      parseFloat(GUIDANCE.value),
-                    seed:                parseInt(SEED.value),
+                    ...common,
+                    init_images:        uploadedFiles.map(f => f.dataUrl),   // data URLs accepted
+                    denoising_strength: parseFloat(STRENGTH.value),
                 };
             }
 
@@ -576,13 +610,21 @@
             }
 
             const data = await resp.json();
-            const imgSrc = `data:image/png;base64,${data.image_b64}`;
+            const b64 = (data.images || [])[0];
+            if (!b64) throw new Error('Server returned no image data');
 
+            // info is always empty string per spec; seed comes from parameters echo
+            const seed = data.parameters?.seed ?? requestedSeed;
+            // width/height from parameters echo (txt2img) or derive from image
+            const w = data.parameters?.width  ?? '?';
+            const h = data.parameters?.height ?? '?';
+
+            const imgSrc = `data:image/png;base64,${b64}`;
             RESULT_IMG.src = imgSrc;
-            META_SIZE.textContent = `${data.width} × ${data.height}`;
-            META_SEED.textContent = `seed: ${data.seed}`;
+            META_SIZE.textContent = `${w} × ${h}`;
+            META_SEED.textContent = `seed: ${seed}`;
             BTN_DOWNLOAD.href = imgSrc;
-            BTN_DOWNLOAD.download = `image_${data.seed}.png`;
+            BTN_DOWNLOAD.download = `image_${seed}.png`;
 
             SPINNER.classList.remove('visible');
             RESULT_WRAP.classList.add('visible');
