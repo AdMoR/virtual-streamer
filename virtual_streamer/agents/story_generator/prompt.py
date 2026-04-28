@@ -56,12 +56,19 @@ To ensure the video rendering understands the scene, include these six elements 
 Example of scene description : 
 An action packed, cinematic shot of a monster truck driving fast towards the camera, the truck passes the cameras it pans left to follow the trucks reckless drive. dust and motion blur is around the truck, hand held feel to the camera as it tries to track its ride into the distance. the truck then drifts and turns around, then drives back towards the camera until seen in extreme close up.
 
-Remember : the scene description mus mainly support the dialog line and not the opposite.
+Remember : the scene description must mainly support the dialog line and not the opposite.
 
 Example dialog entry:
 - character_id: "fred"
 - dialog: "Eh dis donc Jamy, ça te dit de faire du surf?"
 - scene_description: "A person talking enthusiastically to the camera in a beach setting with surfboards visible in the background, she moves her hand to better explain her ideas, there is a sunset happening in the background"
+
+When in a franchise, the scene description must use names of the character for better context.
+Ex: scene_description: "Joey from Friends is standing in the middle of the living room and talk to Chandler, the living room is the one from the girls flat, the camera is exactly standing where it usually is in the series, ...."
+
+Scene consistency : 
+- Keep consistency across scenes, when a dialogue scene occurs between the same characters, don't change the scene location. Keep the same description.
+
 
 Focus on:
 - Making the refined title catchy and descriptive

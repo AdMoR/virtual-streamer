@@ -1,6 +1,7 @@
 import enum
 import json
 import logging
+import time
 
 import serde
 from serde.json import from_json, to_json
@@ -378,13 +379,13 @@ def txt_to_speech_call_fish(
         raise Exception(f"Fish TTS call failed: {str(e)}")
 
 
-async def txt_to_speech_call_fish_async(
+async def txt_to_speech_call_fish_async(  # noqa: A002  (shadows built-in 'format')
     speech_lines: str,
     reference_audio=None,
     reference_text=None,
     reference_id=None,
     outpath=None,
-    format="wav",
+    format="wav",  # noqa: A002
     max_new_tokens=1024,
     chunk_length=300,
     top_p=0.8,
@@ -394,49 +395,55 @@ async def txt_to_speech_call_fish_async(
     seed=None,
     host: str = None,
     port: int = None,
+    timeout: float = 900.0,
 ):
     """
-    Async version of Fish-Speech TTS API call.
+    Async Fish-Speech TTS API call (non-blocking via httpx).
 
-    Uses httpx.AsyncClient for non-blocking HTTP requests, allowing the
-    event loop to handle other tasks while waiting for the TTS response.
+    Host resolution order:
+      1. *host* argument
+      2. FISH_TTS_HOST env var  (set to "tts" by docker-compose)
+      3. Hard-coded default: "tts"   ← Docker Compose service name, NOT localhost
 
-    Args:
-        speech_lines: Text to be synthesized
-        reference_audio: Path to reference audio file (optional)
-        reference_text: Reference text for voice cloning (optional)
-        reference_id: ID of pre-configured reference (optional)
-        outpath: Output file path
-        format: Output format (wav, mp3, flac)
-        max_new_tokens: Maximum new tokens to generate (0 means no limit)
-        chunk_length: Chunk length for synthesis
-        top_p: Top-p sampling parameter
-        repetition_penalty: Repetition penalty
-        temperature: Temperature for sampling
-        use_memory_cache: Cache encoded references in memory ("on" or "off")
-        seed: Random seed for deterministic generation (None for random)
-        host: TTS service host
-        port: TTS service port
+    IMPORTANT: when running inside the compose stack the service is reachable
+    as "tts:8003", not "localhost:8003".  "localhost" will always fail inside
+    a container.  The compose file sets FISH_TTS_HOST=tts so this is handled
+    automatically, but callers must NOT hardcode "127.0.0.1" or "localhost".
 
-    Returns:
-        Path to generated audio file
+    Returns path to the generated audio file.
     """
     host = host or os.environ.get("FISH_TTS_HOST", "tts")
-    port = port or os.environ.get("FISH_TTS_PORT", "8003")
+    port = int(port or os.environ.get("FISH_TTS_PORT", "8003"))
     api_key = os.environ.get("FISH_TTS_API_KEY", "YOUR_API_KEY")
     url = f"http://{host}:{port}/v1/tts"
-    
+
     if outpath is None:
         outpath = tempfile.mktemp(suffix=f".{format}")
-    
-    # Prepare reference audio if provided (async file read)
+
+    logging.debug(
+        f"[TTS] url={url}  text_len={len(speech_lines)}  "
+        f"reference_audio={reference_audio}  outpath={outpath}  timeout={timeout}s"
+    )
+
+    # Load reference audio bytes for voice cloning
     references = []
     if reference_audio is not None and reference_text is not None:
+        if not os.path.exists(reference_audio):
+            raise FileNotFoundError(
+                f"[TTS] Reference audio not found on disk: {reference_audio}"
+            )
         async with aiofiles.open(reference_audio, "rb") as f:
             audio_bytes = await f.read()
+        logging.debug(
+            f"[TTS] Reference audio loaded: {reference_audio} ({len(audio_bytes)} bytes)"
+        )
         references.append({"audio": audio_bytes, "text": reference_text})
-    
-    # Prepare request data
+    elif reference_audio is not None and reference_text is None:
+        logging.warning(
+            "[TTS] reference_audio provided but reference_text is None — "
+            "voice cloning disabled (Fish-Speech requires both)"
+        )
+
     data = {
         "text": speech_lines,
         "references": references,
@@ -451,31 +458,60 @@ async def txt_to_speech_call_fish_async(
         "use_memory_cache": use_memory_cache,
         "seed": seed,
     }
-    
-    # Send async request
+
+    payload = ormsgpack.packb(data)
+    logging.debug(f"[TTS] Sending msgpack payload ({len(payload)} bytes) to {url}")
+
+    t0 = time.time()
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 url,
-                content=ormsgpack.packb(data),
+                content=payload,
                 headers={
                     "authorization": f"Bearer {api_key}",
                     "content-type": "application/msgpack",
                 },
             )
-            
-            if response.status_code == 200:
-                async with aiofiles.open(outpath, "wb") as f:
-                    await f.write(response.content)
-                return outpath
-            else:
-                raise Exception(
-                    f"Fish TTS request failed with status code {response.status_code}: {response.text}"
-                )
-    except httpx.TimeoutException:
-        raise Exception("Fish TTS call timed out after 60 seconds")
-    except Exception as e:
-        raise Exception(f"Fish TTS async call failed: {str(e)}")
+    except httpx.ConnectError as exc:
+        raise RuntimeError(
+            f"[TTS] Cannot connect to Fish-Speech at {url} — "
+            f"is the service running? ({exc})"
+        ) from exc
+    except httpx.TimeoutException as exc:
+        raise RuntimeError(
+            f"[TTS] Request timed out after {timeout}s — "
+            f"text_len={len(speech_lines)}, url={url}"
+        ) from exc
+
+    elapsed = time.time() - t0
+    logging.debug(
+        f"[TTS] Response: status={response.status_code}  "
+        f"content_len={len(response.content)}  elapsed={elapsed:.1f}s"
+    )
+
+    if response.status_code != 200:
+        body_snippet = response.text[:500] if response.text else "<empty>"
+        raise RuntimeError(
+            f"[TTS] Fish-Speech returned HTTP {response.status_code} "
+            f"from {url}\n"
+            f"  Content-Type: {response.headers.get('content-type', '?')}\n"
+            f"  Body: {body_snippet}"
+        )
+
+    if len(response.content) == 0:
+        raise RuntimeError(
+            f"[TTS] Fish-Speech returned HTTP 200 but empty body from {url} — "
+            f"the model may have produced no audio"
+        )
+
+    async with aiofiles.open(outpath, "wb") as f:
+        await f.write(response.content)
+
+    logging.info(
+        f"[TTS] Audio saved: {outpath}  ({len(response.content)} bytes, {elapsed:.1f}s)"
+    )
+    return outpath
 
 
 class SubtitleMode(enum.Enum):

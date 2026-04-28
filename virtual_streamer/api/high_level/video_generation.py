@@ -56,7 +56,10 @@ from virtual_streamer.utils.utils import (
     add_subtitle_from_srt,
     combine_part_in_concat_file,
     get_length,
+    txt_to_speech_call_fish_async,
 )
+from virtual_streamer.utils.character_loader import load_character
+from virtual_streamer.api.dependencies import get_storage_resolver
 # Video generation imports
 from virtual_streamer.video_generation import (
     VideoGenerationConfig,
@@ -503,7 +506,7 @@ class VideoGenerationRequest(BaseModel):
 
     # LTX fallback configuration
     enable_ltx_fallback: bool = False  # Use LTX-2 for non-CONTEXTUAL matches
-    ltx_server_url: str = "http://gx10-cbc5:8081"
+    ltx_server_url: str = "http://gx10-cbc5:8082"
     ltx_timeout: float = 600.0
 
 
@@ -526,7 +529,22 @@ class VideoGenerationResponse(BaseModel):
 
 
 class LTXVideoGenerationRequest(BaseModel):
-    """Request model for LTX-2 video generation."""
+    """
+    Request model for LTX-2 audio-conditioned video generation.
+
+    Pipeline (when enable_audio=True):
+      1. StoryGeneratorAgent → StoryOutput (N dialog lines)
+      2. For each dialog line:  TTS via Fish-Speech → segment_NNN.wav
+      3. For each dialog line:  WanGP LTX (audio_guide=wav) → segment_NNN.mp4
+      4. ffmpeg concat → final video → MinIO upload
+
+    Host rules (Docker Compose):
+      - LTX / WanGP REST server: gx10-cbc5:8082  (ltx_server_url)
+      - Fish-Speech TTS:          tts:8003         (tts_host / tts_port)
+        The TTS service is named "tts" in compose.  Inside the stack it is
+        NEVER reachable as "localhost" — always use the service name "tts".
+        The FISH_TTS_HOST env var is set to "tts" by compose automatically.
+    """
 
     # Input (mutually exclusive: title or story_text)
     title: Optional[str] = None
@@ -535,8 +553,8 @@ class LTXVideoGenerationRequest(BaseModel):
     # Story template (required - defines characters, prompt)
     story_template_id: str
 
-    # WanGP LTX server configuration
-    ltx_server_url: str = "http://gx10-cbc5:8081/"
+    # WanGP LTX server — port 8082 on the remote GPU host
+    ltx_server_url: str = "http://gx10-cbc5:8082"
     ltx_timeout: float = 600.0
 
     # Video generation parameters
@@ -548,6 +566,12 @@ class LTXVideoGenerationRequest(BaseModel):
     video_cfg_scale: float = 4.0
     video_seed: int = -1
     enable_audio: bool = True
+
+    # TTS — Fish-Speech service, Docker Compose service name "tts" (NOT localhost)
+    # Defaults driven by FISH_TTS_HOST / FISH_TTS_PORT env vars set in compose.
+    tts_host: str = os.environ.get("FISH_TTS_HOST", "tts")
+    tts_port: int = int(os.environ.get("FISH_TTS_PORT", "8003"))
+    adapt_duration_to_audio: bool = True
 
     # Output configuration
     output_dir: Optional[str] = None
@@ -909,8 +933,53 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                 request.story_text, story_template_id=request.story_template_id
             )
 
-        # Step 2: Run story_to_video (LTX-2 pipeline)
-        logger.info(f"[LTX Job {job_id}] Running story_to_video with LTX-2...")
+        # Step 2: Generate TTS audio per segment (when enable_audio=True)
+        segment_audio_paths: Dict[int, str] = {}
+        if request.enable_audio:
+            logger.info(
+                f"[LTX Job {job_id}] Generating TTS audio for "
+                f"{len(story_output.dialog)} segments "
+                f"(host={request.tts_host}:{request.tts_port})…"
+            )
+            tts_dir = os.path.join(output_dir, "tts")
+            os.makedirs(tts_dir, exist_ok=True)
+            storage_resolver = get_storage_resolver()
+
+            for i, dialog_line in enumerate(story_output.dialog):
+                try:
+                    character = await load_character(dialog_line.character_id)
+                    reference_audio: Optional[str] = None
+                    reference_text: Optional[str] = None
+                    if character.voice_samples:
+                        sample = character.voice_samples[0]
+                        reference_audio = await storage_resolver.resolve_file(
+                            sample.sample_storage_path
+                        )
+                        reference_text = sample.transcript
+
+                    audio_out = os.path.join(tts_dir, f"segment_{i:03d}.wav")
+                    await txt_to_speech_call_fish_async(
+                        speech_lines=dialog_line.text,
+                        reference_audio=reference_audio,
+                        reference_text=reference_text,
+                        outpath=audio_out,
+                        format="wav",
+                        host=request.tts_host,
+                        port=request.tts_port,
+                    )
+                    segment_audio_paths[i] = audio_out
+                    logger.info(
+                        f"[LTX Job {job_id}] TTS segment {i} "
+                        f"({dialog_line.character_id}): {audio_out}"
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"[LTX Job {job_id}] TTS failed for segment {i} "
+                        f"({dialog_line.character_id}): {exc} — continuing without audio"
+                    )
+
+        # Step 3: Run story_to_video (LTX-2 audio-conditioned pipeline)
+        logger.info(f"[LTX Job {job_id}] Running story_to_video with LTX-2…")
 
         def progress_callback(current: int, total: int, message: str):
             logger.info(f"[LTX Job {job_id}] Progress: {current}/{total} - {message}")
@@ -922,6 +991,7 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
             output_dir=output_dir,
             progress_callback=progress_callback,
             style_suffix=request.style_suffix,
+            segment_audio_paths=segment_audio_paths or None,
         )
 
         logger.info(
@@ -1379,7 +1449,7 @@ async def generate_single_clip(
     background_tasks: BackgroundTasks,
     prompt:           str          = Form(...),
     negative_prompt:  str          = Form("worst quality, inconsistent motion, blurry, jittery, distorted"),
-    wangp_url:        str          = Form("http://gx10-cbc5:8081/"),
+    wangp_url:        str          = Form("http://gx10-cbc5:8082"),
     wangp_timeout:    float        = Form(600.0),
     model_type:       str          = Form("ltx2_22B_distilled"),
     resolution:       str          = Form("1280x720"),

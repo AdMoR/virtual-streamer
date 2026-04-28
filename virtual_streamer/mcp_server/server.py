@@ -188,7 +188,7 @@ async def create_video_ltx(
     story_template_id: str,
     title: str | None = None,
     story_text: str | None = None,
-    ltx_server_url: str = "http://localhost:7860",
+    ltx_server_url: str = "http://gx10-cbc5:8082",
     video_width: int = 1280,
     video_height: int = 720,
     video_duration_seconds: float = 5.0,

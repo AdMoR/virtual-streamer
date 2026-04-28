@@ -153,7 +153,7 @@ class LTXConfig(BaseModel):
     """Configuration for LTX-2 video generation (reusable for T2V pipeline and fallback)."""
 
     server_url: str = Field(
-        default="http://gx10-cbc5:8081",
+        default="http://gx10-cbc5:8082",
         description="LTX Video API server URL",
     )
     timeout: float = Field(

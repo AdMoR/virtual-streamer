@@ -1,15 +1,8 @@
 """
-LTX Video Client (WanGP Gradio API)
+LTX Video Client (WanGP REST API)
 
-Client for generating videos via a remote WanGP server using the LTX model.
-Supports image-to-video with optional audio conditioning.
-
-The WanGP pipeline requires five sequential API calls:
-  1. /change_model               — select the LTX model
-  2. /save_inputs                — push all generation settings into server state
-  3. /process_prompt_and_add_tasks — enqueue the task
-  4. /process_tasks               — run inference (streaming, drain until done)
-  5. /finalize_generation + /refresh_gallery — collect output file(s)
+Client for generating videos via a remote WanGP server (wangp_server.py).
+Supports text-to-video, image-to-video, and audio-conditioned i2v.
 
 Usage:
     from virtual_streamer.video_generation.ltx_client import (
@@ -26,15 +19,16 @@ Usage:
         print(result.video_path)
 """
 
+from __future__ import annotations
+
 import asyncio
-import re
+import json
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
-from gradio_client import Client, handle_file
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -62,24 +56,24 @@ _DEFAULTS = {
 # =============================================================================
 
 class LTXVideoConfig(BaseModel):
-    """Connection settings for the remote WanGP instance."""
+    """Connection settings for the remote WanGP REST server."""
 
     server_url: str = Field(
-        default="http://localhost:7860",
-        description="URL of the running WanGP server",
+        default="http://localhost:8082",
+        description="URL of the running WanGP REST server (wangp_server.py)",
     )
     timeout: float = Field(
         default=600.0,
-        description="HTTP timeout in seconds (video generation can be slow)",
+        description="HTTP timeout in seconds for uploads and downloads",
     )
-    save_inputs_api: str = Field(
-        default="/save_inputs",
-        description=(
-            "Gradio API name for save_inputs. Run --list-api on the server "
-            "to confirm the exact name (may be /save_inputs_1 etc. on some versions)."
-        ),
+    stream_timeout: float = Field(
+        default=1800.0,
+        description="Timeout in seconds for the SSE event stream",
     )
-
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API key for X-API-Key header (matches WANGP_API_KEY env var on server)",
+    )
 
 
 # =============================================================================
@@ -88,9 +82,9 @@ class LTXVideoConfig(BaseModel):
 
 class VideoGenerationParams(BaseModel):
     """
-    Parameters for LTX image-to-video generation via WanGP.
+    Parameters for LTX video generation via WanGP.
 
-    Primary fields (WanGP / i2v):
+    Primary fields:
         prompt, image_path, audio_path, model_type, resolution, frames,
         steps, guidance_scale, flow_shift, seed, force_fps,
         audio_scale, audio_guidance, negative_prompt
@@ -164,7 +158,6 @@ class VideoGenerationParams(BaseModel):
 
     @model_validator(mode="after")
     def _resolve_fields(self) -> "VideoGenerationParams":
-        # cfg_scale → guidance_scale when guidance_scale is still at default
         if self.cfg_scale != _DEFAULTS["guidance_scale"]:
             self.guidance_scale = self.cfg_scale
         return self
@@ -173,12 +166,10 @@ class VideoGenerationParams(BaseModel):
 
     @property
     def effective_resolution(self) -> str:
-        """Resolution string to send to WanGP."""
         return self.resolution if self.resolution else f"{self.width}x{self.height}"
 
     @property
     def effective_frames(self) -> int:
-        """Frame count satisfying 8n+1 constraint."""
         if self.frames > 0:
             return self.frames
         raw = int(self.duration_seconds * self.fps)
@@ -187,7 +178,6 @@ class VideoGenerationParams(BaseModel):
 
     @property
     def effective_fps(self) -> str:
-        """FPS string to send to WanGP."""
         return self.force_fps if self.force_fps else str(self.fps)
 
     @property
@@ -195,7 +185,6 @@ class VideoGenerationParams(BaseModel):
         fps_val = int(self.effective_fps) if self.effective_fps.isdigit() else self.fps
         return self.effective_frames / fps_val
 
-    # Backward-compat alias used in story_to_video.py
     @property
     def frame_count(self) -> int:
         return self.effective_frames
@@ -222,12 +211,7 @@ class VideoGenerationResult(BaseModel):
 # =============================================================================
 
 class LTXClientInterface(ABC):
-    """
-    Abstract interface for LTX video generation clients.
-
-    Implementors must provide :meth:`generate_video` and :meth:`close`.
-    The class also acts as an async context manager via ``async with``.
-    """
+    """Abstract interface for LTX video generation clients."""
 
     @abstractmethod
     async def generate_video(
@@ -236,22 +220,12 @@ class LTXClientInterface(ABC):
         output_dir: str = "./output",
         progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> VideoGenerationResult:
-        """
-        Generate a video from *params* and return the result.
-
-        Args:
-            params: Generation parameters (prompt, image, audio, model settings…)
-            output_dir: Local directory where the output video will be saved.
-            progress_callback: Optional ``callback(fraction: float, message: str)``.
-
-        Returns:
-            :class:`VideoGenerationResult` with the local video path and metadata.
-        """
+        """Generate a video from *params* and return the result."""
         ...
 
     @abstractmethod
     async def close(self) -> None:
-        """Release any held resources (connections, threads, …)."""
+        """Release any held resources."""
         ...
 
     async def __aenter__(self) -> "LTXClientInterface":
@@ -262,356 +236,235 @@ class LTXClientInterface(ABC):
 
 
 # =============================================================================
-# WanGP Implementation
+# WanGP REST Implementation
 # =============================================================================
 
 class WanGPLTXClient(LTXClientInterface):
     """
-    LTX video generation backed by a remote WanGP Gradio server.
+    LTX video generation backed by the WanGP REST server (wangp_server.py).
 
-    Supports:
-    - Image-to-video (i2v): start image + text prompt
-    - Audio-conditioned i2v: start image + audio + text prompt
-      (requires a distilled LTX model)
-
-    The Gradio client is created lazily on first use and reused across calls.
+    Replaces the old Gradio-based 5-step pipeline with a simple REST workflow:
+      1. Upload any local files (image, audio) → file_id
+      2. POST /jobs with a settings dict → job_id
+      3. Stream SSE events from GET /jobs/{job_id}/events until completed
+      4. GET /files/{filename} to download the output video
     """
 
     def __init__(self, config: Optional[LTXVideoConfig] = None) -> None:
         self.config = config or LTXVideoConfig()
-        self._gradio_client: Optional[Client] = None
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_gradio_client(self) -> Client:
-        if self._gradio_client is None:
-            self._gradio_client = Client(self.config.server_url)
-        return self._gradio_client
+    def _headers(self) -> Dict[str, str]:
+        h: Dict[str, str] = {}
+        if self.config.api_key:
+            h["X-API-Key"] = self.config.api_key
+        return h
 
-    def _build_save_inputs_args(
+    def _check_health(self) -> None:
+        url = f"{self.config.server_url.rstrip('/')}/health"
+        r = requests.get(url, headers=self._headers(), timeout=10)
+        body = r.json()
+        if r.status_code != 200 or not body.get("runtime_loaded"):
+            raise RuntimeError(f"WanGP server not ready: {body}")
+        print(f"[health] status={body.get('status')}  queue_depth={body.get('queue_depth')}")
+
+    def _upload_file(self, path: str) -> str:
+        """Upload *path* to the server and return the file_id."""
+        url = f"{self.config.server_url.rstrip('/')}/files/upload"
+        p = Path(path)
+        with p.open("rb") as fh:
+            r = requests.post(
+                url,
+                files={"file": (p.name, fh)},
+                headers=self._headers(),
+                timeout=self.config.timeout,
+            )
+        r.raise_for_status()
+        file_id: str = r.json()["file_id"]
+        print(f"  uploaded {p.name} → {file_id}")
+        return file_id
+
+    def _build_settings(
         self,
         params: VideoGenerationParams,
-        image_ref,
-        audio_ref,
-    ) -> list:
-        """
-        Build the ordered argument list for the WanGP ``save_inputs`` Gradio call.
+        image_file_id: Optional[str],
+        audio_file_id: Optional[str],
+    ) -> Dict[str, Any]:
+        settings: Dict[str, Any] = {
+            "model_type":           params.model_type,
+            "prompt":               params.prompt,
+            "negative_prompt":      params.negative_prompt,
+            "num_inference_steps":  params.steps,
+            "video_length":         params.effective_frames,
+            "resolution":           params.effective_resolution,
+            "guidance_scale":       params.guidance_scale,
+            "flow_shift":           params.flow_shift,
+            "seed":                 params.seed,
+            "force_fps":            params.effective_fps,
+        }
 
-        The Gradio server expects every parameter positionally in the order below.
-        When *audio_ref* is not None, audio-conditioning fields are activated:
-          - audio_prompt_type = "A"
-          - audio_guide      = audio_ref
-          - audio_guidance_scale / audio_scale use params values
+        if image_file_id is not None:
+            settings["image_start"] = f"file:{image_file_id}"
+            settings["image_prompt_type"] = "S"
 
-        All other audio fields remain at neutral defaults.
-        """
-        audio_prompt_type = "A" if audio_ref is not None else ""
-        audio_guidance    = params.audio_guidance if audio_ref is not None else 1.0
-        audio_scale       = params.audio_scale    if audio_ref is not None else 1.0
+        if audio_file_id is not None:
+            settings["audio_guide"] = f"file:{audio_file_id}"
+            settings["audio_prompt_type"] = "A"
+            settings["audio_guidance_scale"] = params.audio_guidance
+            settings["audio_scale"] = params.audio_scale
 
-        return [
-            # target_state  (gr.Text visible=False, value="state") — MUST be first
-            "state",
-            # image_mask_guide
-            None,
-            # lset_name
-            None,
-            # image_mode  (0 = standard)
-            0,
-            # prompt
-            params.prompt,
-            # alt_prompt
-            "",
-            # negative_prompt
-            params.negative_prompt,
-            # resolution
-            params.effective_resolution,
-            # video_length  (frame count)
-            params.effective_frames,
-            # duration_seconds  (0 = use video_length)
-            0,
-            # pause_seconds
-            0,
-            # batch_size
-            1,
-            # seed
-            params.seed,
-            # force_fps  (Dropdown; string choices: '24', 'auto', …)
-            params.effective_fps,
-            # num_inference_steps
-            params.steps,
-            # guidance_scale
-            params.guidance_scale,
-            # guidance2_scale
-            1.0,
-            # guidance3_scale
-            1.0,
-            # switch_threshold
-            0.5,
-            # switch_threshold2
-            0.5,
-            # guidance_phases  (1/2/3)
-            1,
-            # model_switch_phase
-            1,
-            # alt_guidance_scale
-            1.0,
-            # alt_scale
-            1.0,
-            # audio_guidance_scale  ← Audio CFG guidance (active when audio_ref set)
-            audio_guidance,
-            # audio_scale  ← Prompt Audio Strength (active when audio_ref set)
-            audio_scale,
-            # flow_shift
-            params.flow_shift,
-            # sample_solver  (LTX only exposes [""])
-            "",
-            # embedded_guidance_scale
-            1.0,
-            # repeat_generation
-            1,
-            # multi_prompts_gen_type
-            0,
-            # multi_images_gen_type
-            0,
-            # skip_steps_cache_type
-            "",
-            # skip_steps_multiplier
-            1.5,
-            # skip_steps_start_step_perc
-            0.0,
-            # loras_choices
-            [],
-            # loras_multipliers
-            "",
-            # image_prompt_type  — "S" = start-image (i2v) | "" = text-to-video
-            "S" if image_ref is not None else "",
-            # image_start  (gr.Gallery — each item: {"image": FileData}) | None for t2v
-            [{"image": image_ref}] if image_ref is not None else None,
-            # image_end
-            None,
-            # model_mode
-            None,
-            # video_source
-            None,
-            # keep_frames_video_source
-            False,
-            # input_video_strength
-            0.85,
-            # video_guide_outpainting
-            None,
-            # video_prompt_type
-            "",
-            # image_refs
-            None,
-            # frames_positions
-            "",
-            # video_guide
-            None,
-            # image_guide
-            None,
-            # keep_frames_video_guide
-            False,
-            # denoising_strength
-            0.85,
-            # masking_strength
-            1.0,
-            # video_mask
-            None,
-            # image_mask
-            None,
-            # control_net_weight
-            1.0,
-            # control_net_weight2
-            1.0,
-            # control_net_weight_alt
-            1.0,
-            # motion_amplitude
-            1.0,
-            # mask_expand
-            0,
-            # audio_guide  ← conditioning audio (None when no audio)
-            audio_ref,
-            # audio_guide2  (second speaker — unused)
-            None,
-            # custom_guide
-            None,
-            # audio_source  (distinct from audio conditioning — unused)
-            None,
-            # audio_prompt_type  ← "A" = condition on audio_guide
-            audio_prompt_type,
-            # speakers_locations  (Multitalk multi-speaker bbox — unused)
-            "",
-            # sliding_window_size
-            81,
-            # sliding_window_overlap
-            8,
-            # sliding_window_color_correction_strength
-            0.5,
-            # sliding_window_overlap_noise
-            0,
-            # sliding_window_discard_last_frames
-            0,
-            # image_refs_relative_size
-            False,
-            # remove_background_images_ref
-            False,
-            # temporal_upsampling
-            "",
-            # spatial_upsampling
-            "",
-            # film_grain_intensity
-            0,
-            # film_grain_saturation
-            0.5,
-            # MMAudio_setting
-            0,
-            # MMAudio_prompt
-            "",
-            # MMAudio_neg_prompt
-            "",
-            # RIFLEx_setting
-            0,
-            # NAG_scale
-            0.0,
-            # NAG_tau
-            2.0,
-            # NAG_alpha
-            0.5,
-            # perturbation_switch
-            0,
-            # perturbation_layers  (multiselect Dropdown)
-            [],
-            # perturbation_start_perc
-            0.0,
-            # perturbation_end_perc
-            1.0,
-            # apg_switch
-            0,
-            # cfg_star_switch
-            0,
-            # cfg_zero_step
-            0,
-            # prompt_enhancer
-            "",
-            # min_frames_if_references
-            1,
-            # override_profile
-            -1,
-            # override_attention
-            "",
-            # temperature
-            1.0,
-            # custom_setting_1 … custom_setting_5
-            "", "", "", "", "",
-            # top_p
-            1.0,
-            # top_k
-            0,
-            # self_refiner_setting
-            0,
-            # self_refiner_plan
-            "",
-            # self_refiner_f_uncertainty
-            0.5,
-            # self_refiner_certain_percentage
-            0.5,
-            # output_filename  (empty = auto)
-            "",
-            # mode  (gr.Text visible=False; empty = normal generation)
-            "",
-        ]
+        return settings
+
+    def _submit_job(self, settings: Dict[str, Any]) -> tuple[str, int]:
+        """Submit a job and return (job_id, queue_position)."""
+        url = f"{self.config.server_url.rstrip('/')}/jobs"
+        r = requests.post(
+            url,
+            json={"settings": settings},
+            headers=self._headers(),
+            timeout=30,
+        )
+        if r.status_code != 202:
+            raise RuntimeError(f"Job submission failed ({r.status_code}): {r.json()}")
+        body = r.json()
+        job_id: str = body["job_id"]
+        queue_pos: int = body.get("queue_position", 0)
+        print(f"[submit] job_id={job_id}  queue_position={queue_pos}")
+        return job_id, queue_pos
+
+    def _stream_events(
+        self,
+        job_id: str,
+        progress_callback: Optional[Callable[[float, str], None]],
+    ) -> List[str]:
+        """Stream SSE events for *job_id* until completed. Returns list of output filenames."""
+        url = f"{self.config.server_url.rstrip('/')}/jobs/{job_id}/events"
+        print(f"[stream] listening on {url} …")
+
+        with requests.get(
+            url,
+            headers=self._headers(),
+            stream=True,
+            timeout=self.config.stream_timeout,
+        ) as r:
+            r.raise_for_status()
+            for raw in r.iter_lines(decode_unicode=True):
+                if not raw or raw.startswith(":"):
+                    continue
+                if not raw.startswith("data: "):
+                    continue
+                payload = json.loads(raw[6:])
+                kind = payload.get("kind")
+                data = payload.get("data") or {}
+
+                if kind == "progress":
+                    pct   = data.get("progress", 0) or 0
+                    step  = data.get("current_step", "?")
+                    total = data.get("total_steps", "?")
+                    phase = data.get("phase", "")
+                    bar   = "#" * int(pct * 30) + "-" * (30 - int(pct * 30))
+                    print(
+                        f"\r  [{bar}] {pct:5.1%}  step {step}/{total}  {phase}    ",
+                        end="",
+                        flush=True,
+                    )
+                    if progress_callback:
+                        progress_callback(float(pct), phase or "generating")
+
+                elif kind == "preview":
+                    print("\n  [preview] frame available")
+
+                elif kind == "completed":
+                    print()
+                    files  = data.get("generated_files", [])
+                    errors = data.get("errors", [])
+                    success = data.get("success")
+                    print(f"  [completed] success={success}  files={files}  errors={errors}")
+                    if not success:
+                        raise RuntimeError(f"WanGP generation failed: {errors}")
+                    return files
+
+                elif kind == "error":
+                    print()
+                    raise RuntimeError(f"WanGP generation error: {data}")
+
+        return []
+
+    def _download_output(self, filename: str, output_dir: str) -> str:
+        """Download *filename* from /files/ and save to *output_dir*. Returns local path."""
+        url = f"{self.config.server_url.rstrip('/')}/files/{filename}"
+        dst = Path(output_dir) / filename
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        print(f"  downloading {filename} …")
+        with requests.get(
+            url,
+            headers=self._headers(),
+            stream=True,
+            timeout=self.config.timeout,
+        ) as r:
+            r.raise_for_status()
+            with dst.open("wb") as fh:
+                for chunk in r.iter_content(chunk_size=1 << 20):
+                    fh.write(chunk)
+        print(f"  saved → {dst}")
+        return str(dst)
 
     def _run_generation_sync(
         self,
         params: VideoGenerationParams,
         output_dir: str,
+        progress_callback: Optional[Callable[[float, str], None]],
     ) -> List[str]:
-        """
-        Execute the full 5-step WanGP pipeline synchronously.
+        """Execute the full REST generation pipeline synchronously. Returns local paths."""
+        base = self.config.server_url.rstrip("/")
 
-        Returns a list of local paths to downloaded output files.
-        """
-
-        client = self._get_gradio_client()
-        out_path = Path(output_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
-
-        image_ref = handle_file(params.image_path) if params.image_path else None
-        audio_ref = handle_file(params.audio_path) if params.audio_path else None
-
-        if image_ref is None:
-            mode_label = "t2v"
-        elif audio_ref is not None:
-            mode_label = "audio-conditioned i2v"
+        if image_ref := params.image_path:
+            mode_label = "audio-conditioned i2v" if params.audio_path else "i2v"
         else:
-            mode_label = "i2v"
-        print(f"[1/5] Selecting model: {params.model_type}  ({mode_label})")
-        client.predict(params.model_type, api_name="/change_model")
+            mode_label = "t2v"
 
-        print("[2/5] Saving generation settings into server state...")
-        save_args = self._build_save_inputs_args(params, image_ref, audio_ref)
-        client.predict(*save_args, api_name=self.config.save_inputs_api)
+        print(f"[1] Health check ({base})")
+        self._check_health()
 
-        print("[3/5] Queuing task...")
-        client.predict(
-            0,                  # current_gallery_tab (0 = video)
-            params.model_type,  # model_choice — must match state["model_type"]
-            api_name="/process_prompt_and_add_tasks",
-        )
+        image_file_id: Optional[str] = None
+        audio_file_id: Optional[str] = None
 
-        print("[4/5] Running inference (this may take a while)...")
+        if params.image_path:
+            print(f"[2a] Uploading start image ({mode_label})")
+            image_file_id = self._upload_file(params.image_path)
+
+        if params.audio_path:
+            print("[2b] Uploading audio guide")
+            audio_file_id = self._upload_file(params.audio_path)
+
+        print(f"[3] Submitting job  model={params.model_type}  mode={mode_label}")
+        settings = self._build_settings(params, image_file_id, audio_file_id)
+        job_id, _ = self._submit_job(settings)
+
+        print("[4] Streaming generation events …")
         t0 = time.time()
-        job = client.submit(api_name="/process_tasks")
-        try:
-            for _ in job:
-                elapsed = time.time() - t0
-                print(f"\r  elapsed: {elapsed:.0f}s", end="", flush=True)
-        except Exception as exc:
-            raise RuntimeError(f"process_tasks error: {exc}") from exc
-        print(f"\n  inference finished in {time.time() - t0:.1f}s")
+        filenames = self._stream_events(job_id, progress_callback)
+        print(f"    finished in {time.time() - t0:.1f}s")
 
-        print("[5/5] Collecting output files...")
-        client.predict(api_name="/finalize_generation")
-        result = client.predict(api_name="/refresh_gallery")
+        if not filenames:
+            raise RuntimeError("WanGP generation produced no output files")
 
-        server_root = client.src.rstrip("/")
-        gallery_dict = _find_gallery_dict(result)
-        output_files: List[str] = []
+        print("[5] Downloading output file(s)")
+        local_paths: List[str] = []
+        for name in filenames:
+            local_paths.append(self._download_output(name, output_dir))
 
-        if gallery_dict and gallery_dict.get("value"):
-            gallery_items = gallery_dict["value"]
-            idx = gallery_dict.get("selected_index") or 0
-            if not (0 <= idx < len(gallery_items)):
-                idx = len(gallery_items) - 1
-
-            target_item = gallery_items[idx]
-            temp_path = _extract_path(target_item)
-            print(f"  gallery selected_index={idx}, temp path: {temp_path}")
-
-            if temp_path:
-                temp_basename = Path(temp_path).name
-                actual_filename = _temp_to_output_filename(temp_basename)
-                output_rel = f"outputs/{actual_filename}"
-                dst = out_path / actual_filename
-                _download_gradio_file(server_root, output_rel, dst)
-                output_files.append(str(dst))
-                print(f"  saved: {dst}")
-
-        if not output_files:
-            print("  No output files found.")
-            print("  Raw refresh_gallery result:", result)
-
-        return output_files
+        return local_paths
 
     # ------------------------------------------------------------------
     # LTXClientInterface implementation
     # ------------------------------------------------------------------
 
     async def close(self) -> None:
-        self._gradio_client = None
+        pass
 
     async def generate_video(
         self,
@@ -620,17 +473,15 @@ class WanGPLTXClient(LTXClientInterface):
         progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> VideoGenerationResult:
         """
-        Generate a video via WanGP.
+        Generate a video via the WanGP REST server.
 
-        The blocking Gradio calls are run in a thread so this coroutine
-        remains non-blocking in an async context.
+        The blocking HTTP calls run in a thread so this coroutine stays non-blocking.
 
         Args:
             params: Generation parameters.
-                - Text-to-video: only ``prompt`` required; leave ``image_path`` unset.
-                - Image-to-video: set ``image_path`` to the start image.
-                - Audio-conditioned i2v: set both ``image_path`` and ``audio_path``
-                  (distilled models only).
+                - Text-to-video: only ``prompt`` required.
+                - Image-to-video: set ``image_path``.
+                - Audio-conditioned i2v: set both ``image_path`` and ``audio_path``.
             output_dir: Local directory to save the downloaded video.
             progress_callback: Optional ``callback(fraction, message)``.
 
@@ -638,13 +489,13 @@ class WanGPLTXClient(LTXClientInterface):
             :class:`VideoGenerationResult` with local video path and metadata.
 
         Raises:
-            RuntimeError: If inference fails or no output files are produced.
+            RuntimeError: If the server is not ready, inference fails, or no files produced.
         """
         if progress_callback:
             progress_callback(0.0, "Starting WanGP generation…")
 
         output_files: List[str] = await asyncio.to_thread(
-            self._run_generation_sync, params, output_dir
+            self._run_generation_sync, params, output_dir, progress_callback
         )
 
         if not output_files:
@@ -667,70 +518,6 @@ class WanGPLTXClient(LTXClientInterface):
         )
 
 
-
-# =============================================================================
-# File helpers (ported from reference scripts)
-# =============================================================================
-
-def _download_gradio_file(server_root: str, output_rel: str, dst: Path) -> None:
-    """
-    Download a file from the WanGP Gradio server via its outputs/ path.
-
-    Files under /tmp/gradio/ return 403; only outputs/ paths are accessible.
-    """
-    url = f"{server_root}/gradio_api/file={output_rel}"
-    print(f"  downloading {url} …")
-    resp = requests.get(url, stream=True, timeout=300)
-    resp.raise_for_status()
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with dst.open("wb") as fh:
-        for chunk in resp.iter_content(chunk_size=1 << 20):
-            fh.write(chunk)
-
-
-def _temp_to_output_filename(temp_basename: str) -> str:
-    """
-    Reverse Gradio's parenthesis-stripping in temp filenames.
-
-    WanGP names outputs 0.mp4, 0(2).mp4, 0(3).mp4 …
-    Gradio strips parens when copying to /tmp: 0(18).mp4 → 018.mp4
-    This reverses that: 018.mp4 → 0(18).mp4
-    """
-    m = re.match(r"^0(\d+)(\.[^.]+)$", temp_basename)
-    if m:
-        digits, ext = m.groups()
-        return f"0({int(digits)}){ext}"
-    return temp_basename  # e.g. "0.mp4" — first generation
-
-
-def _find_gallery_dict(result) -> Optional[dict]:
-    """Return the first Gradio Gallery update dict in a result tuple."""
-    if not isinstance(result, (list, tuple)):
-        return None
-    for item in result:
-        if isinstance(item, dict) and "selected_index" in item and "value" in item:
-            return item
-    return None
-
-
-def _extract_path(item) -> str:
-    """Extract a remote file path from one gallery item regardless of format."""
-    if isinstance(item, str):
-        return item
-    if isinstance(item, (list, tuple)):
-        return str(item[0]) if item[0] else ""
-    if isinstance(item, dict):
-        for key in ("image", "video"):
-            if key in item:
-                inner = item[key]
-                if isinstance(inner, dict):
-                    return inner.get("path") or inner.get("url") or ""
-                if isinstance(inner, str):
-                    return inner
-        return item.get("path") or item.get("url") or ""
-    return ""
-
-
 # =============================================================================
 # Convenience async function
 # =============================================================================
@@ -739,7 +526,7 @@ async def generate_video(
     prompt: str,
     image_path: str,
     output_dir: str = "./output",
-    server_url: str = "http://localhost:7860",
+    server_url: str = "http://localhost:8082",
     audio_path: Optional[str] = None,
     **kwargs,
 ) -> VideoGenerationResult:
@@ -750,7 +537,7 @@ async def generate_video(
         prompt: Text prompt describing the video content.
         image_path: Local path to the start image.
         output_dir: Directory to save the output video.
-        server_url: URL of the remote WanGP instance.
+        server_url: URL of the remote WanGP REST server.
         audio_path: Optional conditioning audio file. Enables audio-driven i2v.
         **kwargs: Additional :class:`VideoGenerationParams` fields.
 
