@@ -176,20 +176,20 @@ def render_sidebar():
         st.markdown("### Server")
         server_url = st.text_input(
             "WanGP Server URL",
-            value="http://gx10-cbc5:8081/",
-            help="URL of the running WanGP instance (Gradio API)"
+            value="http://localhost:8082",
+            help="URL of the running WanGP REST server (wangp_server.py)"
         )
 
         # Check server connection
         if st.button("🔌 Test Connection", use_container_width=True):
             try:
-                import httpx
-                with httpx.Client(timeout=5.0) as client:
-                    response = client.get(server_url)
-                    if response.status_code == 200:
-                        st.success("✅ Connected!")
-                    else:
-                        st.warning(f"⚠️ Server responded with {response.status_code}")
+                import requests as _req
+                r = _req.get(server_url.rstrip("/") + "/health", timeout=5)
+                body = r.json()
+                if r.status_code == 200 and body.get("runtime_loaded"):
+                    st.success(f"✅ Connected! queue_depth={body.get('queue_depth', 0)}")
+                else:
+                    st.warning(f"⚠️ Server not ready: {body}")
             except Exception as e:
                 st.error(f"❌ Connection failed: {str(e)}")
         

@@ -743,8 +743,8 @@ S                        <!-- LTX Settings -->
                             </div>
                             <div class="collapsible-content">
                                 <div class="form-group">
-                                    <label>ComfyUI Server URL</label>
-                                    <input type="text" id="ltxServerUrl" value="http://localhost:8188">
+                                    <label>WanGP Server URL</label>
+                                    <input type="text" id="ltxServerUrl" value="http://gx10-cbc5:8082">
                                 </div>
                                 <div class="grid-2">
                                     <div class="form-group">
@@ -787,7 +787,23 @@ S                        <!-- LTX Settings -->
                                 <div class="form-group">
                                     <label style="display: flex; align-items: center; gap: 8px;">
                                         <input type="checkbox" id="ltxEnableAudio" style="width: auto;" checked>
-                                        Enable Audio
+                                        Enable Audio (TTS + audio conditioning)
+                                    </label>
+                                </div>
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label>TTS Host</label>
+                                        <input type="text" id="ltxTtsHost" value="tts">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>TTS Port</label>
+                                        <input type="number" id="ltxTtsPort" value="8003">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="ltxAdaptDuration" style="width: auto;" checked>
+                                        Adapt clip duration to TTS length
                                     </label>
                                 </div>
                             </div>
@@ -1450,7 +1466,7 @@ S                        <!-- LTX Settings -->
 
             const requestData = {
                 story_template_id: templateId,
-                comfyui_server_url: document.getElementById('ltxServerUrl').value || undefined,
+                ltx_server_url: document.getElementById('ltxServerUrl').value || undefined,
                 video_width: parseInt(document.getElementById('ltxWidth').value) || undefined,
                 video_height: parseInt(document.getElementById('ltxHeight').value) || undefined,
                 video_duration_seconds: parseFloat(document.getElementById('ltxDuration').value) || undefined,
@@ -1460,6 +1476,9 @@ S                        <!-- LTX Settings -->
                 video_seed: parseInt(document.getElementById('ltxSeed').value),
                 style_suffix: document.getElementById('ltxStyleSuffix').value || undefined,
                 enable_audio: document.getElementById('ltxEnableAudio').checked,
+                tts_host: document.getElementById('ltxTtsHost').value || undefined,
+                tts_port: parseInt(document.getElementById('ltxTtsPort').value) || undefined,
+                adapt_duration_to_audio: document.getElementById('ltxAdaptDuration').checked,
                 llm_provider: document.getElementById('llmProvider').value || undefined,
                 llm_model: document.getElementById('llmModel').value || undefined,
                 output_dir: document.getElementById('outputDir').value || undefined,
@@ -1595,39 +1614,83 @@ S                        <!-- LTX Settings -->
             html += `<p style="color: var(--text-muted); margin-bottom: 16px;">Created: ${job.created_at}</p>`;
 
             if (job.status === 'completed' && job.result) {
-                const metadata = job.result.metadata || {};
-                // Rewrite MinIO internal URLs to go through nginx proxy
-                const videoUrl = (metadata.video_url || '').replace('http://minio:9000', 'http://localhost:8080/minio');
-                
+                const res = job.result;
+                const metadata = res.metadata || {};
+
+                // Metrics — check top-level result fields first, fall back to metadata
+                const totalDuration = res.total_duration_seconds ?? metadata.total_duration;
+                const segmentCount  = res.segment_count ?? metadata.sentence_count;
+                const storyTitle    = res.story_title || '';
+
+                if (storyTitle) {
+                    html += `<p style="color: var(--text-bright); font-weight: 600; margin-bottom: 12px;">📖 ${storyTitle}</p>`;
+                }
+
                 html += `
                     <div class="metrics">
-                        ${metadata.total_duration ? `<div class="metric"><div class="metric-value">${metadata.total_duration.toFixed(1)}s</div><div class="metric-label">Duration</div></div>` : ''}
-                        ${metadata.sentence_count ? `<div class="metric"><div class="metric-value">${metadata.sentence_count}</div><div class="metric-label">Sentences</div></div>` : ''}
+                        ${totalDuration != null ? `<div class="metric"><div class="metric-value">${Number(totalDuration).toFixed(1)}s</div><div class="metric-label">Duration</div></div>` : ''}
+                        ${segmentCount  != null ? `<div class="metric"><div class="metric-value">${segmentCount}</div><div class="metric-label">Segments</div></div>` : ''}
                     </div>
                 `;
 
-                if (videoUrl) {
-                    // Check if URL is playable
-                    if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+                // ── Final video (MinIO URL) ──────────────────────────────
+                const videoUrl = (metadata.video_url || '').replace('http://minio:9000', 'http://localhost:8080/minio');
+                if (videoUrl && (videoUrl.startsWith('http://') || videoUrl.startsWith('https://'))) {
+                    html += `
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px;">🎬 Final video</p>
+                        <div class="video-container">
+                            <video controls src="${videoUrl}"></video>
+                        </div>
+                        <a class="download-link" style="margin-top: 8px; display: inline-flex;" href="${videoUrl}" download>⬇️ Download</a>
+                    `;
+                } else if (videoUrl) {
+                    html += `
+                        <div class="info-box" style="background: rgba(248, 81, 73, 0.1); border: 1px solid var(--error);">
+                            <p style="color: var(--error);">⚠️ Video not accessible from browser:</p>
+                            <code style="word-break: break-all; font-size: 0.8rem;">${videoUrl}</code>
+                        </div>
+                    `;
+                }
+
+                // ── Single-clip base64 result ────────────────────────────
+                if (res.video_b64) {
+                    html += `
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin: 16px 0 8px;">🎬 Generated clip
+                            (${res.width}×${res.height} · ${res.fps}fps · ${Number(res.duration_seconds).toFixed(1)}s)
+                        </p>
+                        <div class="video-container">
+                            <video controls src="data:video/mp4;base64,${res.video_b64}"></video>
+                        </div>
+                    `;
+                }
+
+                // ── Segment clips list ───────────────────────────────────
+                if (Array.isArray(res.segments) && res.segments.length > 0) {
+                    html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin: 20px 0 8px;">📋 Segments (${res.segments.length})</p>`;
+                    html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
+                    res.segments.forEach((seg, i) => {
                         html += `
-                            <div class="video-container">
-                                <video controls src="${videoUrl}"></video>
+                            <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-weight: 600; color: var(--accent); font-size: 0.85rem;">
+                                        #${seg.index + 1} · ${seg.character_id || ''}
+                                    </span>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace;">
+                                        ${Number(seg.duration_seconds || 0).toFixed(1)}s
+                                    </span>
+                                </div>
+                                ${seg.text ? `<p style="font-size: 0.85rem; color: var(--text); margin-bottom: 4px;">"${seg.text}"</p>` : ''}
+                                ${seg.scene_description ? `<p style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">${seg.scene_description}</p>` : ''}
                             </div>
                         `;
-                    } else {
-                        html += `
-                            <div class="info-box" style="background: rgba(248, 81, 73, 0.1); border: 1px solid var(--error);">
-                                <p style="color: var(--error);">⚠️ Video URL not playable in browser:</p>
-                                <code style="word-break: break-all; font-size: 0.8rem;">${videoUrl}</code>
-                            </div>
-                        `;
-                    }
+                    });
+                    html += `</div>`;
                 }
 
                 html += `
                     <details style="margin-top: 16px;">
-                        <summary style="cursor: pointer; color: var(--text-muted);">View Full Result</summary>
-                        <div class="code-block" style="margin-top: 10px;">${JSON.stringify(job.result, null, 2)}</div>
+                        <summary style="cursor: pointer; color: var(--text-muted);">View Full Result JSON</summary>
+                        <div class="code-block" style="margin-top: 10px;">${JSON.stringify(res, null, 2)}</div>
                     </details>
                 `;
             }
