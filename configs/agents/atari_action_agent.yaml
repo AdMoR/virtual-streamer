@@ -5,7 +5,7 @@ model:
   parameters:
     temperature: 0.1
     max_tokens: 2048
-    api_base: http://100.114.182.89:8083
+    api_base: http://100.114.182.89:8081
 
 transfer_policy:
   allow_transfer: false
