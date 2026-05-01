@@ -30,6 +30,13 @@ META_PROMPT = """{template_prompt}
 Characters available (use these exact character_id values):
 {characters}
 
+Locations available for this story (assign one location_id to each dialog line):
+{locations}
+
+IMPORTANT: Each dialogue line must include a location_id from the list above.
+If no locations are listed, invent descriptive location names (they can be registered later).
+Keep location consistent: consecutive scenes in the same place must use the same location_id.
+
 Generate a story with exactly {target_lines} dialogue lines.
 
 Scenario: {title}
@@ -41,6 +48,7 @@ IMPORTANT: Your response must be structured with three parts:
 3. **dialog**: The actual dialog lines. Each line must include:
    - **character_id**: Use the exact ID from the characters list above (e.g., "fred", "jamy")
    - **dialog**: The spoken text (what the character says out loud)
+   - **location_id**: The location ID for this scene from the locations list above (e.g., "ski-resort")
    - **scene_description**: A visual description of the scene that will be used to search for matching video clips. Describe what should be visible: location, actions, objects, mood. Do NOT include the dialog text here.
 
 Scene description should follow this format : 
@@ -144,6 +152,24 @@ DEFAULT_CHARACTERS = "- Fred: Bombastic host of C'est pas Sorcier, overconfident
 # PROMPT BUILDING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def build_locations_block(locations: list[dict]) -> str:
+    """
+    Build the {locations} block from Location entities.
+
+    Args:
+        locations: List of location dicts with 'location_id' and 'name' keys
+
+    Returns:
+        Formatted locations block string, or a placeholder when empty
+    """
+    if not locations:
+        return "No locations defined yet — invent descriptive location names as needed."
+    return "\n".join(
+        f'- {loc["name"]} (location_id: "{loc["location_id"]}")'
+        for loc in locations
+    )
+
+
 def build_characters_block(characters: list[dict]) -> str:
     """
     Build the {characters} block from Character entities.
@@ -171,24 +197,28 @@ def build_prompt_from_template(
     target_lines: int,
     characters: list[dict],
     title: str,
+    locations: Optional[list[dict]] = None,
 ) -> str:
     """
     Build the final prompt using the meta-prompt system.
-    
+
     Args:
         template_prompt: Raw prompt text from StoryTemplate
         target_lines: Target number of dialogue lines
         characters: List of character dicts with 'name' and 'description'
         title: Story title/scenario
-    
+        locations: Optional list of location dicts with 'location_id' and 'name'
+
     Returns:
         Complete formatted prompt
     """
     characters_block = build_characters_block(characters)
-    
+    locations_block = build_locations_block(locations or [])
+
     return META_PROMPT.format(
         template_prompt=template_prompt,
         characters=characters_block,
+        locations=locations_block,
         target_lines=target_lines,
         title=title,
     )
@@ -197,12 +227,12 @@ def build_prompt_from_template(
 def format_story_prompt(title: str) -> str:
     """
     Format the default story generation prompt with the given title.
-    
+
     This is the fallback when no story_template_id is provided.
-    
+
     Args:
         title: The scenario/title for story generation
-    
+
     Returns:
         Formatted prompt string
     """
@@ -214,30 +244,31 @@ def format_story_prompt(title: str) -> str:
             {"character_id": "jamy", "name": "Jamy", "description": "Scientist and skeptical listener"},
         ],
         title=title,
+        locations=[],
     )
 
 
 async def load_template_and_build_prompt(template_id: str, title: str) -> Optional[str]:
     """
     Load a story template from DB and build the prompt.
-    
+
     Args:
         template_id: ID of the story template to load
         title: Story title/scenario
-    
+
     Returns:
         Formatted prompt string, or None if template not found
     """
     from virtual_streamer.utils.entity_repository import get_entity_repository
-    
+
     repo = get_entity_repository()
-    
+
     # Load template
     template = await repo.get_story_template(template_id)
     if template is None:
         logger.warning(f"Story template '{template_id}' not found")
         return None
-    
+
     # Load associated characters
     characters = []
     for char_id in template.get("character_ids", []):
@@ -250,13 +281,27 @@ async def load_template_and_build_prompt(template_id: str, title: str) -> Option
             })
         else:
             logger.warning(f"Character '{char_id}' referenced by template not found")
-    
+
+    # Load associated locations
+    locations = []
+    try:
+        loc_rows = await repo.list_locations_by_template(template_id)
+        locations = [
+            {"location_id": loc["location_id"], "name": loc["name"]}
+            for loc in loc_rows
+        ]
+        if locations:
+            logger.info(f"Injecting {len(locations)} location(s) into story prompt")
+    except Exception as e:
+        logger.warning(f"Could not load locations for template '{template_id}': {e}")
+
     # Build prompt
     return build_prompt_from_template(
         template_prompt=template["prompt"],
         target_lines=template.get("target_lines", DEFAULT_TARGET_LINES),
         characters=characters,
         title=title,
+        locations=locations,
     )
 
 

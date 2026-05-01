@@ -382,8 +382,13 @@ from pydantic import BaseModel, Field
 class DialogLine(BaseModel):
     character_id: str = Field(..., description="ID of the character speaking", example="fred")
     text: str = Field(..., description="The dialogue text", example="Eh dis donc Jamy, ça te dit de faire du surf?")
-    scene_description: str = Field(..., description="The description of the scene", 
+    scene_description: str = Field(..., description="The description of the scene",
     example="The scene is set in a ski resort in the Alps. A person is talking to the camera.")
+    location_id: Optional[str] = Field(
+        default=None,
+        description="ID of the location visible in this scene (references a Location in the DB).",
+        example="ski-resort",
+    )
 
 
 class DialogLines(BaseModel):

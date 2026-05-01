@@ -186,6 +186,18 @@ class EntityRepository:
                     )
                 """)
 
+                # Locations table (environment descriptions scoped per template)
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS locations (
+                        id VARCHAR(255) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT NOT NULL,
+                        story_template_id VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (story_template_id) REFERENCES story_templates(id) ON DELETE CASCADE
+                    )
+                """)
+
                 print("Ensured all entity tables exist")
 
     # ==================== CHARACTER METHODS ====================
@@ -789,6 +801,125 @@ class EntityRepository:
                 print("Recreated story_templates and template_characters tables with latest schema")
                 
                 return True
+
+    # ==================== LOCATION METHODS ====================
+
+    async def create_location(
+        self,
+        location_id: str,
+        name: str,
+        description: str,
+        story_template_id: str,
+    ) -> Dict[str, Any]:
+        """Create a new location scoped to a story template."""
+        pool = await self._get_pool()
+        now = datetime.utcnow()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO locations (id, name, description, story_template_id, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (location_id, name, description, story_template_id, now),
+                )
+
+        return await self.get_location(location_id)
+
+    async def get_location(self, location_id: str) -> Optional[Dict[str, Any]]:
+        """Get a location by ID."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id, name, description, story_template_id, created_at FROM locations WHERE id = %s",
+                    (location_id,),
+                )
+                row = await cur.fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            "location_id": row[0],
+            "name": row[1],
+            "description": row[2],
+            "story_template_id": row[3],
+            "created_at": row[4],
+            "updated_at": row[4],
+        }
+
+    async def list_locations_by_template(
+        self, template_id: str, limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """List all locations for a given story template."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, name, description, story_template_id, created_at
+                    FROM locations
+                    WHERE story_template_id = %s
+                    ORDER BY name
+                    LIMIT %s
+                    """,
+                    (template_id, limit),
+                )
+                rows = await cur.fetchall()
+
+        return [
+            {
+                "location_id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "story_template_id": row[3],
+                "created_at": row[4],
+                "updated_at": row[4],
+            }
+            for row in rows
+        ]
+
+    async def list_all_locations(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """List all locations across all templates."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, name, description, story_template_id, created_at
+                    FROM locations
+                    ORDER BY story_template_id, name
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = await cur.fetchall()
+
+        return [
+            {
+                "location_id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "story_template_id": row[3],
+                "created_at": row[4],
+                "updated_at": row[4],
+            }
+            for row in rows
+        ]
+
+    async def delete_location(self, location_id: str) -> bool:
+        """Delete a location by ID."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM locations WHERE id = %s", (location_id,))
+                return cur.rowcount > 0
 
     async def close(self):
         """Close the connection pool."""

@@ -22,7 +22,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -335,72 +334,71 @@ class WanGPLTXClient(LTXClientInterface):
         print(f"[submit] job_id={job_id}  queue_position={queue_pos}")
         return job_id, queue_pos
 
-    def _stream_events(
+    def _poll_job(
         self,
         job_id: str,
         progress_callback: Optional[Callable[[float, str], None]],
+        poll_interval: float = 2.0,
     ) -> List[str]:
-        """Stream SSE events for *job_id* until completed. Returns list of output filenames."""
-        url = f"{self.config.server_url.rstrip('/')}/jobs/{job_id}/events"
-        print(f"[stream] listening on {url} …")
+        """Poll GET /jobs/{job_id} until the job is done. Returns list of output URLs."""
+        url = f"{self.config.server_url.rstrip('/')}/jobs/{job_id}"
+        print(f"[poll] polling {url} …")
+        deadline = time.time() + self.config.stream_timeout
 
-        with requests.get(
-            url,
-            headers=self._headers(),
-            stream=True,
-            timeout=self.config.stream_timeout,
-        ) as r:
+        while time.time() < deadline:
+            r = requests.get(url, headers=self._headers(), timeout=30)
+            if r.status_code == 404:
+                raise RuntimeError(f"Job {job_id!r} not found (evicted or invalid)")
             r.raise_for_status()
-            for raw in r.iter_lines(decode_unicode=True):
-                if not raw or raw.startswith(":"):
-                    continue
-                if not raw.startswith("data: "):
-                    continue
-                payload = json.loads(raw[6:])
-                kind = payload.get("kind")
-                data = payload.get("data") or {}
+            body = r.json()
+            status = body.get("status")
 
-                if kind == "progress":
-                    pct   = data.get("progress", 0) or 0
-                    step  = data.get("current_step", "?")
-                    total = data.get("total_steps", "?")
-                    phase = data.get("phase", "")
-                    bar   = "#" * int(pct * 30) + "-" * (30 - int(pct * 30))
+            if status in ("queued", "running"):
+                pct   = float(body.get("progress") or 0.0)
+                phase = body.get("phase") or status
+                pos   = body.get("queue_position")
+                bar   = "#" * int(pct * 10) + "-" * (10 - int(pct * 10))
+                if status == "queued":
+                    print(f"\r  [queue] position={pos}    ", end="", flush=True)
+                else:
                     print(
-                        f"\r  [{bar}] {pct:5.1%}  step {step}/{total}  {phase}    ",
+                        f"\r  [{bar}] {pct:5.1%}  {phase}    ",
                         end="",
                         flush=True,
                     )
-                    if progress_callback:
-                        progress_callback(float(pct), phase or "generating")
+                if progress_callback:
+                    progress_callback(pct, phase)
+                time.sleep(poll_interval)
+                continue
 
-                elif kind == "preview":
-                    print("\n  [preview] frame available")
+            # Terminal states
+            print()
+            files   = body.get("generated_files", [])
+            errors  = body.get("errors", [])
+            success = body.get("success", False)
 
-                elif kind == "completed":
-                    print()
-                    files  = data.get("generated_files", [])
-                    errors = data.get("errors", [])
-                    success = data.get("success")
-                    print(f"  [completed] success={success}  files={files}  errors={errors}")
-                    if not success:
-                        raise RuntimeError(f"WanGP generation failed: {errors}")
-                    return files
+            if status == "completed" and success:
+                print(f"  [completed] files={files}")
+                return files
 
-                elif kind == "error":
-                    print()
-                    raise RuntimeError(f"WanGP generation error: {data}")
+            raise RuntimeError(
+                f"WanGP job {status}: success={success}  errors={errors}"
+            )
 
-        return []
+        raise TimeoutError(
+            f"Timed out waiting for job {job_id!r} after {self.config.stream_timeout}s"
+        )
 
-    def _download_output(self, filename: str, output_dir: str) -> str:
-        """Download *filename* from /files/ and save to *output_dir*. Returns local path."""
-        url = f"{self.config.server_url.rstrip('/')}/files/{filename}"
-        dst = Path(output_dir) / filename
+    def _download_output(self, file_url: str, output_dir: str) -> str:
+        """Download *file_url* (a complete URL) and save to *output_dir*. Returns local path."""
+        from virtual_streamer.utils.file_manager import get_file_manager
+        fm = get_file_manager()
+        filename = file_url.rstrip("/").rsplit("/", 1)[-1]
+        dst = Path(output_dir) / fm.naming.final_output_filename(filename)
         dst.parent.mkdir(parents=True, exist_ok=True)
         print(f"  downloading {filename} …")
         with requests.get(
-            url,
+            file_url,
             headers=self._headers(),
             stream=True,
             timeout=self.config.timeout,
@@ -444,9 +442,9 @@ class WanGPLTXClient(LTXClientInterface):
         settings = self._build_settings(params, image_file_id, audio_file_id)
         job_id, _ = self._submit_job(settings)
 
-        print("[4] Streaming generation events …")
+        print("[4] Polling job status …")
         t0 = time.time()
-        filenames = self._stream_events(job_id, progress_callback)
+        filenames = self._poll_job(job_id, progress_callback)
         print(f"    finished in {time.time() - t0:.1f}s")
 
         if not filenames:

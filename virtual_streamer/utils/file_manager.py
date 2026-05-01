@@ -214,7 +214,7 @@ class FileNamingStrategy:
         safe_title = "".join(
             c if c.isalnum() or c in (" ", "_", "-") else "_" for c in title
         )
-        safe_title = safe_title.replace(" ", "_").lower()[:50]  # Max 50 chars
+        safe_title = safe_title.replace(" ", "_").replace(",", "_").lower()[:50]  # Max 50 chars
         return self.generate_filename("video", "mp4", safe_title)
 
     def temp_dir_name(self, category: str) -> str:

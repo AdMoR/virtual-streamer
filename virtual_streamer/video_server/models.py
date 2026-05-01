@@ -314,6 +314,36 @@ class StoryTemplate(StoryTemplateBase):
         }
 
 
+# --- Location Models ---
+
+
+class LocationBase(BaseModel):
+    """Base model for a location used as a scene background."""
+
+    name: str = Field(..., description="Human-readable display name (e.g. 'Medieval Castle')")
+    description: str = Field(
+        ...,
+        description="Full diffusion-model prompt for this location (environment only, no characters).",
+    )
+    story_template_id: str = Field(
+        ..., description="ID of the story template this location is scoped to"
+    )
+
+
+class Location(LocationBase):
+    """Full Location representation including generated fields."""
+
+    location_id: str = Field(
+        ...,
+        description="Human-readable slug derived from name (e.g. 'medieval-castle').",
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        orm_mode = True
+
+
 # --- News/Article Models ---
 
 

@@ -68,6 +68,15 @@ RAW_TEMPLATE_TEXT = "raw_template_text"
 TEMPLATE_OUTPUT = "template_output"
 """dict: Generated story template with keys: {name, prompt, target_lines}."""
 
+LOCATION_NAME = "location_name"
+"""str: Name of the location to build a description for (e.g. 'Medieval Castle')."""
+
+RAW_LOCATION_TEXT = "raw_location_text"
+"""str: Free-text location description from location_writer before formatting."""
+
+LOCATION_OUTPUT = "location_output"
+"""dict: Generated location with key: {description}"""
+
 SENTENCES = "sentences"
 """List[str]: Dialog split into individual sentences for processing."""
 

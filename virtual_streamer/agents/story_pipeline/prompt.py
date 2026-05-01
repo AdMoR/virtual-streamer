@@ -25,6 +25,10 @@ Extract the following fields:
   - **character_id**: The character identifier (e.g. "fred", "jamy"). Use lowercase.
   - **text**: The spoken dialogue text (what the character says out loud).
   - **scene_description**: The visual scene description used for video matching.
+  - **location_id**: The location identifier for this scene (e.g. "ski-resort", "medieval-castle").
+    Use the location_id values present in the story text. If only a location name is present (not an ID),
+    convert it to a slug: lowercase, spaces replaced by hyphens (e.g. "Ski Resort" → "ski-resort").
+    If no location information is present, leave this field null.
 
 Raw story:
 {raw_story}"""
