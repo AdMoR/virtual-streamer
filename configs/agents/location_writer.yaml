@@ -1,0 +1,26 @@
+# Location Writer Agent Configuration
+# First step of the location builder pipeline:
+# generates a detailed free-text diffusion description for a location
+
+name: location_writer
+
+model:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  parameters:
+    temperature: 0.5
+
+metadata:
+  version: "1.0.0"
+  description: "Generates a detailed diffusion-model description for a scene location"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - location-building
+    - image-generation
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true

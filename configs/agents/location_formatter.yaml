@@ -1,0 +1,28 @@
+# Location Formatter Agent Configuration
+# Second step of the location builder pipeline:
+# formats the free-text description into the LocationDescriptionOutput schema
+
+name: location_formatter
+
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3
+    max_output_tokens: 4096
+    api_base: http://100.114.182.89:8081
+
+metadata:
+  version: "1.0.0"
+  description: "Formats raw location text into structured LocationDescriptionOutput schema"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - location-building
+    - structured-output
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
