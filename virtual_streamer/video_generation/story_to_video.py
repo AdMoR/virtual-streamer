@@ -153,10 +153,11 @@ async def generate_location_image(
             "cinematic composition, photorealistic, no people, high quality, "
             "detailed environment"
         )
-        negative_prompt = "people, persons, characters, text, watermark, blurry, distorted"
+        negative_prompt = "text, watermark, blurry, distorted"
 
         config = StableDiffusionCppConfig(server_url=sd_server_url)
         identity_images: list[str] = character.get("identity_images") or []
+        logger.debug(f"identity_images: {identity_images}")
 
         async with StableDiffusionCppClient(config) as client:
             if identity_images:
@@ -194,6 +195,7 @@ async def generate_location_image(
                     return result.image_path
 
             # Fallback: pure text-to-image
+            negative_prompt += ", people, persons, characters"
             result = await client.txt2image(
                 Txt2ImageParams(
                     prompt=prompt,

@@ -13,6 +13,7 @@ Environment variables:
 
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -65,6 +66,43 @@ async def _api_post(path: str, body: dict | None = None, timeout: float = 30.0) 
         resp = await client.post(f"{cfg.api_url}{path}", json=body)
         resp.raise_for_status()
         return resp.json()
+
+
+async def _api_post_multipart(
+    path: str,
+    fields: dict,
+    file_paths: dict[str, str] | None = None,
+    timeout: float = 600.0,
+) -> dict:
+    """Make a multipart/form-data POST request, optionally attaching local files.
+
+    Args:
+        path: API path
+        fields: Form fields (str values)
+        file_paths: Mapping of form field name → local file path to attach
+    """
+    import httpx
+
+    cfg = _get_config()
+    data = {k: str(v) for k, v in fields.items()}
+    files: list[tuple] = []
+    opened: list = []
+    try:
+        for field_name, fpath in (file_paths or {}).items():
+            fh = open(fpath, "rb")
+            opened.append(fh)
+            files.append((field_name, (os.path.basename(fpath), fh)))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{cfg.api_url}{path}",
+                data=data,
+                files=files if files else None,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    finally:
+        for fh in opened:
+            fh.close()
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +257,118 @@ async def create_video_ltx(
     if story_text is not None:
         body["story_text"] = story_text
     return await _api_post("/api/v1/video-generation/generate-ltx", body, timeout=7200.0)
+
+
+@mcp.tool()
+async def create_video_ltx_i2v(
+    prompt: str,
+    image_path: str,
+    negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
+    ltx_server_url: str = "http://gx10-cbc5:8082",
+    resolution: str = "1280x720",
+    duration_seconds: float = 4.0,
+    fps: int = 24,
+    steps: int = 8,
+    guidance_scale: float = 3.0,
+    flow_shift: float = 3.0,
+    seed: int = -1,
+) -> dict:
+    """Generate a video from a conditioning image and text prompt using LTX-2 image-to-video.
+
+    The image acts as the first frame; the model animates it according to the prompt.
+    Returns a job_id that can be tracked with get_job_status. The completed job result
+    contains a base64-encoded MP4 (video_b64) plus resolution/duration metadata.
+
+    Args:
+        prompt: Text description of the desired motion and scene.
+        image_path: Local path to the conditioning image (PNG/JPG).
+        negative_prompt: What to avoid in the generated video.
+        ltx_server_url: URL of the WanGP server running LTX-2.
+        resolution: Output resolution as WxH (default 1280x720).
+        duration_seconds: Clip duration in seconds (default 4.0).
+        fps: Frames per second (default 24).
+        steps: Denoising steps — lower is faster, higher is higher quality (default 8).
+        guidance_scale: Classifier-free guidance scale (default 3.0).
+        flow_shift: Flow shift parameter (default 3.0).
+        seed: Random seed, -1 for random (default -1).
+    """
+    return await _api_post_multipart(
+        "/api/v1/video-generation/single-clip",
+        fields={
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "wangp_url": ltx_server_url,
+            "model_type": "ltx2_22B_distilled",
+            "resolution": resolution,
+            "duration_seconds": duration_seconds,
+            "fps": fps,
+            "steps": steps,
+            "guidance_scale": guidance_scale,
+            "flow_shift": flow_shift,
+            "seed": seed,
+        },
+        file_paths={"image": image_path},
+    )
+
+
+@mcp.tool()
+async def create_video_ltx_audio_i2v(
+    prompt: str,
+    image_path: str,
+    audio_path: str,
+    negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
+    ltx_server_url: str = "http://gx10-cbc5:8082",
+    resolution: str = "1280x720",
+    duration_seconds: float = 4.0,
+    fps: int = 24,
+    steps: int = 8,
+    guidance_scale: float = 3.0,
+    flow_shift: float = 3.0,
+    seed: int = -1,
+    audio_scale: float = 1.0,
+    audio_guidance: float = 4.5,
+) -> dict:
+    """Generate a video from a conditioning image guided by an audio track using LTX-2.
+
+    The image acts as the first frame; the audio drives the motion and expression.
+    Returns a job_id trackable with get_job_status. The completed result contains
+    video_b64 (base64-encoded MP4) plus resolution/duration metadata.
+
+    Args:
+        prompt: Text description of the desired scene and motion.
+        image_path: Local path to the conditioning image (PNG/JPG).
+        audio_path: Local path to the audio guide track (WAV).
+        negative_prompt: What to avoid in the generated video.
+        ltx_server_url: URL of the WanGP server running LTX-2.
+        resolution: Output resolution as WxH (default 1280x720).
+        duration_seconds: Clip duration in seconds (default 4.0).
+        fps: Frames per second (default 24).
+        steps: Denoising steps — lower is faster, higher is higher quality (default 8).
+        guidance_scale: Classifier-free guidance scale (default 3.0).
+        flow_shift: Flow shift parameter (default 3.0).
+        seed: Random seed, -1 for random (default -1).
+        audio_scale: How strongly the audio conditions the video (0.0–1.0, default 1.0).
+        audio_guidance: Audio guidance strength (default 4.5).
+    """
+    return await _api_post_multipart(
+        "/api/v1/video-generation/single-clip",
+        fields={
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "wangp_url": ltx_server_url,
+            "model_type": "ltx2_22B_distilled",
+            "resolution": resolution,
+            "duration_seconds": duration_seconds,
+            "fps": fps,
+            "steps": steps,
+            "guidance_scale": guidance_scale,
+            "flow_shift": flow_shift,
+            "seed": seed,
+            "audio_scale": audio_scale,
+            "audio_guidance": audio_guidance,
+        },
+        file_paths={"image": image_path, "audio": audio_path},
+    )
 
 
 @mcp.tool()
