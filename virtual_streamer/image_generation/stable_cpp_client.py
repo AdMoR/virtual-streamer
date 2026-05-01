@@ -94,8 +94,8 @@ class Txt2ImageParams(BaseModel):
 
     prompt: str = Field(description="Text prompt describing the desired image")
     negative_prompt: str = Field(default="")
-    width: int = Field(default=512, ge=64, le=2048)
-    height: int = Field(default=512, ge=64, le=2048)
+    width: int = Field(default=1024, ge=64, le=2048)
+    height: int = Field(default=768, ge=64, le=2048)
     steps: int = Field(default=20, ge=1, le=200)
     cfg_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1, description="-1 for a random seed")
@@ -321,6 +321,7 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
             "seed": params.seed,
             "sampler_name": params.sampler_name,
             "scheduler": params.scheduler,
+            "size": f"{params.width}x{params.height}",
             **(params.extra_args or {}),
         }
         full_prompt = self._build_prompt(params.prompt, extra)
@@ -338,7 +339,7 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         form_data = {
             "prompt": full_prompt,
             "n": str(params.n),
-            "size": f"{512}x{512}",  # sd.cpp uses input image size for edits
+            "size": f"{params.width}x{params.height}",  # sd.cpp uses input image size for edits
             "output_format": params.output_format,
             "output_compression": str(params.output_compression),
         }

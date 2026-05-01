@@ -10,8 +10,12 @@ Orchestrates the full workflow:
   4. Return the created Location
 """
 
+import base64
 import logging
+import os
+import shutil
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from google.adk.runners import Runner
@@ -223,4 +227,90 @@ async def generate_location(request: LocationGenerationRequest):
     return LocationGenerationResponse(
         location=location,
         agent_output=agent_output,
+    )
+
+
+# =============================================================================
+# Location Image Generation
+# =============================================================================
+
+
+class LocationImageRequest(BaseModel):
+    location_id: str = Field(..., description="ID of the location to render")
+    character_id: Optional[str] = Field(
+        None, description="Optional character ID to include in the scene"
+    )
+    sd_server_url: str = Field(
+        "http://gx10-cbc5:1234",
+        description="Stable Diffusion server URL",
+    )
+
+
+class LocationImageResponse(BaseModel):
+    image_data: str = Field(..., description="Base64-encoded PNG image")
+    location_id: str
+    location_name: str
+    character_id: Optional[str]
+    character_name: Optional[str]
+
+
+@router.post("/generate-image", response_model=LocationImageResponse)
+async def generate_location_image_endpoint(request: LocationImageRequest):
+    """
+    Generate a conditioning image for a location using Stable Diffusion.
+
+    Fetches the location (and optional character) from the database, then
+    calls the SD server to produce a 1280×720 PNG.  The image is returned
+    as a base64-encoded string so the caller can embed it directly.
+    """
+    from virtual_streamer.video_generation.story_to_video import generate_location_image
+
+    repo = get_entity_repository()
+
+    location_data = await repo.get_location(request.location_id)
+    if location_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Location '{request.location_id}' not found",
+        )
+
+    character_data: dict = {}
+    if request.character_id:
+        character_data = await repo.get_character(request.character_id) or {}
+        if not character_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Character '{request.character_id}' not found",
+            )
+
+    temp_dir = os.path.join(
+        os.environ.get("TEMP_DIR", "./temp"),
+        f"loc_img_{uuid.uuid4().hex[:8]}",
+    )
+    try:
+        image_path = await generate_location_image(
+            location=location_data,
+            character=character_data,
+            output_dir=temp_dir,
+            sd_server_url=request.sd_server_url,
+        )
+
+        if image_path is None or not os.path.exists(image_path):
+            raise HTTPException(
+                status_code=502,
+                detail="Image generation failed — SD server may be unavailable",
+            )
+
+        with open(image_path, "rb") as f:
+            image_b64 = base64.b64encode(f.read()).decode()
+
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return LocationImageResponse(
+        image_data=image_b64,
+        location_id=location_data["location_id"],
+        location_name=location_data["name"],
+        character_id=character_data.get("character_id") or None,
+        character_name=character_data.get("name") or None,
     )
