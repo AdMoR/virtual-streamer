@@ -464,6 +464,48 @@ async def create_story_template(story_concept: str) -> dict:
 
 
 @mcp.tool()
+async def list_locations(story_template_id: str) -> list[dict]:
+    """List all locations registered for a story template.
+
+    Locations define the scene backgrounds used for conditioned image-to-video
+    generation. Each location has a diffusion-model description that is used to
+    generate a conditioning image before the LTX video segment is produced.
+
+    Args:
+        story_template_id: The story template whose locations to list
+    """
+    return await _api_get("/api/v1/locations", params={"story_template_id": story_template_id})
+
+
+@mcp.tool()
+async def create_location(location_name: str, story_template_id: str) -> dict:
+    """Generate and register a new location for a story template.
+
+    Runs an AI agent pipeline (writer → formatter) to produce a detailed
+    diffusion-model description for the location environment, then persists
+    it in the database scoped to the given story template.
+
+    The `location_id` is derived from the name (lowercased, spaces → hyphens).
+    Example: "Medieval Castle" → location_id "medieval-castle".
+
+    Locations must be created before running video generation with a story
+    template — the pipeline validates that all referenced location IDs exist.
+
+    ⚠ This call is slow (~20–40 s) because it runs an LLM pipeline.
+    Do not call it during time-sensitive interactions.
+
+    Args:
+        location_name: Human-readable name of the location (e.g. "Medieval Castle")
+        story_template_id: The story template this location belongs to
+    """
+    return await _api_post(
+        "/api/v1/location-generation/generate",
+        {"location_name": location_name, "story_template_id": story_template_id},
+        timeout=120.0,
+    )
+
+
+@mcp.tool()
 async def fetch_news() -> list[dict]:
     """Fetch latest news articles from French RSS sources.
 
