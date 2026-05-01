@@ -125,8 +125,8 @@ def build_negative_prompt() -> str:
     return (
         "blurry, low quality, still frame, static, frozen, "
         "watermark, overlay, titles, subtitles, text on screen, "
-        "distorted face, deformed hands, artifacts, glitches, "
-        "inconsistent lighting, jumpy motion"
+        "distorted face, deformed hands, isolated hands, artifacts, glitches, "
+        "inconsistent lighting"
     )
 
 

@@ -581,6 +581,10 @@ class LTXVideoGenerationRequest(BaseModel):
     llm_provider: Optional[str] = "anthropic"
     llm_model: Optional[str] = "claude-sonnet-4-5-20250929"
 
+    # Debug: upload intermediate artifacts (segment videos, audio, images,
+    # manifest) to MinIO under debug/ltx/{story_template_id}/{job_id}/
+    enable_debug_dump: bool = True
+
 
 class LTXVideoGenerationResponse(BaseModel):
     """Response model for LTX-2 video generation."""
@@ -981,6 +985,11 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
         # Step 3: Run story_to_video (LTX-2 audio-conditioned pipeline)
         logger.info(f"[LTX Job {job_id}] Running story_to_video with LTX-2…")
 
+        debug_prefix = None
+        if request.enable_debug_dump:
+            debug_prefix = f"ltx/{request.story_template_id}/{job_id}"
+            logger.info(f"[LTX Job {job_id}] Debug dump enabled → debug/{debug_prefix}/")
+
         def progress_callback(current: int, total: int, message: str):
             logger.info(f"[LTX Job {job_id}] Progress: {current}/{total} - {message}")
 
@@ -992,6 +1001,9 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
             progress_callback=progress_callback,
             style_suffix=request.style_suffix,
             segment_audio_paths=segment_audio_paths or None,
+            story_template_id=request.story_template_id,
+            sd_server_url=os.environ.get("SD_SERVER_URL", "http://gx10-cbc5:1234"),
+            debug_minio_prefix=debug_prefix,
         )
 
         logger.info(
@@ -1022,6 +1034,9 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                     "character_id": seg.dialog_line.character_id,
                     "text": seg.dialog_line.text,
                     "scene_description": seg.dialog_line.scene_description,
+                    "minio_video_key": seg.minio_video_key,
+                    "minio_audio_key": seg.minio_audio_key,
+                    "minio_image_key": seg.minio_image_key,
                 }
                 for seg in result.segments
             ],
@@ -1030,6 +1045,9 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                 "minio_video_key": minio_video_key,
                 "video_url": video_url,
                 "pipeline": "ltx-2",
+                "debug_minio_prefix": result.debug_minio_prefix,
+                "minio_manifest_key": result.minio_manifest_key,
+                "minio_debug_final_key": result.minio_final_video_key,
             },
             "story_output": story_output.model_dump() if story_output else None,
         }

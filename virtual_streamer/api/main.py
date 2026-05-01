@@ -38,6 +38,10 @@ from virtual_streamer.api.high_level.jesus_agents import router as jesus_agents_
 from virtual_streamer.api.high_level.story_template_generation import (
     router as story_template_generation_router,
 )
+from virtual_streamer.api.low_level.locations import router as locations_router
+from virtual_streamer.api.high_level.location_generation import (
+    router as location_generation_router,
+)
 
 # Import ADK app factory and mounting utilities
 from virtual_streamer.api.adk_app import create_adk_app
@@ -124,6 +128,7 @@ app.add_middleware(
 app.include_router(characters_router, prefix="/api/v1")
 app.include_router(clips_router, prefix="/api/v1")
 app.include_router(story_templates_router, prefix="/api/v1")
+app.include_router(locations_router, prefix="/api/v1")
 app.include_router(articles_router, prefix="/api/v1")
 # Low-level: Streaming infrastructure
 app.include_router(streams_router, prefix="/api/v1")
@@ -141,6 +146,7 @@ app.include_router(wav2lip_router, prefix="/api/v1")
 app.include_router(video_generation_router, prefix="/api/v1")
 app.include_router(jesus_agents_router, prefix="/api/v1")
 app.include_router(story_template_generation_router, prefix="/api/v1")
+app.include_router(location_generation_router, prefix="/api/v1")
 
 # Legacy: Backward compatibility
 app.include_router(legacy_qa_router)  # No prefix for backward compatibility
