@@ -432,6 +432,10 @@
             <span class="nav-icon">🎞</span> Clips
             <span class="nav-count" id="count-clips">—</span>
         </button>
+        <button class="nav-item" id="nav-locations"       onclick="loadSection('locations')">
+            <span class="nav-icon">🗺</span> Locations
+            <span class="nav-count" id="count-locations">—</span>
+        </button>
     </nav>
 
     <!-- List panel -->
@@ -439,6 +443,7 @@
         <div class="list-toolbar">
             <input class="search-input" type="text" id="search" placeholder="Filter…" oninput="applyFilter()">
             <button class="refresh-btn" onclick="reload()">↻ Refresh</button>
+            <button class="btn-primary" id="create-btn" style="display:none" onclick="showCreateLocationForm()">+ New</button>
         </div>
         <div class="list-scroller" id="list-scroller">
             <div class="empty-state">
@@ -486,7 +491,7 @@ async function get(path) {
 
 function itemId(item) {
     return item.character_id || item.template_id || item.stream_id
-        || item.clip_id || item._col || '';
+        || item.clip_id || item.location_id || item._col || '';
 }
 
 // ── Navigation ───────────────────────────────────────────────────────────────
@@ -507,6 +512,7 @@ async function loadSection(s) {
     selectedId = null;
     setNav(s);
     document.getElementById('search').value = '';
+    document.getElementById('create-btn').style.display = s === 'locations' ? '' : 'none';
     showDetailPlaceholder();
     listLoading();
 
@@ -549,6 +555,8 @@ async function fetchSection(s) {
             return get('/api/v1/streams');
         case 'clips':
             return get('/api/v1/clips?limit=500');
+        case 'locations':
+            return get('/api/v1/locations?limit=500');
         default:
             return [];
     }
@@ -636,6 +644,14 @@ function cardBody(item) {
                     <div class="card-desc">${esc(item.storage_path)}</div>
                     ${item.metadata?.duration ? `<div class="card-tags"><span class="tag tag-green">${item.metadata.duration.toFixed(1)}s</span></div>` : ''}`;
 
+        case 'locations':
+            return `<div class="card-title">${esc(item.name)}</div>
+                    <div class="card-id">${esc(item.location_id)}</div>
+                    <div class="card-tags">
+                      <span class="tag tag-orange">${esc(item.story_template_id)}</span>
+                    </div>
+                    ${item.description ? `<div class="card-desc">${esc(item.description.slice(0,80))}${item.description.length>80?'…':''}</div>` : ''}`;
+
         default:
             return `<pre style="font-size:0.75rem;color:var(--text-secondary)">${esc(JSON.stringify(item,null,2))}</pre>`;
     }
@@ -667,6 +683,7 @@ async function selectItem(id) {
         if (section === 'characters')      detail = await get('/api/v1/characters/'      + encodeURIComponent(id));
         if (section === 'story-templates') detail = await get('/api/v1/story-templates/' + encodeURIComponent(id));
         if (section === 'streams')         detail = await get('/api/v1/streams/'         + encodeURIComponent(id));
+        if (section === 'locations')       detail = await get('/api/v1/locations/'       + encodeURIComponent(id));
 
         document.getElementById('detail-panel').innerHTML = renderDetail(detail);
     } catch(e) {
@@ -682,6 +699,7 @@ function renderDetail(item) {
         case 'collections':     return detailCollection(item);
         case 'streams':         return detailStream(item);
         case 'clips':           return detailClip(item);
+        case 'locations':       return detailLocation(item);
         default:
             return `<pre style="font-size:0.78rem;color:var(--text-secondary)">${esc(JSON.stringify(item,null,2))}</pre>`;
     }
@@ -855,6 +873,33 @@ function detailClip(c) {
     </div>` : ''}`;
 }
 
+function detailLocation(loc) {
+    return `
+    <div class="detail-header">
+      <div class="detail-name">${esc(loc.name)}</div>
+      <div class="detail-id">${esc(loc.location_id)}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Story Template</div>
+      <span class="tag tag-orange">${esc(loc.story_template_id)}</span>
+    </div>
+
+    ${loc.description ? `
+    <div class="detail-section">
+      <div class="detail-label">Description</div>
+      <div class="prompt-block"><pre>${esc(loc.description)}</pre></div>
+    </div>` : ''}
+
+    <hr class="divider">
+    <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:1rem">
+      Created: ${esc(loc.created_at||'—')}<br>
+      Updated: ${esc(loc.updated_at||'—')}
+    </div>
+
+    <button class="btn-delete" onclick="deleteLocation('${esc(loc.location_id)}')">🗑 Delete location</button>`;
+}
+
 // ── Character edits ───────────────────────────────────────────────────────────
 async function saveCharacterFields(characterId) {
     const desc = document.getElementById('char-edit-desc');
@@ -938,6 +983,97 @@ async function deleteTemplate(templateId) {
     } catch(e) {
         document.getElementById('detail-panel').innerHTML +=
             `<div class="error-msg" style="margin-top:0.75rem">⚠ Delete failed: ${esc(e.message)}</div>`;
+    }
+}
+
+async function deleteLocation(locationId) {
+    if (!confirm(`Delete location "${locationId}"? This cannot be undone.`)) return;
+    try {
+        const r = await fetch(apiUrl() + '/api/v1/locations/' + encodeURIComponent(locationId), {
+            method: 'DELETE'
+        });
+        if (!r.ok && r.status !== 204) throw new Error(`HTTP ${r.status}`);
+        showDetailPlaceholder();
+        await loadSection('locations');
+    } catch(e) {
+        document.getElementById('detail-panel').innerHTML +=
+            `<div class="error-msg" style="margin-top:0.75rem">⚠ Delete failed: ${esc(e.message)}</div>`;
+    }
+}
+
+// ── Create location ───────────────────────────────────────────────────────────
+function showCreateLocationForm() {
+    selectedId = null;
+    document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+
+    const templateOptions = templateCache.length
+        ? `<select class="form-input" id="loc-new-template">
+             <option value="">— select a template —</option>
+             ${templateCache.map(t => `<option value="${esc(t.template_id)}">${esc(t.name)} (${esc(t.template_id)})</option>`).join('')}
+           </select>`
+        : `<input class="form-input" type="text" id="loc-new-template" placeholder="template-id">`;
+
+    document.getElementById('detail-panel').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-name">New Location</div>
+    </div>
+    <div class="detail-section">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input class="form-input" type="text" id="loc-new-name" placeholder="e.g. Medieval Castle">
+        <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.25rem">ID will be derived automatically (lowercase, spaces → hyphens)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Story Template</label>
+        ${templateOptions}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea class="form-textarea" id="loc-new-desc" rows="6" placeholder="Diffusion-model prompt for this location…"></textarea>
+      </div>
+      <button class="btn-primary" id="loc-create-btn" onclick="createLocation()">+ Create location</button>
+      <div id="loc-create-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
+    </div>`;
+}
+
+async function createLocation() {
+    const name     = document.getElementById('loc-new-name').value.trim();
+    const template = document.getElementById('loc-new-template').value.trim();
+    const desc     = document.getElementById('loc-new-desc').value.trim();
+    const btn      = document.getElementById('loc-create-btn');
+    const msg      = document.getElementById('loc-create-msg');
+
+    if (!name || !template || !desc) {
+        msg.style.color = 'var(--accent-orange)';
+        msg.textContent = 'All fields are required.';
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('description', desc);
+    fd.append('story_template_id', template);
+
+    btn.disabled = true;
+    msg.style.color = 'var(--text-secondary)';
+    msg.textContent = 'Creating…';
+    try {
+        const r = await fetch(apiUrl() + '/api/v1/locations', { method: 'POST', body: fd });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        const loc = await r.json();
+        msg.style.color = 'var(--accent-green)';
+        msg.textContent = `✓ Created: ${loc.location_id}`;
+        allItems = await fetchSection('locations');
+        setCount('locations', allItems.length);
+        renderList(allItems);
+        selectItem(loc.location_id);
+    } catch(e) {
+        msg.style.color = 'var(--accent-red)';
+        msg.textContent = '⚠ ' + e.message;
+        btn.disabled = false;
     }
 }
 

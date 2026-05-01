@@ -48,6 +48,13 @@ from virtual_streamer.video_generation.ltx_prompt_builder import (
     build_ltx_prompt,
     build_negative_prompt,
 )
+from virtual_streamer.image_generation.stable_cpp_client import (
+    StableDiffusionCppClient,
+    StableDiffusionCppConfig,
+    Txt2ImageParams,
+    ImageEditParams,
+)
+from virtual_streamer.utils.minio_client import get_storage_client
 
 logger = logging.getLogger(__name__)
 
@@ -137,34 +144,39 @@ async def generate_location_image(
     Returns the local PNG path, or None if image generation fails (graceful
     degradation — the segment falls back to text-to-video mode).
     """
-    from virtual_streamer.image_generation.stable_cpp_client import (
-        StableDiffusionCppClient,
-        StableDiffusionCppConfig,
-        Txt2ImageParams,
-        ImageEditParams,
-    )
-    import tempfile
 
     try:
         os.makedirs(output_dir, exist_ok=True)
 
-        prompt = (
-            f"{location['description']}, "
-            "cinematic composition, photorealistic, no people, high quality, "
-            "detailed environment"
-        )
-        negative_prompt = "text, watermark, blurry, distorted"
+        char_name: str = character.get("name", "")
+        char_desc: str = character.get("description", "")
+        identity_images: list[str] = character.get("identity_images") or []
+        has_character = bool(char_name or char_desc)
+
+        if has_character:
+            char_label = char_name or char_desc
+            char_detail = f", {char_desc}" if char_desc and char_name else ""
+            prompt = (
+                f"{char_label}{char_detail} in {location['description']}, "
+                "cinematic composition, photorealistic, high quality"
+            )
+            negative_prompt = "text, watermark, blurry, distorted"
+        else:
+            prompt = (
+                f"{location['description']}, "
+                "cinematic composition, photorealistic, no people, high quality, "
+                "detailed environment"
+            )
+            negative_prompt = "text, watermark, blurry, distorted"
+
+        logger.info(f"Len identity_images: {len(identity_images)}")
 
         config = StableDiffusionCppConfig(server_url=sd_server_url)
-        identity_images: list[str] = character.get("identity_images") or []
-        logger.debug(f"identity_images: {identity_images}")
-
         async with StableDiffusionCppClient(config) as client:
             if identity_images:
                 # Download MinIO paths to local files for image_edit
                 local_paths: list[str] = []
                 try:
-                    from virtual_streamer.utils.utils import get_storage_client
                     storage = get_storage_client()
                     for minio_path in identity_images[:2]:  # limit to 2 references
                         fname = os.path.basename(minio_path)
@@ -172,6 +184,7 @@ async def generate_location_image(
                         await storage.download_file(minio_path, local_tmp)
                         if os.path.exists(local_tmp):
                             local_paths.append(local_tmp)
+                            prompt += ", 1 person"
                 except Exception as dl_err:
                     logger.warning(
                         f"Could not download identity images for conditioning: {dl_err}"
@@ -195,7 +208,8 @@ async def generate_location_image(
                     return result.image_path
 
             # Fallback: pure text-to-image
-            negative_prompt += ", people, persons, characters"
+            if not has_character:
+                negative_prompt += ", people, persons, characters"
             result = await client.txt2image(
                 Txt2ImageParams(
                     prompt=prompt,

@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Image Tester — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-orange: #d29922;
+            --accent-purple: #a371f7;
+            --accent-pink:   #f778ba;
+            --accent-red:    #f85149;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ─────────────────────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.875rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .header-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; flex-shrink: 0;
+        }
+
+        header h1 {
+            font-size: 1.25rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        header .subtitle {
+            font-size: 0.8rem; color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .api-config {
+            margin-left: auto;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+
+        .api-config label { font-size: 0.8rem; color: var(--text-secondary); }
+
+        .api-config input {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px; padding: 0.375rem 0.75rem;
+            color: var(--text-primary); font-size: 0.8rem; width: 220px;
+        }
+
+        .api-config input:focus { outline: none; border-color: var(--accent-cyan); }
+
+        /* ── Layout ─────────────────────────────────────────────────── */
+        .layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Controls panel ─────────────────────────────────────────── */
+        .controls-panel {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .section-heading {
+            font-size: 0.7rem; text-transform: uppercase;
+            letter-spacing: 0.1em; color: var(--text-secondary);
+            font-weight: 600; margin-bottom: 0.75rem;
+        }
+
+        .form-group { margin-bottom: 0.875rem; }
+
+        .form-label {
+            display: block; font-size: 0.72rem; text-transform: uppercase;
+            letter-spacing: 0.07em; color: var(--text-secondary);
+            font-weight: 600; margin-bottom: 0.3rem;
+        }
+
+        .form-select, .form-input {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px; padding: 0.4rem 0.625rem;
+            color: var(--text-primary); font-size: 0.85rem;
+            font-family: inherit;
+            appearance: none;
+        }
+
+        .form-select:focus, .form-input:focus {
+            outline: none; border-color: var(--accent-cyan);
+        }
+
+        .form-select option { background: var(--bg-tertiary); }
+
+        .form-hint {
+            font-size: 0.72rem; color: var(--text-secondary);
+            margin-top: 0.25rem; line-height: 1.4;
+        }
+
+        .location-preview {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px; padding: 0.625rem 0.75rem;
+            font-size: 0.78rem; color: var(--text-secondary);
+            line-height: 1.5;
+            min-height: 56px;
+            font-family: 'JetBrains Mono', monospace;
+            display: none;
+        }
+
+        .location-preview.visible { display: block; }
+
+        .divider {
+            border: none; border-top: 1px solid var(--border-color);
+        }
+
+        .btn-generate {
+            width: 100%;
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            background: linear-gradient(135deg, rgba(163,113,247,0.15), rgba(247,120,186,0.15));
+            border: 1px solid rgba(163,113,247,0.4);
+            color: var(--accent-purple);
+            border-radius: 8px; padding: 0.7rem 1rem;
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .btn-generate:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(163,113,247,0.25), rgba(247,120,186,0.25));
+            border-color: var(--accent-purple);
+        }
+
+        .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 0.375rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            border-radius: 6px; padding: 0.35rem 0.75rem;
+            font-size: 0.78rem; cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .btn-secondary:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+        /* ── Result panel ────────────────────────────────────────────── */
+        .result-panel {
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .result-toolbar {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            flex-shrink: 0;
+        }
+
+        .result-toolbar-title {
+            font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);
+        }
+
+        .result-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            gap: 1.5rem;
+        }
+
+        /* placeholder */
+        .placeholder {
+            display: flex; flex-direction: column;
+            align-items: center; gap: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .placeholder .big-icon { font-size: 3.5rem; opacity: 0.25; }
+        .placeholder p { font-size: 0.9rem; }
+
+        /* loading */
+        .loading {
+            display: none;
+            flex-direction: column; align-items: center; gap: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .loading.visible { display: flex; }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-purple);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-label { font-size: 0.85rem; font-family: 'JetBrains Mono', monospace; }
+
+        /* error */
+        .error-box {
+            display: none;
+            background: rgba(248,81,73,0.08);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            border-radius: 8px; padding: 1rem 1.25rem;
+            font-size: 0.85rem; max-width: 560px; width: 100%;
+        }
+
+        .error-box.visible { display: block; }
+        .error-box .error-title { font-weight: 600; margin-bottom: 0.4rem; }
+        .error-box .error-detail { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; opacity: 0.85; }
+
+        /* image result */
+        .image-result {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.25rem;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .image-result.visible { display: flex; }
+
+        .result-image {
+            width: 100%; border-radius: 10px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        .result-meta {
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.875rem 1.5rem;
+        }
+
+        .meta-item {}
+
+        .meta-label {
+            font-size: 0.68rem; text-transform: uppercase;
+            letter-spacing: 0.08em; color: var(--text-secondary);
+            font-weight: 600; margin-bottom: 0.2rem;
+        }
+
+        .meta-value {
+            font-size: 0.85rem; color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .meta-value.none { color: var(--text-secondary); font-style: italic; }
+
+        .tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem; padding: 0.15rem 0.5rem;
+            border-radius: 999px; border: 1px solid;
+        }
+
+        .tag-purple { color: var(--accent-purple); border-color: rgba(163,113,247,0.3); background: rgba(163,113,247,0.08); }
+        .tag-cyan   { color: var(--accent-cyan);   border-color: rgba(88,166,255,0.3);  background: rgba(88,166,255,0.08); }
+        .tag-green  { color: var(--accent-green);  border-color: rgba(63,185,80,0.3);   background: rgba(63,185,80,0.08); }
+
+        .result-actions {
+            display: flex; gap: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+    <div class="header-icon">🖼</div>
+    <div>
+        <h1>Location Image Tester</h1>
+        <span class="subtitle">generate_location_image — Virtual Streamer</span>
+    </div>
+    <div class="api-config">
+        <label>API:</label>
+        <input type="text" id="api-url" value="http://localhost:8000" onchange="onApiUrlChange()">
+    </div>
+</header>
+
+<!-- Main layout -->
+<div class="layout">
+
+    <!-- Controls panel -->
+    <div class="controls-panel">
+
+        <div>
+            <p class="section-heading">Location</p>
+
+            <div class="form-group">
+                <label class="form-label" for="template-select">Filter by story template</label>
+                <select class="form-select" id="template-select" onchange="onTemplateChange()">
+                    <option value="">— all templates —</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="location-select">Location *</label>
+                <select class="form-select" id="location-select" onchange="onLocationChange()">
+                    <option value="">Loading…</option>
+                </select>
+                <p class="form-hint">Required. The location whose description will be rendered.</p>
+            </div>
+
+            <div id="location-desc-preview" class="location-preview"></div>
+        </div>
+
+        <hr class="divider">
+
+        <div>
+            <p class="section-heading">Character (optional)</p>
+
+            <div class="form-group">
+                <label class="form-label" for="character-select">Character</label>
+                <select class="form-select" id="character-select">
+                    <option value="">— none —</option>
+                </select>
+                <p class="form-hint">When selected, identity images are used as style reference.</p>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <div>
+            <p class="section-heading">Stable Diffusion Server</p>
+
+            <div class="form-group">
+                <label class="form-label" for="sd-url">SD server URL</label>
+                <input class="form-input" type="text" id="sd-url" value="http://gx10-cbc5:1234">
+                <p class="form-hint">stable-diffusion.cpp server running the OpenAI-compatible API.</p>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <button class="btn-generate" id="generate-btn" onclick="generate()" disabled>
+            ✦ Generate Image
+        </button>
+
+    </div>
+
+    <!-- Result panel -->
+    <div class="result-panel">
+
+        <div class="result-toolbar">
+            <span class="result-toolbar-title">Result</span>
+            <div id="result-actions" class="result-actions" style="display:none">
+                <button class="btn-secondary" onclick="downloadImage()">⬇ Download PNG</button>
+            </div>
+        </div>
+
+        <div class="result-body" id="result-body">
+
+            <!-- Placeholder -->
+            <div class="placeholder" id="placeholder">
+                <span class="big-icon">🏞</span>
+                <p>Select a location and click Generate</p>
+            </div>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <span class="loading-label" id="loading-label">Generating image…</span>
+            </div>
+
+            <!-- Error -->
+            <div class="error-box" id="error-box">
+                <div class="error-title">Generation failed</div>
+                <div class="error-detail" id="error-detail"></div>
+            </div>
+
+            <!-- Image result -->
+            <div class="image-result" id="image-result">
+                <img class="result-image" id="result-img" src="" alt="Generated location image">
+                <div class="result-meta" id="result-meta"></div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let lastImageB64 = null;
+let lastLocationName = '';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function apiUrl() {
+    return (document.getElementById('api-url').value || 'http://localhost:8000').replace(/\/$/, '');
+}
+
+function esc(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function get(path) {
+    const r = await fetch(apiUrl() + path);
+    if (!r.ok) throw new Error(`HTTP ${r.status} — ${path}`);
+    return r.json();
+}
+
+// ── UI states ─────────────────────────────────────────────────────────────────
+function showPlaceholder() {
+    document.getElementById('placeholder').style.display = 'flex';
+    document.getElementById('loading').classList.remove('visible');
+    document.getElementById('error-box').classList.remove('visible');
+    document.getElementById('image-result').classList.remove('visible');
+    document.getElementById('result-actions').style.display = 'none';
+}
+
+function showLoading(label) {
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('loading-label').textContent = label || 'Generating image…';
+    document.getElementById('loading').classList.add('visible');
+    document.getElementById('error-box').classList.remove('visible');
+    document.getElementById('image-result').classList.remove('visible');
+    document.getElementById('result-actions').style.display = 'none';
+}
+
+function showError(detail) {
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('loading').classList.remove('visible');
+    document.getElementById('error-detail').textContent = detail;
+    document.getElementById('error-box').classList.add('visible');
+    document.getElementById('image-result').classList.remove('visible');
+    document.getElementById('result-actions').style.display = 'none';
+}
+
+function showResult(data) {
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('loading').classList.remove('visible');
+    document.getElementById('error-box').classList.remove('visible');
+
+    const img = document.getElementById('result-img');
+    img.src = 'data:image/png;base64,' + data.image_data;
+    lastImageB64 = data.image_data;
+    lastLocationName = data.location_name;
+
+    document.getElementById('result-meta').innerHTML = `
+        <div class="meta-item">
+            <div class="meta-label">Location ID</div>
+            <div class="meta-value">${esc(data.location_id)}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Location name</div>
+            <div class="meta-value">${esc(data.location_name)}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Character</div>
+            <div class="meta-value ${data.character_name ? '' : 'none'}">
+                ${data.character_name ? esc(data.character_name) : 'none (environment only)'}
+            </div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Dimensions</div>
+            <div class="meta-value">1280 × 720</div>
+        </div>
+    `;
+
+    document.getElementById('image-result').classList.add('visible');
+    document.getElementById('result-actions').style.display = 'flex';
+}
+
+// ── Bootstrap: load templates & entities ──────────────────────────────────────
+async function loadTemplates() {
+    try {
+        const templates = await get('/api/v1/story-templates?limit=500');
+        const sel = document.getElementById('template-select');
+        templates.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.template_id;
+            opt.textContent = t.name || t.template_id;
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('Could not load story templates:', e.message);
+    }
+}
+
+async function loadLocations(templateId) {
+    const sel = document.getElementById('location-select');
+    sel.innerHTML = '<option value="">Loading…</option>';
+    document.getElementById('generate-btn').disabled = true;
+    hideLocationPreview();
+
+    try {
+        const path = templateId
+            ? `/api/v1/locations?story_template_id=${encodeURIComponent(templateId)}&limit=500`
+            : '/api/v1/locations?limit=500';
+        const locations = await get(path);
+
+        sel.innerHTML = '<option value="">— select a location —</option>';
+        if (locations.length === 0) {
+            sel.innerHTML = '<option value="">No locations found</option>';
+            return;
+        }
+        locations.forEach(loc => {
+            const opt = document.createElement('option');
+            opt.value = loc.location_id;
+            opt.dataset.description = loc.description || '';
+            opt.textContent = loc.name || loc.location_id;
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        sel.innerHTML = '<option value="">Error loading locations</option>';
+        console.error(e);
+    }
+}
+
+async function loadCharacters() {
+    try {
+        const characters = await get('/api/v1/characters?limit=500');
+        const sel = document.getElementById('character-select');
+        characters.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.character_id;
+            opt.textContent = c.name || c.character_id;
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('Could not load characters:', e.message);
+    }
+}
+
+// ── Event handlers ────────────────────────────────────────────────────────────
+function onApiUrlChange() {
+    // Reload with new base
+    loadTemplates();
+    loadLocations('');
+    loadCharacters();
+}
+
+function onTemplateChange() {
+    const templateId = document.getElementById('template-select').value;
+    loadLocations(templateId);
+}
+
+function onLocationChange() {
+    const sel = document.getElementById('location-select');
+    const chosen = sel.options[sel.selectedIndex];
+    const desc = chosen && chosen.dataset.description;
+    const hasLocation = sel.value !== '';
+
+    document.getElementById('generate-btn').disabled = !hasLocation;
+
+    const preview = document.getElementById('location-desc-preview');
+    if (desc && hasLocation) {
+        preview.textContent = desc;
+        preview.classList.add('visible');
+    } else {
+        hideLocationPreview();
+    }
+}
+
+function hideLocationPreview() {
+    const preview = document.getElementById('location-desc-preview');
+    preview.classList.remove('visible');
+    preview.textContent = '';
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+async function generate() {
+    const locationId = document.getElementById('location-select').value;
+    if (!locationId) return;
+
+    const characterId = document.getElementById('character-select').value || null;
+    const sdUrl = document.getElementById('sd-url').value.trim() || 'http://gx10-cbc5:1234';
+
+    document.getElementById('generate-btn').disabled = true;
+    showLoading(characterId ? 'Generating scene with character…' : 'Generating environment image…');
+
+    try {
+        const resp = await fetch(apiUrl() + '/api/v1/location-generation/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                location_id: locationId,
+                character_id: characterId,
+                sd_server_url: sdUrl,
+            }),
+        });
+
+        if (!resp.ok) {
+            let detail = `HTTP ${resp.status}`;
+            try {
+                const err = await resp.json();
+                detail = err.detail || JSON.stringify(err);
+            } catch (_) {}
+            showError(detail);
+            return;
+        }
+
+        const data = await resp.json();
+        showResult(data);
+    } catch (e) {
+        showError(e.message);
+    } finally {
+        document.getElementById('generate-btn').disabled = false;
+    }
+}
+
+// ── Download ──────────────────────────────────────────────────────────────────
+function downloadImage() {
+    if (!lastImageB64) return;
+    const a = document.createElement('a');
+    a.href = 'data:image/png;base64,' + lastImageB64;
+    const safeName = (lastLocationName || 'location').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    a.download = `location_${safeName}.png`;
+    a.click();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async function init() {
+    showPlaceholder();
+    await Promise.all([loadTemplates(), loadLocations(''), loadCharacters()]);
+})();
+</script>
+</body>
+</html>
