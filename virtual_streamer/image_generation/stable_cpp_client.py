@@ -119,7 +119,7 @@ class ImageEditParams(BaseModel):
         min_length=1,
     )
     negative_prompt: str = Field(default="")
-    steps: int = Field(default=20, ge=1, le=200)
+    steps: int = Field(default=4, ge=1, le=20)
     cfg_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1, description="-1 for a random seed")
     sampler_name: str = Field(default="euler_a")
@@ -339,6 +339,7 @@ class StableDiffusionCppClient(ImageGenerationClientInterface):
         form_data = {
             "prompt": full_prompt,
             "n": str(params.n),
+            "steps": str(params.steps),
             "size": f"{params.width}x{params.height}",  # sd.cpp uses input image size for edits
             "output_format": params.output_format,
             "output_compression": str(params.output_compression),

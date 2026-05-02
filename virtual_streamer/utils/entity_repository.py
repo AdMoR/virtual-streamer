@@ -193,10 +193,22 @@ class EntityRepository:
                         name VARCHAR(255) NOT NULL,
                         description TEXT NOT NULL,
                         story_template_id VARCHAR(255) NOT NULL,
+                        image_path VARCHAR(512),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (story_template_id) REFERENCES story_templates(id) ON DELETE CASCADE
                     )
                 """)
+
+                await cur.execute("""
+                    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = 'locations'
+                      AND COLUMN_NAME = 'image_path'
+                """)
+                if (await cur.fetchone())[0] == 0:
+                    await cur.execute(
+                        "ALTER TABLE locations ADD COLUMN image_path VARCHAR(512)"
+                    )
 
                 print("Ensured all entity tables exist")
 
@@ -810,6 +822,7 @@ class EntityRepository:
         name: str,
         description: str,
         story_template_id: str,
+        image_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new location scoped to a story template."""
         pool = await self._get_pool()
@@ -819,10 +832,27 @@ class EntityRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO locations (id, name, description, story_template_id, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO locations (id, name, description, story_template_id, image_path, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (location_id, name, description, story_template_id, now),
+                    (location_id, name, description, story_template_id, image_path, now),
+                )
+
+        return await self.get_location(location_id)
+
+    async def update_location_image(
+        self,
+        location_id: str,
+        image_path: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Update the identity image path for an existing location."""
+        pool = await self._get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE locations SET image_path = %s WHERE id = %s",
+                    (image_path, location_id),
                 )
 
         return await self.get_location(location_id)
@@ -834,7 +864,7 @@ class EntityRepository:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT id, name, description, story_template_id, created_at FROM locations WHERE id = %s",
+                    "SELECT id, name, description, story_template_id, image_path, created_at FROM locations WHERE id = %s",
                     (location_id,),
                 )
                 row = await cur.fetchone()
@@ -847,8 +877,9 @@ class EntityRepository:
             "name": row[1],
             "description": row[2],
             "story_template_id": row[3],
-            "created_at": row[4],
-            "updated_at": row[4],
+            "image_path": row[4],
+            "created_at": row[5],
+            "updated_at": row[5],
         }
 
     async def list_locations_by_template(
@@ -861,7 +892,7 @@ class EntityRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, name, description, story_template_id, created_at
+                    SELECT id, name, description, story_template_id, image_path, created_at
                     FROM locations
                     WHERE story_template_id = %s
                     ORDER BY name
@@ -877,8 +908,9 @@ class EntityRepository:
                 "name": row[1],
                 "description": row[2],
                 "story_template_id": row[3],
-                "created_at": row[4],
-                "updated_at": row[4],
+                "image_path": row[4],
+                "created_at": row[5],
+                "updated_at": row[5],
             }
             for row in rows
         ]
@@ -891,7 +923,7 @@ class EntityRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, name, description, story_template_id, created_at
+                    SELECT id, name, description, story_template_id, image_path, created_at
                     FROM locations
                     ORDER BY story_template_id, name
                     LIMIT %s
@@ -906,8 +938,9 @@ class EntityRepository:
                 "name": row[1],
                 "description": row[2],
                 "story_template_id": row[3],
-                "created_at": row[4],
-                "updated_at": row[4],
+                "image_path": row[4],
+                "created_at": row[5],
+                "updated_at": row[5],
             }
             for row in rows
         ]

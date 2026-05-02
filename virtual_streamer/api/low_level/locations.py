@@ -21,6 +21,7 @@ def _dict_to_model(data: dict) -> Location:
         name=data["name"],
         description=data["description"],
         story_template_id=data["story_template_id"],
+        image_path=data.get("image_path"),
         created_at=data["created_at"],
         updated_at=data["updated_at"],
     )

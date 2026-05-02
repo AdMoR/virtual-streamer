@@ -72,6 +72,7 @@ from virtual_streamer.video_generation.ltx_client import (
     WanGPLTXClient,
     LTXVideoConfig,
     VideoGenerationParams,
+    VIDEO_PRESETS,
 )
 from virtual_streamer.video_generation.ltx_prompt_builder import build_negative_prompt
 from virtual_streamer.video_generation.story_to_video import (
@@ -1469,6 +1470,7 @@ async def generate_single_clip(
     negative_prompt:  str          = Form("worst quality, inconsistent motion, blurry, jittery, distorted"),
     wangp_url:        str          = Form("http://gx10-cbc5:8082"),
     wangp_timeout:    float        = Form(600.0),
+    quality_preset:   Optional[str] = Form(None, description="Named preset: 'fast', 'quality', 'high_quality'. Overrides model_type/steps/fps defaults when set."),
     model_type:       str          = Form("ltx2_22B_distilled"),
     resolution:       str          = Form("1280x720"),
     duration_seconds: float        = Form(4.0),
@@ -1492,10 +1494,32 @@ async def generate_single_clip(
     - Image-to-video (i2v):   prompt + image file
     - Audio-conditioned i2v:  prompt + image file + audio file
 
+    Quality presets (``quality_preset`` field): ``fast`` · ``quality`` · ``high_quality``.
+    When a preset is supplied it sets model_type, steps and fps; individual fields
+    sent alongside it still take precedence.
+
     The job runs asynchronously. Poll ``GET /api/v1/video-generation/jobs/{job_id}``
     until ``status == "completed"``.  The result contains ``video_b64``
     (base64-encoded MP4) plus duration/resolution metadata.
     """
+    # Apply preset defaults before individual field overrides
+    if quality_preset and quality_preset in VIDEO_PRESETS:
+        preset = VIDEO_PRESETS[quality_preset]
+        # Only override if the caller is using the endpoint default (i.e. they didn't
+        # explicitly set the field).  FastAPI Form defaults mean we can't distinguish
+        # "not supplied" from "supplied with default value", so we treat the preset as
+        # baseline and let individual params win by only overriding when the individual
+        # param still equals the original endpoint default.
+        _DEFAULT_MODEL  = "ltx2_22B_distilled"
+        _DEFAULT_STEPS  = 8
+        _DEFAULT_FPS    = 24
+        if model_type == _DEFAULT_MODEL:
+            model_type = preset.get("model_type", model_type)
+        if steps == _DEFAULT_STEPS:
+            steps = int(preset.get("steps", steps))
+        if fps == _DEFAULT_FPS:
+            fps = int(preset.get("fps", fps))
+
     image_bytes = await image.read() if image else None
     audio_bytes = await audio.read() if audio else None
 

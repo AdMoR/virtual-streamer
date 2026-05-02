@@ -58,6 +58,13 @@ from virtual_streamer.utils.minio_client import get_storage_client
 
 logger = logging.getLogger(__name__)
 
+# Quality keywords appended to every location identity image prompt.
+# Tune these to steer the default aesthetic of all generated location images.
+LOCATION_IMAGE_QUALITY_KEYWORDS = (
+    "cinematic composition, photorealistic, high quality, detailed environment, "
+    "dramatic lighting, sharp focus, 8k"
+)
+
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -158,14 +165,13 @@ async def generate_location_image(
             char_detail = f", {char_desc}" if char_desc and char_name else ""
             prompt = (
                 f"{char_label}{char_detail} in {location['description']}, "
-                "cinematic composition, photorealistic, high quality"
+                f"{LOCATION_IMAGE_QUALITY_KEYWORDS}"
             )
             negative_prompt = "text, watermark, blurry, distorted"
         else:
             prompt = (
                 f"{location['description']}, "
-                "cinematic composition, photorealistic, no people, high quality, "
-                "detailed environment"
+                f"no people, {LOCATION_IMAGE_QUALITY_KEYWORDS}"
             )
             negative_prompt = "text, watermark, blurry, distorted"
 

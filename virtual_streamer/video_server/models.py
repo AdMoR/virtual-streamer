@@ -337,6 +337,10 @@ class Location(LocationBase):
         ...,
         description="Human-readable slug derived from name (e.g. 'medieval-castle').",
     )
+    image_path: Optional[str] = Field(
+        None,
+        description="MinIO storage path of the identity image generated for this location.",
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

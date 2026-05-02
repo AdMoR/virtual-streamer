@@ -736,12 +736,21 @@
                             </div>
                         </div>
 
-S                        <!-- LTX Settings -->
+                        <!-- LTX Settings -->
                         <div class="collapsible">
                             <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
                                 🎬 LTX Video Settings
                             </div>
                             <div class="collapsible-content">
+                                <div class="form-group">
+                                    <label>Quality preset</label>
+                                    <select id="ltxQualityPreset" onchange="applyLtxPreset(this.value)">
+                                        <option value="">— custom —</option>
+                                        <option value="fast" selected>Fast  (distilled · 8 steps · 24 fps)</option>
+                                        <option value="quality">Quality  (22B · 30 steps · 24 fps)</option>
+                                        <option value="high_quality">High Quality  (22B · 30 steps · 50 fps)</option>
+                                    </select>
+                                </div>
                                 <div class="form-group">
                                     <label>WanGP Server URL</label>
                                     <input type="text" id="ltxServerUrl" value="http://gx10-cbc5:8082">
@@ -769,7 +778,7 @@ S                        <!-- LTX Settings -->
                                 <div class="grid-2">
                                     <div class="form-group">
                                         <label>Steps</label>
-                                        <input type="number" id="ltxSteps" value="20" min="1" max="100">
+                                        <input type="number" id="ltxSteps" value="8" min="1" max="100">
                                     </div>
                                     <div class="form-group">
                                         <label>CFG Scale</label>
@@ -1752,11 +1761,28 @@ S                        <!-- LTX Settings -->
         }
 
         // =============================================================================
+        // LTX Quality Presets
+        // =============================================================================
+        const LTX_PRESETS = {
+            fast:         { steps: 8,  fps: 24 },
+            quality:      { steps: 30, fps: 24 },
+            high_quality: { steps: 30, fps: 50 },
+        };
+
+        function applyLtxPreset(name) {
+            const p = LTX_PRESETS[name];
+            if (!p) return;
+            document.getElementById('ltxSteps').value = p.steps;
+            document.getElementById('ltxFps').value   = p.fps;
+        }
+
+        // =============================================================================
         // Initialize
         // =============================================================================
         document.addEventListener('DOMContentLoaded', () => {
             loadCharacters();
             loadTemplates();
+            applyLtxPreset(document.getElementById('ltxQualityPreset').value);
         });
     </script>
 </body>

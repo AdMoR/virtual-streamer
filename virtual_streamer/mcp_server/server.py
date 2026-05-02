@@ -628,7 +628,11 @@ async def list_locations(story_template_id: str) -> list[dict]:
 
 
 @mcp.tool()
-async def create_location(location_name: str, story_template_id: str) -> dict:
+async def create_location(
+    location_name: str,
+    story_template_id: str,
+    sd_server_url: Optional[str] = None,
+) -> dict:
     """Generate and register a new location for a story template.
 
     Runs an AI agent pipeline (writer → formatter) to produce a detailed
@@ -642,16 +646,25 @@ async def create_location(location_name: str, story_template_id: str) -> dict:
     template — the pipeline validates that all referenced location IDs exist.
 
     ⚠ This call is slow (~20–40 s) because it runs an LLM pipeline.
+    If sd_server_url is provided, image generation adds extra time (~30–60 s).
     Do not call it during time-sensitive interactions.
 
     Args:
         location_name: Human-readable name of the location (e.g. "Medieval Castle")
         story_template_id: The story template this location belongs to
+        sd_server_url: Optional Stable Diffusion server URL to immediately generate
+            an identity image for this location (e.g. "http://gx10-cbc5:1234")
     """
+    payload: dict = {
+        "location_name": location_name,
+        "story_template_id": story_template_id,
+    }
+    if sd_server_url is not None:
+        payload["sd_server_url"] = sd_server_url
     return await _api_post(
         "/api/v1/location-generation/generate",
-        {"location_name": location_name, "story_template_id": story_template_id},
-        timeout=120.0,
+        payload,
+        timeout=180.0,
     )
 
 

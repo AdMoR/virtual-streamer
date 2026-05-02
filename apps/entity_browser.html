@@ -686,6 +686,9 @@ async function selectItem(id) {
         if (section === 'locations')       detail = await get('/api/v1/locations/'       + encodeURIComponent(id));
 
         document.getElementById('detail-panel').innerHTML = renderDetail(detail);
+        if (section === 'locations' && detail.image_path) {
+            loadLocationImage(detail.location_id);
+        }
     } catch(e) {
         document.getElementById('detail-panel').innerHTML =
             `<div class="error-msg">⚠ ${esc(e.message)}</div>`;
@@ -874,6 +877,7 @@ function detailClip(c) {
 }
 
 function detailLocation(loc) {
+    const hasImage = !!loc.image_path;
     return `
     <div class="detail-header">
       <div class="detail-name">${esc(loc.name)}</div>
@@ -891,6 +895,25 @@ function detailLocation(loc) {
       <div class="prompt-block"><pre>${esc(loc.description)}</pre></div>
     </div>` : ''}
 
+    <div class="detail-section">
+      <div class="detail-label">Identity Image</div>
+      <div id="loc-img-preview" style="margin-bottom:0.75rem">
+        ${hasImage ? '<div class="spinner" style="width:20px;height:20px;margin:0.5rem 0;border-width:2px"></div>' : '<div style="color:var(--text-secondary);font-size:0.8rem">No image yet.</div>'}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prompt</label>
+        <textarea class="form-textarea" id="loc-img-prompt" rows="4" placeholder="Leave blank to use description…">${esc(loc.description||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">SD Server URL</label>
+        <input class="form-input" type="text" id="loc-img-sd-url" value="http://gx10-cbc5:1234" placeholder="http://host:1234">
+      </div>
+      <button class="btn-primary" id="loc-img-btn" onclick="regenerateLocationImage('${esc(loc.location_id)}')">
+        ${hasImage ? '🔄 Regenerate image' : '🎨 Generate image'}
+      </button>
+      <div id="loc-img-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
+    </div>
+
     <hr class="divider">
     <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:1rem">
       Created: ${esc(loc.created_at||'—')}<br>
@@ -898,6 +921,67 @@ function detailLocation(loc) {
     </div>
 
     <button class="btn-delete" onclick="deleteLocation('${esc(loc.location_id)}')">🗑 Delete location</button>`;
+}
+
+async function loadLocationImage(locationId) {
+    const preview = document.getElementById('loc-img-preview');
+    if (!preview) return;
+    try {
+        const r = await fetch(apiUrl() + '/api/v1/location-generation/' + encodeURIComponent(locationId) + '/image');
+        if (!r.ok) {
+            preview.innerHTML = '<div style="color:var(--text-secondary);font-size:0.8rem">Image unavailable.</div>';
+            return;
+        }
+        const data = await r.json();
+        preview.innerHTML = `<img src="data:image/png;base64,${data.image_data}" style="width:100%;border-radius:8px;border:1px solid var(--border-color)">`;
+    } catch(e) {
+        preview.innerHTML = `<div style="color:var(--accent-orange);font-size:0.78rem">⚠ Could not load image: ${esc(e.message)}</div>`;
+    }
+}
+
+async function regenerateLocationImage(locationId) {
+    const prompt  = document.getElementById('loc-img-prompt').value.trim();
+    const sdUrl   = document.getElementById('loc-img-sd-url').value.trim();
+    const btn     = document.getElementById('loc-img-btn');
+    const msg     = document.getElementById('loc-img-msg');
+    const preview = document.getElementById('loc-img-preview');
+
+    if (!sdUrl) {
+        msg.style.color = 'var(--accent-orange)';
+        msg.textContent = 'SD Server URL is required.';
+        return;
+    }
+
+    btn.disabled = true;
+    msg.style.color = 'var(--text-secondary)';
+    msg.textContent = 'Generating image… (30–60 s)';
+    preview.innerHTML = '<div class="spinner"></div>';
+
+    try {
+        const r = await fetch(
+            apiUrl() + '/api/v1/location-generation/' + encodeURIComponent(locationId) + '/regenerate-image',
+            {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ sd_server_url: sdUrl, prompt_override: prompt || null }),
+            }
+        );
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        const data = await r.json();
+        preview.innerHTML = `<img src="data:image/png;base64,${data.image_data}" style="width:100%;border-radius:8px;border:1px solid var(--border-color)">`;
+        msg.style.color = 'var(--accent-green)';
+        msg.textContent = '✓ Image saved';
+        btn.textContent = '🔄 Regenerate image';
+    } catch(e) {
+        preview.innerHTML = '<div style="color:var(--text-secondary);font-size:0.8rem">Generation failed.</div>';
+        msg.style.color = 'var(--accent-red)';
+        msg.textContent = '⚠ ' + e.message;
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 // ── Character edits ───────────────────────────────────────────────────────────
@@ -1031,8 +1115,13 @@ function showCreateLocationForm() {
         <label class="form-label">Description</label>
         <textarea class="form-textarea" id="loc-new-desc" rows="6" placeholder="Diffusion-model prompt for this location…"></textarea>
       </div>
+      <div class="form-group">
+        <label class="form-label">SD Server URL <span style="color:var(--text-secondary);font-weight:400;text-transform:none">(optional — generate identity image on creation)</span></label>
+        <input class="form-input" type="text" id="loc-new-sd-url" placeholder="http://gx10-cbc5:1234">
+      </div>
       <button class="btn-primary" id="loc-create-btn" onclick="createLocation()">+ Create location</button>
       <div id="loc-create-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
+      <div id="loc-create-img-preview" style="margin-top:0.75rem"></div>
     </div>`;
 }
 
@@ -1040,12 +1129,14 @@ async function createLocation() {
     const name     = document.getElementById('loc-new-name').value.trim();
     const template = document.getElementById('loc-new-template').value.trim();
     const desc     = document.getElementById('loc-new-desc').value.trim();
+    const sdUrl    = document.getElementById('loc-new-sd-url').value.trim();
     const btn      = document.getElementById('loc-create-btn');
     const msg      = document.getElementById('loc-create-msg');
+    const imgPrev  = document.getElementById('loc-create-img-preview');
 
     if (!name || !template || !desc) {
         msg.style.color = 'var(--accent-orange)';
-        msg.textContent = 'All fields are required.';
+        msg.textContent = 'Name, story template and description are required.';
         return;
     }
 
@@ -1069,7 +1160,33 @@ async function createLocation() {
         allItems = await fetchSection('locations');
         setCount('locations', allItems.length);
         renderList(allItems);
-        selectItem(loc.location_id);
+
+        if (sdUrl) {
+            msg.textContent += ' — generating image…';
+            imgPrev.innerHTML = '<div class="spinner" style="width:20px;height:20px;border-width:2px"></div>';
+            try {
+                const ir = await fetch(
+                    apiUrl() + '/api/v1/location-generation/' + encodeURIComponent(loc.location_id) + '/regenerate-image',
+                    {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ sd_server_url: sdUrl }),
+                    }
+                );
+                if (!ir.ok) {
+                    const ierr = await ir.json().catch(() => ({}));
+                    throw new Error(ierr.detail || `HTTP ${ir.status}`);
+                }
+                const idata = await ir.json();
+                imgPrev.innerHTML = `<img src="data:image/png;base64,${idata.image_data}" style="width:100%;border-radius:8px;border:1px solid var(--border-color)">`;
+                msg.textContent = `✓ Created: ${loc.location_id} — image saved`;
+            } catch(ie) {
+                imgPrev.innerHTML = `<div style="color:var(--accent-orange);font-size:0.78rem">⚠ Image generation failed: ${esc(ie.message)}</div>`;
+            }
+            selectItem(loc.location_id);
+        } else {
+            selectItem(loc.location_id);
+        }
     } catch(e) {
         msg.style.color = 'var(--accent-red)';
         msg.textContent = '⚠ ' + e.message;

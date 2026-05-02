@@ -329,6 +329,17 @@
             </div>
         </div>
 
+        <!-- Quality preset -->
+        <div class="field">
+            <label>Quality preset</label>
+            <select id="quality-preset">
+                <option value="">— custom —</option>
+                <option value="fast" selected>Fast  (distilled · 8 steps · 24 fps)</option>
+                <option value="quality">Quality  (22B · 30 steps · 24 fps)</option>
+                <option value="high_quality">High Quality  (22B · 30 steps · 50 fps)</option>
+            </select>
+        </div>
+
         <!-- Video settings -->
         <div>
             <div class="section-label" style="margin-bottom:0.75rem;">Video</div>
@@ -352,9 +363,10 @@
                 <div class="field">
                     <label>FPS</label>
                     <select id="fps">
-                        <option value="24" selected>24</option>
                         <option value="16">16</option>
+                        <option value="24" selected>24</option>
                         <option value="30">30</option>
+                        <option value="50">50</option>
                     </select>
                 </div>
                 <div class="field">
@@ -402,9 +414,11 @@
         <div class="field">
             <label>Model</label>
             <select id="model-type">
+                <option value="ltx2_22B">ltx2_22B</option>
                 <option value="ltx2_22B_distilled" selected>ltx2_22B_distilled</option>
                 <option value="ltx2_distilled">ltx2_distilled</option>
                 <option value="ltx2_13B">ltx2_13B</option>
+                <option value="ltx2_13B_distilled">ltx2_13B_distilled</option>
             </select>
         </div>
 
@@ -470,6 +484,26 @@
     const AUDIO_SCALE  = document.getElementById('audio-scale');
     const AUDIO_GUID   = document.getElementById('audio-guidance');
     const MODEL_TYPE   = document.getElementById('model-type');
+    const QUALITY_PRESET = document.getElementById('quality-preset');
+
+    // ── Quality preset auto-fill ───────────────────────────────────
+    const PRESETS = {
+        fast:         { model: 'ltx2_22B_distilled', steps: 8,  fps: '24' },
+        quality:      { model: 'ltx2_22B',           steps: 30, fps: '24' },
+        high_quality: { model: 'ltx2_22B',           steps: 30, fps: '50' },
+    };
+
+    function applyPreset(name) {
+        const p = PRESETS[name];
+        if (!p) return;
+        MODEL_TYPE.value = p.model;
+        STEPS.value      = p.steps;
+        FPS.value        = p.fps;
+    }
+
+    QUALITY_PRESET.addEventListener('change', () => applyPreset(QUALITY_PRESET.value));
+    // Apply the default preset on load
+    applyPreset(QUALITY_PRESET.value);
     const PLACEHOLDER  = document.getElementById('placeholder');
     const SPINNER      = document.getElementById('spinner');
     const SPINNER_LBL  = document.getElementById('spinner-label');
@@ -643,6 +677,7 @@
         fd.append('prompt',           prompt);
         fd.append('negative_prompt',  NEG_PROMPT.value.trim());
         fd.append('wangp_url',        WANGP_URL.value.trim());
+        if (QUALITY_PRESET.value) fd.append('quality_preset', QUALITY_PRESET.value);
         fd.append('model_type',       MODEL_TYPE.value);
         fd.append('resolution',       RESOLUTION.value);
         fd.append('duration_seconds', DURATION.value);

@@ -49,6 +49,42 @@ _DEFAULTS = {
     "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
 }
 
+_DEFAULTS_QUALITY = {
+    "model_type":      "ltx2_22B",
+    "resolution":      "1280x720",
+    "frames":          97,
+    "steps":           30,
+    "guidance_scale":  3.0,
+    "flow_shift":      3.0,
+    "seed":            -1,
+    "fps":             "24",
+    "audio_scale":     1.0,
+    "audio_guidance":  4.5,
+    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+}
+
+
+_DEFAULTS_HIGH_QUALITY = {
+    "model_type":      "ltx2_22B",
+    "resolution":      "1280x720",
+    "frames":          97,
+    "steps":           30,
+    "guidance_scale":  3.0,
+    "flow_shift":      3.0,
+    "seed":            -1,
+    "fps":             "50",
+    "audio_scale":     1.0,
+    "audio_guidance":  4.5,
+    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+}
+
+# Named presets exposed to callers (API, UI, etc.)
+VIDEO_PRESETS: dict[str, dict] = {
+    "fast":         _DEFAULTS,
+    "quality":      _DEFAULTS_QUALITY,
+    "high_quality": _DEFAULTS_HIGH_QUALITY,
+}
+
 
 # =============================================================================
 # Configuration
