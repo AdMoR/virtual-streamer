@@ -49,33 +49,71 @@ IMPORTANT: Your response must be structured with three parts:
    - **character_id**: Use the exact ID from the characters list above (e.g., "fred", "jamy")
    - **dialog**: The spoken text (what the character says out loud)
    - **location_id**: The location ID for this scene from the locations list above (e.g., "ski-resort")
-   - **scene_description**: A visual description of the scene that will be used to search for matching video clips. Describe what should be visible: location, actions, objects, mood. Do NOT include the dialog text here.
+   - **scene_description**: A structured JSON object describing the visual scene for video generation. Do NOT include the dialog text here. Use the following schema:
 
-Scene description should follow this format : 
+```json
+{{
+  "scene": "Overall environment and context of the scene",
+  "subjects": [
+    {{
+      "description": "Detailed visual description of the subject (appearance, clothing, expression)",
+      "pose": "Pose or stance",
+      "position": "Where in the frame",
+      "color_palette": ["dominant colors for this subject"]
+    }}
+  ],
+  "style": "Artistic/cinematic style (e.g. 'handheld documentary', 'cinematic 35mm')",
+  "color_palette": ["dominant colors for the whole scene"],
+  "lighting": "Lighting setup and quality",
+  "mood": "Emotional tone or atmosphere",
+  "background": "Background environment details",
+  "composition": "Framing rule or layout (e.g. 'rule of thirds', 'centered')",
+  "camera": {{
+    "angle": "Camera angle (e.g. 'eye level', 'low angle')",
+    "distance": "Shot distance (e.g. 'medium shot', 'close-up')",
+    "focus": "What is in focus and how",
+    "lens-mm": 35,
+    "f-number": "f/2.8",
+    "ISO": 400
+  }}
+}}
+```
 
-To ensure the video rendering understands the scene, include these six elements in your prompt:
-- Establish the shot: Use cinematography terms that match your preferred film genre. Include aspects like scale or specific category characteristics to refine the style.
-- Set the scene: Describe lighting conditions, color palette, surface textures, and atmosphere to shape the mood.
-- Describe the action: Write the core action as a natural sequence, flowing from beginning to end.
-- Define your character(s): Include age, hairstyle, clothing, and distinguishing details. Express emotions through physical cues.
-- Identify camera movement(s): Specify when the view should shift and how. Including how subjects or objects appear after the motion gives the model a better idea of how to finish the motion.
-- Describe the audio: Use clear descriptions for ambient sounds, music, and speech. For dialogue, place text in quotation marks and (if required) mention the language and accent.
-
-Example of scene description : 
-An action packed, cinematic shot of a monster truck driving fast towards the camera, the truck passes the cameras it pans left to follow the trucks reckless drive. dust and motion blur is around the truck, hand held feel to the camera as it tries to track its ride into the distance. the truck then drifts and turns around, then drives back towards the camera until seen in extreme close up.
-
-Remember : the scene description must mainly support the dialog line and not the opposite.
+The scene_description must mainly support the dialog line, not the opposite.
+When in a franchise, subjects must use the character names for better context.
+Scene consistency: consecutive scenes with the same characters in the same place must share identical scene_description objects.
 
 Example dialog entry:
 - character_id: "fred"
 - dialog: "Eh dis donc Jamy, ça te dit de faire du surf?"
-- scene_description: "A person talking enthusiastically to the camera in a beach setting with surfboards visible in the background, she moves her hand to better explain her ideas, there is a sunset happening in the background"
-
-When in a franchise, the scene description must use names of the character for better context.
-Ex: scene_description: "Joey from Friends is standing in the middle of the living room and talk to Chandler, the living room is the one from the girls flat, the camera is exactly standing where it usually is in the series, ...."
-
-Scene consistency : 
-- Keep consistency across scenes, when a dialogue scene occurs between the same characters, don't change the scene location. Keep the same description.
+- scene_description:
+```json
+{{
+  "scene": "Sunset beach with surfboards lined up along the shore",
+  "subjects": [
+    {{
+      "description": "Fred, middle-aged French man with grey hair, wearing a loud Hawaiian shirt, speaking energetically to camera",
+      "pose": "Gesturing towards the ocean with both hands",
+      "position": "Center frame foreground",
+      "color_palette": ["Hawaiian shirt colors", "tanned skin"]
+    }}
+  ],
+  "style": "Handheld documentary feel",
+  "color_palette": ["golden sunset orange", "ocean blue", "sandy beige"],
+  "lighting": "Warm golden hour backlight with soft fill from the sky",
+  "mood": "Enthusiastic and adventurous",
+  "background": "Ocean waves and surfers in the distance",
+  "composition": "rule of thirds",
+  "camera": {{
+    "angle": "eye level",
+    "distance": "medium shot",
+    "focus": "Sharp on Fred, slightly blurred ocean background",
+    "lens-mm": 35,
+    "f-number": "f/4",
+    "ISO": 400
+  }}
+}}
+```
 
 
 Focus on:

@@ -383,7 +383,7 @@ async def script_to_video(
                     f"  [FALLBACK] Generating video via LTX-2 (rating: {match.rating.value})..."
                 )
                 video_path = await generate_ltx_fallback_video(
-                    scene_description=match.dialog_line.scene_description,
+                    scene_description=match.dialog_line.scene_description.to_prompt(),
                     ltx_config=ltx_config,
                     output_dir=config.temp_dir,
                     segment_index=i,
@@ -739,7 +739,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                     "segment_index": i,
                     "character_id": match.dialog_line.character_id,
                     "text": match.dialog_line.text,
-                    "scene_description": match.dialog_line.scene_description,
+                    "scene_description": match.dialog_line.scene_description.model_dump(by_alias=True),
                 }
                 for i, match in enumerate(video_matches.matches)
             ]
@@ -1034,7 +1034,7 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                     "duration_seconds": seg.duration_seconds,
                     "character_id": seg.dialog_line.character_id,
                     "text": seg.dialog_line.text,
-                    "scene_description": seg.dialog_line.scene_description,
+                    "scene_description": seg.dialog_line.scene_description.model_dump(by_alias=True),
                     "minio_video_key": seg.minio_video_key,
                     "minio_audio_key": seg.minio_audio_key,
                     "minio_image_key": seg.minio_image_key,

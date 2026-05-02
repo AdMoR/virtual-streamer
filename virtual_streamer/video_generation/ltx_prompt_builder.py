@@ -49,9 +49,7 @@ def build_ltx_prompt(
         parts.append(style_prefix)
     
     # Add scene description (visual component)
-    scene_desc = dialog_line.scene_description.strip()
-    if not scene_desc.endswith('.'):
-        scene_desc += '.'
+    scene_desc = dialog_line.scene_description.to_prompt()
     parts.append(scene_desc)
     
     # Add dialog text for audio generation
@@ -92,9 +90,7 @@ def build_ltx_prompt_detailed(
         parts.append(f"{camera_angle}:")
     
     # Scene description
-    scene_desc = dialog_line.scene_description.strip()
-    if not scene_desc.endswith('.'):
-        scene_desc += '.'
+    scene_desc = dialog_line.scene_description.to_prompt()
     parts.append(scene_desc)
     
     # Character name and emotion

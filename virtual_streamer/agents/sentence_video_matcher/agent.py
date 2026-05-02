@@ -115,14 +115,14 @@ class SentenceVideoMapper(MapperAgent):
             character = self._character_map.get(dialog_line.character_id, None)
             tags = [character.video_search_tag] if character and character.video_search_tag else []
             search_results = self._video_retriever.search(
-                query=dialog_line.scene_description,
+                query=dialog_line.scene_description.to_prompt(),
                 collection=collection,
                 tags=tags,
                 top_k=self._max_candidates,
             )
             
             if not search_results:
-                logger.warning(f"No candidates found for line {line_id}: {dialog_line.scene_description[:50]}...")
+                logger.warning(f"No candidates found for line {line_id}: {dialog_line.scene_description.to_prompt()[:50]}...")
                 continue
             
             for result in search_results:
@@ -130,7 +130,7 @@ class SentenceVideoMapper(MapperAgent):
                     "line_id": line_id,
                     "character_id": dialog_line.character_id,
                     "sentence": dialog_line.text,
-                    "scene_description": dialog_line.scene_description,
+                    "scene_description": dialog_line.scene_description.to_prompt(),
                     "video_path": result.path,
                 })
         

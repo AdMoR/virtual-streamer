@@ -24,7 +24,29 @@ Extract the following fields:
 - **dialog**: The list of dialogue lines. For each line extract:
   - **character_id**: The character identifier (e.g. "fred", "jamy"). Use lowercase.
   - **text**: The spoken dialogue text (what the character says out loud).
-  - **scene_description**: The visual scene description used for video matching.
+  - **scene_description**: Extract as a structured JSON object matching the FluxPrompt schema below.
+    If the raw story already contains a JSON block for scene_description, parse and use it directly.
+    If it is written as plain text, infer the FluxPrompt fields from the description.
+    Required schema:
+    {{
+      "scene": "Overall environment and context",
+      "subjects": [{{"description": "...", "pose": "...", "position": "...", "color_palette": [...]}}],
+      "style": "Cinematic/artistic style (optional)",
+      "color_palette": ["scene-level dominant colors (optional)"],
+      "lighting": "Lighting description",
+      "mood": "Emotional tone (optional)",
+      "background": "Background details (optional)",
+      "composition": "Framing rule (optional)",
+      "camera": {{
+        "angle": "Camera angle",
+        "distance": "Shot distance",
+        "focus": "Focus description (optional)",
+        "lens-mm": 35,
+        "f-number": "f/2.8",
+        "ISO": 400
+      }}
+    }}
+    Infer reasonable defaults for missing camera fields (angle: "eye level", distance: "medium shot").
   - **location_id**: The location identifier for this scene (e.g. "ski-resort", "medieval-castle").
     Use the location_id values present in the story text. If only a location name is present (not an ID),
     convert it to a slug: lowercase, spaces replaced by hyphens (e.g. "Ski Resort" → "ski-resort").

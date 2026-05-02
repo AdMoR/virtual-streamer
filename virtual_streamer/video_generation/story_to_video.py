@@ -667,7 +667,7 @@ async def story_to_video(
                 elif dialog_line.scene_description:
                     # No valid location — use the scene description as the prompt
                     conditioning_image_path = await generate_location_image(
-                        location={"description": dialog_line.scene_description},
+                        location={"description": dialog_line.scene_description.to_prompt()},
                         character=character_map.get(dialog_line.character_id, {}),
                         output_dir=image_dir,
                         sd_server_url=_sd_url,
@@ -713,7 +713,7 @@ async def story_to_video(
                         "character_id": dialog_line.character_id,
                         "text": dialog_line.text,
                         "location_id": dialog_line.location_id,
-                        "scene_description": dialog_line.scene_description,
+                        "scene_description": dialog_line.scene_description.model_dump(by_alias=True),
                         "duration_seconds": segment.duration_seconds,
                         "prompt_id": segment.prompt_id,
                         "failed": False,
@@ -741,7 +741,7 @@ async def story_to_video(
                         "character_id": dialog_line.character_id,
                         "text": dialog_line.text,
                         "location_id": dialog_line.location_id,
-                        "scene_description": dialog_line.scene_description,
+                        "scene_description": dialog_line.scene_description.model_dump(by_alias=True),
                         "failed": True,
                         "error": str(exc),
                     })

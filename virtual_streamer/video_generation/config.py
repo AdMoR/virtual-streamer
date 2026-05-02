@@ -377,17 +377,20 @@ class VideoGenerationConfig(BaseSettings):
 
 
 from pydantic import BaseModel, Field
+from virtual_streamer.image_generation.models import FluxPrompt
 
 
 class DialogLine(BaseModel):
-    character_id: str = Field(..., description="ID of the character speaking", example="fred")
-    text: str = Field(..., description="The dialogue text", example="Eh dis donc Jamy, ça te dit de faire du surf?")
-    scene_description: str = Field(..., description="The description of the scene",
-    example="The scene is set in a ski resort in the Alps. A person is talking to the camera.")
+    character_id: str = Field(..., description="ID of the character speaking", examples=["fred"])
+    text: str = Field(..., description="The dialogue text", examples=["Eh dis donc Jamy, ça te dit de faire du surf?"])
+    scene_description: FluxPrompt = Field(
+        ...,
+        description="Structured visual description of the scene as a FluxPrompt object.",
+    )
     location_id: Optional[str] = Field(
         default=None,
         description="ID of the location visible in this scene (references a Location in the DB).",
-        example="ski-resort",
+        examples=["ski-resort"],
     )
 
 
