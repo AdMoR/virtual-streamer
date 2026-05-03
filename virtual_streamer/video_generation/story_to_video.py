@@ -680,7 +680,6 @@ async def story_to_video(
                     index=i,
                     output_dir=str(output_path),
                     video_params=params,
-                    style_suffix=style_suffix,
                     audio_path=audio_map.get(i),
                     image_path=conditioning_image_path,
                 )

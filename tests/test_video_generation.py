@@ -63,14 +63,15 @@ class MockLLM(LLMInterface):
     async def complete_structured(self, prompt: str, response_model, **kwargs):
         """Mock structured completion."""
         from virtual_streamer.video_generation.config import StoryOutput, DialogLine
+        from virtual_streamer.image_generation.models import FluxPrompt, Camera
 
         if response_model == StoryOutput:
             return StoryOutput(
                 title="Fred se lance dans l'IA (Version complète)",
                 story_plan="Fred va découvrir l'IA et créer FredGPT avec un ton humoristique et absurde.",
                 dialog=[
-                    DialogLine(character_id="fred", text="Eh dis donc Jamy!", scene_description="Fred talks to camera in a lab setting"),
-                    DialogLine(character_id="fred", text="J'ai découvert l'IA!", scene_description="Fred looks excited in the same lab")
+                    DialogLine(character_id="fred", text="Eh dis donc Jamy!", scene_description=FluxPrompt(scene="Fred talks to camera in a lab setting", subjects=[], lighting="Natural", camera=Camera(angle="eye level", distance="medium shot"))),
+                    DialogLine(character_id="fred", text="J'ai découvert l'IA!", scene_description=FluxPrompt(scene="Fred looks excited in the same lab", subjects=[], lighting="Natural", camera=Camera(angle="eye level", distance="medium shot")))
                 ],
             )
         # Default fallback

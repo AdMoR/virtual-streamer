@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: Run unit tests (no integration)
+        language: system
+        entry: uv run python -m pytest tests/ -m "not integration" -x -q
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
