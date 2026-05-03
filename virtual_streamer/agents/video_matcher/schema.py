@@ -63,7 +63,7 @@ class VideoMatchResult(BaseModel):
     video_path: str = Field(description="Path to the video that was evaluated")
     rating: ContextualRating = Field(description="Match quality rating")
     grade: int = Field(description="Numeric grade for ranking", ge=0, le=10)
-    reasoning: str = Field(description="Explanation of the rating")
+    reasoning: str = Field(description="Explanation of the rating, if available")
     
     @classmethod
     def from_input_and_output(
