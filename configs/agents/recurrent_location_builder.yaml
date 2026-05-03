@@ -1,0 +1,29 @@
+# Recurrent Location Builder Agent Configuration
+# Step 2 of the new 3-step story pipeline:
+# reads the raw story and extracts recurring locations with FluxPrompt descriptions
+
+name: recurrent_location_builder
+
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3
+    max_output_tokens: 8192
+    api_base: http://100.114.182.89:8081
+
+metadata:
+  version: "1.0.0"
+  description: "Extracts recurring locations from raw story text and generates FluxPrompt for each"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - story-pipeline
+    - location-building
+    - structured-output
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true

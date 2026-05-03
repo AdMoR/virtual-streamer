@@ -1,0 +1,29 @@
+# Detailed Scene Builder Agent Configuration
+# Step 3 of the new 3-step story pipeline:
+# reads raw story + recurrent locations and produces one DetailedScene per scene
+
+name: detailed_scene_builder
+
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.3
+    max_output_tokens: 16384
+    api_base: http://100.114.182.89:8081
+
+metadata:
+  version: "1.0.0"
+  description: "Builds DetailedScene list (ltx_prompt, location, characters, speaker, audio) from raw story and locations"
+  owners:
+    - virtual-streamer-team
+  tags:
+    - story-pipeline
+    - scene-planning
+    - structured-output
+
+transfer_policy:
+  allow_transfer: false
+  allowed_targets: []
+
+include_contents: true
