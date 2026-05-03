@@ -1673,23 +1673,46 @@
                     `;
                 }
 
+                // ── Recurrent Locations ──────────────────────────────────
+                if (Array.isArray(res.recurrent_locations) && res.recurrent_locations.length > 0) {
+                    html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin: 20px 0 8px;">📍 Locations (${res.recurrent_locations.length})</p>`;
+                    html += `<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">`;
+                    res.recurrent_locations.forEach(loc => {
+                        html += `
+                            <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; flex: 1; min-width: 180px;">
+                                <div style="font-weight: 600; color: var(--purple); font-size: 0.85rem;">${loc.name || loc.location_id}</div>
+                                <div style="color: var(--text-muted); font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; margin-top: 2px;">${loc.location_id}</div>
+                            </div>
+                        `;
+                    });
+                    html += `</div>`;
+                }
+
                 // ── Segment clips list ───────────────────────────────────
                 if (Array.isArray(res.segments) && res.segments.length > 0) {
-                    html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin: 20px 0 8px;">📋 Segments (${res.segments.length})</p>`;
+                    html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin: 20px 0 8px;">📋 Scenes (${res.segments.length})</p>`;
                     html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
                     res.segments.forEach((seg, i) => {
+                        // Support both old pipeline (character_id/text) and new pipeline (speaker_id/spoken_line)
+                        const speaker = seg.speaker_id || seg.character_id || '';
+                        const line    = seg.spoken_line || seg.text || '';
+                        const prompt  = seg.ltx_prompt || seg.scene_description || '';
+                        const chars   = Array.isArray(seg.character_on_screen) ? seg.character_on_screen.join(', ') : '';
                         html += `
                             <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                    <span style="font-weight: 600; color: var(--accent); font-size: 0.85rem;">
-                                        #${seg.index + 1} · ${seg.character_id || ''}
-                                    </span>
-                                    <span style="color: var(--text-muted); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
+                                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                        <span style="font-weight: 600; color: var(--accent); font-size: 0.85rem;">#${seg.index + 1}</span>
+                                        ${speaker ? `<span style="background: rgba(88,166,255,0.12); color: var(--accent); font-size: 0.78rem; padding: 2px 8px; border-radius: 12px;">🎤 ${speaker}</span>` : ''}
+                                        ${seg.location ? `<span style="background: rgba(163,113,247,0.12); color: var(--purple); font-size: 0.78rem; padding: 2px 8px; border-radius: 12px;">📍 ${seg.location}</span>` : ''}
+                                        ${chars ? `<span style="background: rgba(63,185,80,0.1); color: var(--success); font-size: 0.75rem; padding: 2px 8px; border-radius: 12px;">👥 ${chars}</span>` : ''}
+                                    </div>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; white-space: nowrap;">
                                         ${Number(seg.duration_seconds || 0).toFixed(1)}s
                                     </span>
                                 </div>
-                                ${seg.text ? `<p style="font-size: 0.85rem; color: var(--text); margin-bottom: 4px;">"${seg.text}"</p>` : ''}
-                                ${seg.scene_description ? `<p style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">${seg.scene_description}</p>` : ''}
+                                ${line ? `<p style="font-size: 0.85rem; color: var(--text); margin-bottom: 6px;">"${line}"</p>` : ''}
+                                ${prompt ? `<p style="font-size: 0.75rem; color: var(--text-muted); font-style: italic; line-height: 1.4;">${prompt}</p>` : ''}
                             </div>
                         `;
                     });

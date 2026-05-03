@@ -800,9 +800,33 @@ function detailTemplate(t) {
         </div>` : ''}
     </div>
 
+    <hr class="divider">
     <div class="detail-section">
-      <div class="detail-label">Prompt</div>
-      <div class="prompt-block"><pre>${esc(t.prompt||'')}</pre></div>
+      <div class="detail-label">Edit Template</div>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input class="form-input" type="text" id="tpl-edit-name" value="${esc(t.name||'')}">
+      </div>
+      <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div>
+          <label class="form-label">Collection</label>
+          <input class="form-input" type="text" id="tpl-edit-collection" value="${esc(t.collection||'')}">
+        </div>
+        <div>
+          <label class="form-label">Target Lines</label>
+          <input class="form-input" type="number" id="tpl-edit-lines" value="${t.target_lines||6}" min="1" max="30">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Character IDs <span style="color:var(--text-secondary);font-weight:400;text-transform:none">(comma-separated)</span></label>
+        <input class="form-input" type="text" id="tpl-edit-chars" value="${esc((t.character_ids||[]).join(', '))}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prompt</label>
+        <textarea class="form-textarea" id="tpl-edit-prompt" rows="16" style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--accent-green)">${esc(t.prompt||'')}</textarea>
+      </div>
+      <button class="btn-primary" id="tpl-save-btn" onclick="saveTemplateFields('${esc(t.template_id)}')">💾 Save changes</button>
+      <div id="tpl-save-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
     </div>
 
     <hr class="divider">
@@ -977,6 +1001,54 @@ async function regenerateLocationImage(locationId) {
         btn.textContent = '🔄 Regenerate image';
     } catch(e) {
         preview.innerHTML = '<div style="color:var(--text-secondary);font-size:0.8rem">Generation failed.</div>';
+        msg.style.color = 'var(--accent-red)';
+        msg.textContent = '⚠ ' + e.message;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── Template edits ────────────────────────────────────────────────────────────
+async function saveTemplateFields(templateId) {
+    const name       = document.getElementById('tpl-edit-name').value.trim();
+    const collection = document.getElementById('tpl-edit-collection').value.trim();
+    const lines      = document.getElementById('tpl-edit-lines').value;
+    const charsRaw   = document.getElementById('tpl-edit-chars').value;
+    const prompt     = document.getElementById('tpl-edit-prompt').value.trim();
+    const btn        = document.getElementById('tpl-save-btn');
+    const msg        = document.getElementById('tpl-save-msg');
+
+    if (!name || !prompt) {
+        msg.style.color = 'var(--accent-orange)';
+        msg.textContent = 'Name and Prompt are required.';
+        return;
+    }
+
+    const characterIds = charsRaw.split(',').map(s => s.trim()).filter(Boolean);
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('prompt', prompt);
+    fd.append('collection', collection || 'random');
+    fd.append('target_lines', lines);
+    characterIds.forEach(id => fd.append('character_ids', id));
+
+    btn.disabled = true;
+    msg.style.color = 'var(--text-secondary)';
+    msg.textContent = 'Saving…';
+    try {
+        const r = await fetch(apiUrl() + '/api/v1/story-templates/' + encodeURIComponent(templateId), {
+            method: 'PUT', body: fd
+        });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        msg.style.color = 'var(--accent-green)';
+        msg.textContent = '✓ Saved';
+        allItems = await fetchSection('story-templates');
+        setCount('story-templates', allItems.length);
+        renderList(allItems);
+    } catch(e) {
         msg.style.color = 'var(--accent-red)';
         msg.textContent = '⚠ ' + e.message;
     } finally {

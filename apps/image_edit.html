@@ -336,6 +336,29 @@
             color: #10a37f;
         }
 
+        /* Select */
+        select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            padding: 0.55rem 0.75rem;
+            width: 100%;
+            transition: border-color 0.15s;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238b949e' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            padding-right: 2rem;
+        }
+        select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
         /* Password-style input */
         input[type=password] {
             background: var(--bg-tertiary);
@@ -423,6 +446,15 @@
             <div class="field" style="margin-top:0.75rem;">
                 <label>Model</label>
                 <input type="text" id="openai-model" value="gpt-image-1">
+            </div>
+            <div class="field" style="margin-top:0.75rem;">
+                <label>Size</label>
+                <select id="openai-size">
+                    <option value="auto">auto</option>
+                    <option value="1024x1024">1024 × 1024</option>
+                    <option value="1536x1024">1536 × 1024 (landscape)</option>
+                    <option value="1024x1536">1024 × 1536 (portrait)</option>
+                </select>
             </div>
         </div>
 
@@ -519,6 +551,7 @@
     const STRENGTH              = document.getElementById('strength');
     const OPENAI_API_KEY        = document.getElementById('openai-api-key');
     const OPENAI_MODEL          = document.getElementById('openai-model');
+    const OPENAI_SIZE           = document.getElementById('openai-size');
     const RESULT_WRAP           = document.getElementById('result-wrap');
     const RESULT_IMG            = document.getElementById('result-img');
     const META_SIZE             = document.getElementById('meta-size');
@@ -551,9 +584,8 @@
         NEGATIVE_PROMPT_SEC.style.display = isOpenAI ? 'none'  : 'flex';
         SDCPP_PARAMS.style.display        = isOpenAI ? 'none'  : 'block';
         SERVER_URL_SECTION.style.display  = isOpenAI ? 'none'  : 'flex';
-        // Resolution section only relevant for SD.cpp txt2image
-        RESOLUTION_SECTION.style.display  =
-            (!isOpenAI && currentMode === 'txt2image') ? 'block' : 'none';
+        // Resolution section for all SD.cpp modes
+        RESOLUTION_SECTION.style.display  = isOpenAI ? 'none' : 'block';
         // Strength only for SD.cpp edit
         STRENGTH_SECTION.style.display    =
             (!isOpenAI && currentMode === 'edit') ? 'flex' : 'none';
@@ -576,8 +608,7 @@
             currentMode = tab.dataset.mode;
             const isOpenAI = currentBackend === 'openai';
             UPLOAD_SECTION.style.display     = currentMode === 'edit' ? 'flex' : 'none';
-            RESOLUTION_SECTION.style.display =
-                (!isOpenAI && currentMode === 'txt2image') ? 'block' : 'none';
+            RESOLUTION_SECTION.style.display = isOpenAI ? 'none' : 'block';
             STRENGTH_SECTION.style.display   =
                 (!isOpenAI && currentMode === 'edit') ? 'flex' : 'none';
         });
@@ -699,6 +730,7 @@
             const form = new FormData();
             form.append('prompt', fullPrompt);
             form.append('n', '1');
+            form.append('size', `${parseInt(WIDTH.value)}x${parseInt(HEIGHT.value)}`);
             form.append('output_format', 'png');
             for (const f of uploadedFiles) {
                 const blob = await fetch(f.dataUrl).then(r => r.blob());
@@ -719,8 +751,8 @@
         const b64 = (data.data || [])[0]?.b64_json;
         if (!b64) throw new Error('Server returned no image data');
 
-        const w = currentMode === 'txt2image' ? parseInt(WIDTH.value) : '?';
-        const h = currentMode === 'txt2image' ? parseInt(HEIGHT.value) : '?';
+        const w = parseInt(WIDTH.value);
+        const h = parseInt(HEIGHT.value);
         return { b64, seed: requestedSeed, w, h };
     }
 
@@ -750,7 +782,7 @@
             body: JSON.stringify({
                 model,
                 input,
-                tools: [{ type: 'image_generation' }],
+                tools: [{ type: 'image_generation', size: OPENAI_SIZE.value }],
             }),
         });
         if (!resp.ok) {
