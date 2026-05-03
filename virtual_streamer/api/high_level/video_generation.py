@@ -38,6 +38,14 @@ from virtual_streamer.agents.common.state_keys import (
     SENTENCES,
     VIDEO_MATCHES,
     VIDEO_COLLECTION,
+    RECURRENT_LOCATIONS,
+    DETAILED_SCENES,
+)
+from virtual_streamer.agents.story_pipeline.schema import (
+    get_recurrent_locations_from_state,
+    get_detailed_scenes_from_state,
+    RecurrentLocationsOutput,
+    DetailedScenesOutput,
 )
 from virtual_streamer.agents.sentence_video_matcher import (
     create_sentence_video_matcher,
@@ -77,7 +85,13 @@ from virtual_streamer.video_generation.ltx_client import (
 from virtual_streamer.video_generation.ltx_prompt_builder import build_negative_prompt
 from virtual_streamer.video_generation.story_to_video import (
     story_to_video,
+    scenes_to_video,
     StoryVideoResult,
+)
+from virtual_streamer.image_generation.stable_cpp_client import (
+    StableDiffusionCppClient,
+    StableDiffusionCppConfig,
+    Txt2ImageParams,
 )
 from virtual_streamer.video_server.models import Character, VoiceSample
 
@@ -176,6 +190,82 @@ async def run_story_generator(
         return StoryOutput.model_validate(story_output_data)
     else:
         raise RuntimeError(f"Unexpected story_output type: {type(story_output_data)}")
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class StoryPipelineResult:
+    """Result of the new 3-step story pipeline."""
+    recurrent_locations: RecurrentLocationsOutput
+    detailed_scenes: DetailedScenesOutput
+    title: Optional[str] = None
+
+
+async def run_story_pipeline(
+        title: str,
+        story_template_id: Optional[str] = None,
+) -> StoryPipelineResult:
+    """
+    Run the new 3-step StoryPipelineAgent and return typed outputs.
+
+    State flow:
+        story_writer → RAW_STORY_TEXT
+        recurrent_location_builder → RECURRENT_LOCATIONS (JSON str)
+        detailed_scene_builder     → DETAILED_SCENES (JSON str)
+    """
+    story_generator = get_story_pipeline()
+    session_service = InMemorySessionService()
+    runner = Runner(
+        agent=story_generator,
+        app_name=APP_NAME,
+        session_service=session_service,
+    )
+
+    user_id = f"user_{uuid.uuid4().hex[:8]}"
+    session_id = f"story_{uuid.uuid4().hex[:8]}"
+    initial_state = {TITLE: title}
+    if story_template_id:
+        initial_state[STORY_TEMPLATE_ID] = story_template_id
+
+    session = await session_service.create_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+        state=initial_state,
+    )
+
+    logger.info(f"Running StoryPipelineAgent (3-step) for title: {title!r}")
+    content = types.Content(role="user", parts=[types.Part(text=title)])
+
+    async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session.id,
+            new_message=content,
+    ):
+        if event.is_final_response():
+            logger.debug(f"Final response from {event.author}")
+
+    session = await session_service.get_session(
+        app_name=APP_NAME,
+        user_id=user_id,
+        session_id=session_id,
+    )
+
+    if not session.state.get(RECURRENT_LOCATIONS):
+        raise RuntimeError("StoryPipelineAgent completed but RECURRENT_LOCATIONS not in state")
+    if not session.state.get(DETAILED_SCENES):
+        raise RuntimeError("StoryPipelineAgent completed but DETAILED_SCENES not in state")
+
+    recurrent_locations = get_recurrent_locations_from_state(session.state)
+    detailed_scenes = get_detailed_scenes_from_state(session.state)
+
+    return StoryPipelineResult(
+        recurrent_locations=recurrent_locations,
+        detailed_scenes=detailed_scenes,
+        title=detailed_scenes.title,
+    )
 
 
 async def run_sentence_video_matcher(
@@ -919,40 +1009,83 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
 
         output_dir = request.output_dir or f"./output/ltx_{job_id}"
 
-        story_output = None
+        pipeline_result: Optional[StoryPipelineResult] = None
+        input_title = request.title or request.story_text
 
-        if request.title:
-            # Step 1: Run StoryGeneratorAgent
-            logger.info(f"[LTX Job {job_id}] Running StoryGeneratorAgent...")
-            story_output = await run_story_generator(
-                request.title, story_template_id=request.story_template_id
-            )
-            logger.info(
-                f"[LTX Job {job_id}] Story generated: {story_output.title} "
-                f"with {len(story_output.dialog)} dialog lines"
-            )
+        # Step 1: Run the 3-step StoryPipelineAgent
+        logger.info(f"[LTX Job {job_id}] Running 3-step StoryPipelineAgent...")
+        pipeline_result = await run_story_pipeline(
+            title=input_title,
+            story_template_id=request.story_template_id,
+        )
+        story_title = pipeline_result.title or input_title or "story"
+        scenes = pipeline_result.detailed_scenes.scenes
+        locations = pipeline_result.recurrent_locations.locations
+        logger.info(
+            f"[LTX Job {job_id}] Pipeline complete: title={story_title!r}  "
+            f"scenes={len(scenes)}  locations={len(locations)}"
+        )
 
-        elif request.story_text:
-            # Parse story_text via story generator
-            story_output = await run_story_generator(
-                request.story_text, story_template_id=request.story_template_id
-            )
+        # Step 2: Create Location entities in DB (with Flux base image + MinIO upload)
+        _sd_url = os.environ.get("SD_SERVER_URL", "http://gx10-cbc5:1234")
+        if locations:
+            logger.info(f"[LTX Job {job_id}] Generating base images for {len(locations)} location(s)...")
+            from virtual_streamer.utils.entity_repository import get_entity_repository
+            repo = get_entity_repository()
+            storage = get_storage_client()
+            sd_config = StableDiffusionCppConfig(server_url=_sd_url)
+            loc_image_dir = os.path.join(output_dir, "location_images")
+            os.makedirs(loc_image_dir, exist_ok=True)
 
-        # Step 2: Generate TTS audio per segment (when enable_audio=True)
+            for loc in locations:
+                try:
+                    # Generate location base image (environment only, no characters)
+                    prompt = loc.flux_prompt.to_prompt()
+                    async with StableDiffusionCppClient(sd_config) as sd_client:
+                        img_result = await sd_client.txt2image(
+                            Txt2ImageParams(
+                                prompt=prompt + ", no people, cinematic composition, photorealistic, high quality",
+                                negative_prompt="text, watermark, blurry, distorted, people, persons, characters",
+                                width=1280,
+                                height=720,
+                            ),
+                            output_dir=loc_image_dir,
+                        )
+
+                    # Upload to MinIO
+                    minio_key = f"locations/{request.story_template_id}/{loc.location_id}.png"
+                    await storage.upload_file(img_result.image_path, minio_key)
+
+                    # Upsert Location entity in DB
+                    existing = await repo.get_location(loc.location_id)
+                    if existing:
+                        await repo.update_location_image(loc.location_id, minio_key)
+                    else:
+                        await repo.create_location(
+                            location_id=loc.location_id,
+                            name=loc.name,
+                            description=loc.flux_prompt.to_prompt(),
+                            story_template_id=request.story_template_id,
+                            image_path=minio_key,
+                        )
+                    logger.info(f"[LTX Job {job_id}] Location '{loc.location_id}' → {minio_key}")
+                except Exception as loc_exc:
+                    logger.warning(
+                        f"[LTX Job {job_id}] Failed to create location '{loc.location_id}': {loc_exc}"
+                    )
+
+        # Step 3: Generate TTS audio per scene (for scenes that have a spoken line)
         segment_audio_paths: Dict[int, str] = {}
         if request.enable_audio:
-            logger.info(
-                f"[LTX Job {job_id}] Generating TTS audio for "
-                f"{len(story_output.dialog)} segments "
-                f"(host={request.tts_host}:{request.tts_port})…"
-            )
             tts_dir = os.path.join(output_dir, "tts")
             os.makedirs(tts_dir, exist_ok=True)
             storage_resolver = get_storage_resolver()
 
-            for i, dialog_line in enumerate(story_output.dialog):
+            for i, scene in enumerate(scenes):
+                if not scene.speaker_id or not scene.spoken_line:
+                    continue
                 try:
-                    character = await load_character(dialog_line.character_id)
+                    character = await load_character(scene.speaker_id)
                     reference_audio: Optional[str] = None
                     reference_text: Optional[str] = None
                     if character.voice_samples:
@@ -962,9 +1095,9 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                         )
                         reference_text = sample.transcript
 
-                    audio_out = os.path.join(tts_dir, f"segment_{i:03d}.wav")
+                    audio_out = os.path.join(tts_dir, f"scene_{i:03d}.wav")
                     await txt_to_speech_call_fish_async(
-                        speech_lines=dialog_line.text,
+                        speech_lines=scene.spoken_line,
                         reference_audio=reference_audio,
                         reference_text=reference_text,
                         outpath=audio_out,
@@ -973,18 +1106,15 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                         port=request.tts_port,
                     )
                     segment_audio_paths[i] = audio_out
-                    logger.info(
-                        f"[LTX Job {job_id}] TTS segment {i} "
-                        f"({dialog_line.character_id}): {audio_out}"
-                    )
+                    logger.info(f"[LTX Job {job_id}] TTS scene {i} ({scene.speaker_id}): {audio_out}")
                 except Exception as exc:
                     logger.warning(
-                        f"[LTX Job {job_id}] TTS failed for segment {i} "
-                        f"({dialog_line.character_id}): {exc} — continuing without audio"
+                        f"[LTX Job {job_id}] TTS failed for scene {i} "
+                        f"({scene.speaker_id}): {exc} — continuing without audio"
                     )
 
-        # Step 3: Run story_to_video (LTX-2 audio-conditioned pipeline)
-        logger.info(f"[LTX Job {job_id}] Running story_to_video with LTX-2…")
+        # Step 4: Run scenes_to_video (LTX-2 audio-conditioned pipeline)
+        logger.info(f"[LTX Job {job_id}] Running scenes_to_video with LTX-2…")
 
         debug_prefix = None
         if request.enable_debug_dump:
@@ -994,16 +1124,16 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
         def progress_callback(current: int, total: int, message: str):
             logger.info(f"[LTX Job {job_id}] Progress: {current}/{total} - {message}")
 
-        result: StoryVideoResult = await story_to_video(
-            story_output=story_output,
+        result: StoryVideoResult = await scenes_to_video(
+            scenes=scenes,
+            story_title=story_title,
             ltx_config=ltx_config,
             video_params=video_params,
             output_dir=output_dir,
-            progress_callback=progress_callback,
-            style_suffix=request.style_suffix,
             segment_audio_paths=segment_audio_paths or None,
             story_template_id=request.story_template_id,
-            sd_server_url=os.environ.get("SD_SERVER_URL", "http://gx10-cbc5:1234"),
+            sd_server_url=_sd_url,
+            progress_callback=progress_callback,
             debug_minio_prefix=debug_prefix,
         )
 
@@ -1032,9 +1162,11 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                     "index": seg.index,
                     "video_path": seg.video_path,
                     "duration_seconds": seg.duration_seconds,
-                    "character_id": seg.dialog_line.character_id,
-                    "text": seg.dialog_line.text,
-                    "scene_description": seg.dialog_line.scene_description.model_dump(by_alias=True),
+                    # new pipeline fields (scene-based)
+                    "speaker_id": seg.scene.speaker_id if seg.scene else None,
+                    "spoken_line": seg.scene.spoken_line if seg.scene else None,
+                    "location": seg.scene.location if seg.scene else None,
+                    "ltx_prompt": seg.scene.ltx_prompt if seg.scene else None,
                     "minio_video_key": seg.minio_video_key,
                     "minio_audio_key": seg.minio_audio_key,
                     "minio_image_key": seg.minio_image_key,
@@ -1045,23 +1177,20 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
                 "timestamp": datetime.now().isoformat(),
                 "minio_video_key": minio_video_key,
                 "video_url": video_url,
-                "pipeline": "ltx-2",
+                "pipeline": "ltx-2-scenes",
                 "debug_minio_prefix": result.debug_minio_prefix,
                 "minio_manifest_key": result.minio_manifest_key,
                 "minio_debug_final_key": result.minio_final_video_key,
             },
-            "story_output": story_output.model_dump() if story_output else None,
+            "recurrent_locations": [loc.model_dump() for loc in locations] if pipeline_result else None,
+            "detailed_scenes": [s.model_dump() for s in scenes] if pipeline_result else None,
         }
 
-        # Job completed successfully
         await job_store.update_job(job_id, status="completed", result=result_data)
 
     except Exception as e:
-        # Job failed
         await job_store.update_job(job_id, status="failed", error=str(e))
-
         import traceback
-
         logger.error(f"LTX video generation job {job_id} failed:")
         traceback.print_exc()
 

@@ -122,7 +122,13 @@ Focus on:
 - In dialog, make scene_description specific enough to find visually matching videos
 - Each turn of a character should be small, maximum one sentence of 15 words, for a long sentence, spead the sentence into several DialogLine.
 - This is very import to create short sentences in each DialogLine.
-- Last line of the serie must have a twist."""
+- Last line of the serie must have a twist.
+
+VISUAL AND AUDIO CONTINUITY NOTES (for the video pipeline that will process this story):
+- Locations: name recurring places consistently throughout the story (e.g. always call it "the ski resort" or "the lab"). Do not invent JSON — just refer to them by name naturally.
+- Character presence: characters cannot teleport. If a character moves from one place to another, explicitly narrate the transition in the story. A character can only appear in a scene if they physically traveled there. Not every character needs to appear in every scene.
+- Each scene has one speaker who says one short line. Make it clear who is speaking each line.
+- Each scene should be visually self-contained — describe what is visible in the environment as if it will be turned into a short video clip."""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

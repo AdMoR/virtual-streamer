@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from virtual_streamer.video_generation.config import DialogLine, StoryOutput
+from virtual_streamer.agents.story_pipeline.schema import DetailedScene
 from virtual_streamer.video_generation.ltx_client import (
     WanGPLTXClient,
     LTXVideoConfig,
@@ -74,10 +75,11 @@ LOCATION_IMAGE_QUALITY_KEYWORDS = (
 class SegmentResult:
     """Result of generating a single video segment."""
     index: int
-    dialog_line: DialogLine
     video_path: str
     duration_seconds: float
     prompt_id: str
+    dialog_line: Optional[DialogLine] = None   # set by story_to_video (legacy pipeline)
+    scene: Optional[DetailedScene] = None       # set by scenes_to_video (new pipeline)
     audio_path: Optional[str] = None
     image_path: Optional[str] = None
     # MinIO keys for debug artifacts (set when debug_minio_prefix is provided)
@@ -409,7 +411,6 @@ async def generate_segment(
     index: int,
     output_dir: str,
     video_params: VideoGenerationParams,
-    style_suffix: str = "Cinematic quality, smooth motion, natural lighting.",
     audio_path: Optional[str] = None,
     image_path: Optional[str] = None,
 ) -> SegmentResult:
@@ -442,7 +443,6 @@ async def generate_segment(
     prompt = build_ltx_prompt(
         dialog_line=dialog_line,
         include_dialog_audio=True,
-        style_suffix=style_suffix,
     )
 
     # Adapt duration to TTS audio length when audio is available
@@ -512,10 +512,10 @@ async def generate_segment(
 
     return SegmentResult(
         index=index,
-        dialog_line=dialog_line,
         video_path=result.video_path,
         duration_seconds=result.duration_seconds,
         prompt_id=result.prompt_id,
+        dialog_line=dialog_line,
         audio_path=audio_path,
         image_path=image_path,
     )
@@ -815,6 +815,392 @@ async def story_to_video(
         final_video_path=final_path,
         segments=segments,
         story_title=story_output.title,
+        total_duration_seconds=total_duration,
+        debug_minio_prefix=_debug_prefix,
+        minio_final_video_key=minio_final_key,
+        minio_manifest_key=minio_manifest_key,
+    )
+
+
+# ---------------------------------------------------------------------------
+# scenes_to_video  (new LTX pipeline using DetailedScene list)
+# ---------------------------------------------------------------------------
+
+async def generate_scene_image(
+    scene: DetailedScene,
+    location: Optional[dict],
+    character_dicts: list[dict],
+    output_dir: str,
+    sd_server_url: str = "http://gx10-cbc5:1234",
+) -> Optional[str]:
+    """
+    Generate a conditioning image for one DetailedScene.
+
+    When a location with a pre-generated image_path is available:
+      - Download the location base image from MinIO
+      - Collect character identity images
+      - Run ImageEdit with all references + scene_visual_description prompt
+
+    Fallback: txt2image from scene_visual_description alone.
+    """
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+
+        prompt = scene.scene_visual_description.to_prompt()
+        negative_prompt = "text, watermark, blurry, distorted"
+
+        # Collect all reference images: location base + character identity images
+        ref_minio_paths: list[str] = []
+
+        if location and location.get("image_path"):
+            ref_minio_paths.append(location["image_path"])
+
+        for char in character_dicts:
+            for img_path in (char.get("identity_images") or [])[:1]:  # 1 ref per character
+                ref_minio_paths.append(img_path)
+
+        config = StableDiffusionCppConfig(server_url=sd_server_url)
+        async with StableDiffusionCppClient(config) as client:
+            if ref_minio_paths:
+                local_refs: list[str] = []
+                try:
+                    storage = get_storage_client()
+                    for minio_path in ref_minio_paths[:3]:  # cap at 3 references
+                        fname = os.path.basename(minio_path)
+                        local_tmp = os.path.join(output_dir, f"ref_{fname}")
+                        await storage.download_file(minio_path, local_tmp)
+                        if os.path.exists(local_tmp):
+                            local_refs.append(local_tmp)
+                except Exception as dl_err:
+                    logger.warning(f"Could not download reference images: {dl_err}")
+
+                if local_refs:
+                    result = await client.image_edit(
+                        ImageEditParams(
+                            prompt=prompt,
+                            negative_prompt=negative_prompt,
+                            image_paths=local_refs,
+                            width=1280,
+                            height=720,
+                            extra_args={"denoising_strength": 0.85},
+                        ),
+                        output_dir=output_dir,
+                    )
+                    logger.info(f"Scene conditioning image (img-edit): {result.image_path}")
+                    return result.image_path
+
+            # Fallback: txt2image
+            result = await client.txt2image(
+                Txt2ImageParams(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt + ", people, persons, characters",
+                    width=1280,
+                    height=720,
+                ),
+                output_dir=output_dir,
+            )
+            logger.info(f"Scene conditioning image (txt2img): {result.image_path}")
+            return result.image_path
+
+    except Exception as exc:
+        logger.warning(f"Scene conditioning image generation failed: {exc}")
+        return None
+
+
+async def generate_scene_segment(
+    client: WanGPLTXClient,
+    scene: DetailedScene,
+    index: int,
+    output_dir: str,
+    video_params: VideoGenerationParams,
+    audio_path: Optional[str] = None,
+    image_path: Optional[str] = None,
+) -> SegmentResult:
+    """
+    Generate one video segment for a DetailedScene.
+
+    Uses scene.ltx_prompt directly (no prompt building step).
+    Audio and image conditioning follow the same logic as generate_segment.
+    """
+    mode = "audio-conditioned i2v" if audio_path else ("i2v" if image_path else "t2v")
+    logger.info(
+        f"[scene {index}] START  mode={mode}  "
+        f"speaker={scene.speaker_id!r}  "
+        f"line={str(scene.spoken_line or '')[:60]!r}"
+    )
+
+    duration = video_params.duration_seconds
+    if audio_path:
+        if not os.path.exists(audio_path):
+            logger.warning(f"[scene {index}] Audio file not found: {audio_path} — skipping audio")
+            audio_path = None
+        else:
+            try:
+                from virtual_streamer.utils.utils import get_length
+                audio_dur = get_length(audio_path)
+                if audio_dur > 0:
+                    duration = audio_dur
+                    logger.info(f"[scene {index}] Duration adapted to audio: {duration:.2f}s")
+            except Exception as exc:
+                logger.warning(f"[scene {index}] Could not read audio length: {exc}")
+
+    frames = _frames_from_duration(duration, video_params.fps)
+
+    segment_params = VideoGenerationParams(
+        prompt=scene.ltx_prompt,
+        negative_prompt=build_negative_prompt(),
+        width=video_params.width,
+        height=video_params.height,
+        frames=frames,
+        fps=video_params.fps,
+        steps=video_params.steps,
+        cfg_scale=video_params.cfg_scale,
+        seed=video_params.seed,
+        enable_audio=audio_path is not None,
+        audio_path=audio_path,
+        image_path=image_path,
+    )
+
+    segment_dir = os.path.join(output_dir, f"scene_{index:03d}")
+    os.makedirs(segment_dir, exist_ok=True)
+
+    result = await client.generate_video(params=segment_params, output_dir=segment_dir)
+
+    logger.info(
+        f"[scene {index}] DONE  video={result.video_path}  "
+        f"duration={result.duration_seconds:.2f}s"
+    )
+
+    return SegmentResult(
+        index=index,
+        video_path=result.video_path,
+        duration_seconds=result.duration_seconds,
+        prompt_id=result.prompt_id,
+        scene=scene,
+        audio_path=audio_path,
+        image_path=image_path,
+    )
+
+
+async def scenes_to_video(
+    scenes: list[DetailedScene],
+    story_title: str = "story",
+    ltx_config: Optional[LTXVideoConfig] = None,
+    video_params: Optional[VideoGenerationParams] = None,
+    output_dir: str = "./output",
+    segment_audio_paths: Optional[Dict[int, str]] = None,
+    story_template_id: Optional[str] = None,
+    sd_server_url: Optional[str] = None,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    debug_minio_prefix: Optional[str] = None,
+) -> StoryVideoResult:
+    """
+    Convert a list of DetailedScene objects into a final concatenated video.
+
+    For each scene:
+      1. Fetch location entity + character entities from the DB (if IDs are set)
+      2. Generate a conditioning start image via Stable Diffusion:
+         - ImageEdit mode with location base image + character identity images (preferred)
+         - txt2image fallback from scene_visual_description
+      3. Generate LTX video segment using scene.ltx_prompt directly
+      4. Concatenate all segments
+
+    Audio paths (TTS pre-generated) are passed via segment_audio_paths.
+    """
+    config = ltx_config or LTXVideoConfig()
+    params = video_params or VideoGenerationParams(
+        prompt="",
+        duration_seconds=5.0,
+        width=1280,
+        height=720,
+        fps=24,
+        steps=8,
+        cfg_scale=4.0,
+    )
+    _sd_url = sd_server_url or os.environ.get("SD_SERVER_URL", "http://gx10-cbc5:1234")
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    temp_dir = output_path / "temp"
+    temp_dir.mkdir(exist_ok=True)
+
+    _debug_storage = None
+    _debug_prefix = None
+    if debug_minio_prefix:
+        try:
+            _debug_storage = get_storage_client()
+            _debug_prefix = f"debug/{debug_minio_prefix}"
+            logger.info(f"[debug] MinIO artifacts at: {_debug_prefix}/")
+        except Exception as exc:
+            logger.warning(f"[debug] Could not initialize MinIO client: {exc}")
+
+    _manifest: dict = {
+        "title": story_title,
+        "story_template_id": story_template_id,
+        "debug_prefix": _debug_prefix,
+        "total_scenes": len(scenes),
+        "segments": [],
+        "failed_indices": [],
+        "final_video_key": None,
+    }
+
+    # Pre-load location and character entities from DB
+    location_map: Dict[str, dict] = {}
+    character_map: Dict[str, dict] = {}
+
+    if story_template_id:
+        from virtual_streamer.utils.entity_repository import get_entity_repository
+        repo = get_entity_repository()
+
+        loc_rows = await repo.list_locations_by_template(story_template_id)
+        location_map = {loc["location_id"]: loc for loc in loc_rows}
+
+        all_char_ids: set[str] = set()
+        for scene in scenes:
+            if scene.character_on_screen:
+                all_char_ids.update(scene.character_on_screen)
+            if scene.speaker_id:
+                all_char_ids.add(scene.speaker_id)
+
+        for char_id in all_char_ids:
+            char = await repo.get_character(char_id)
+            if char:
+                character_map[char_id] = char
+
+        logger.info(
+            f"scenes_to_video: loaded {len(location_map)} location(s) "
+            f"and {len(character_map)} character(s)"
+        )
+
+    audio_map = segment_audio_paths or {}
+    segments: List[SegmentResult] = []
+    failed_indices: List[int] = []
+    total = len(scenes)
+
+    async with WanGPLTXClient(config) as client:
+        for i, scene in enumerate(scenes):
+            if progress_callback:
+                progress_callback(i, total, f"Generating scene {i + 1}/{total}")
+
+            # Generate conditioning image
+            image_dir = str(output_path / f"images_{i:03d}")
+            location = location_map.get(scene.location) if scene.location else None
+            char_dicts = [
+                character_map[cid]
+                for cid in (scene.character_on_screen or [])
+                if cid in character_map
+            ]
+
+            conditioning_image_path = await generate_scene_image(
+                scene=scene,
+                location=location,
+                character_dicts=char_dicts,
+                output_dir=image_dir,
+                sd_server_url=_sd_url,
+            )
+
+            try:
+                segment = await generate_scene_segment(
+                    client=client,
+                    scene=scene,
+                    index=i,
+                    output_dir=str(output_path),
+                    video_params=params,
+                    audio_path=audio_map.get(i),
+                    image_path=conditioning_image_path,
+                )
+                segments.append(segment)
+
+                if _debug_storage and _debug_prefix:
+                    seg_key_video = f"{_debug_prefix}/segments/scene_{i:03d}.mp4"
+                    seg_key_audio = f"{_debug_prefix}/audio/scene_{i:03d}.wav" if segment.audio_path else None
+                    seg_key_image = f"{_debug_prefix}/images/scene_{i:03d}.png" if segment.image_path else None
+
+                    segment.minio_video_key = await _upload_debug_artifact(
+                        _debug_storage, segment.video_path, seg_key_video, f"scene_{i:03d} video"
+                    )
+                    if seg_key_audio and segment.audio_path:
+                        segment.minio_audio_key = await _upload_debug_artifact(
+                            _debug_storage, segment.audio_path, seg_key_audio, f"scene_{i:03d} audio"
+                        )
+                    if seg_key_image and segment.image_path:
+                        segment.minio_image_key = await _upload_debug_artifact(
+                            _debug_storage, segment.image_path, seg_key_image, f"scene_{i:03d} image"
+                        )
+
+                    _manifest["segments"].append({
+                        "index": i,
+                        "speaker_id": scene.speaker_id,
+                        "spoken_line": scene.spoken_line,
+                        "location": scene.location,
+                        "character_on_screen": scene.character_on_screen,
+                        "ltx_prompt": scene.ltx_prompt,
+                        "duration_seconds": segment.duration_seconds,
+                        "failed": False,
+                        "minio_video_key": segment.minio_video_key,
+                        "minio_audio_key": segment.minio_audio_key,
+                        "minio_image_key": segment.minio_image_key,
+                    })
+                    await _upload_debug_manifest(_debug_storage, f"{_debug_prefix}/manifest.json", _manifest)
+
+            except Exception as exc:
+                failed_indices.append(i)
+                logger.warning(
+                    f"Scene {i + 1}/{total} FAILED "
+                    f"(speaker={scene.speaker_id!r}): {exc}",
+                    exc_info=True,
+                )
+                if _debug_storage and _debug_prefix:
+                    _manifest["failed_indices"].append(i)
+                    _manifest["segments"].append({
+                        "index": i,
+                        "speaker_id": scene.speaker_id,
+                        "spoken_line": scene.spoken_line,
+                        "failed": True,
+                        "error": str(exc),
+                    })
+                    await _upload_debug_manifest(_debug_storage, f"{_debug_prefix}/manifest.json", _manifest)
+
+    if not segments:
+        raise RuntimeError(
+            f"All {total} scene(s) failed — cannot produce a video."
+        )
+
+    if progress_callback:
+        progress_callback(total, total, "Concatenating scenes…")
+
+    video_paths = [seg.video_path for seg in segments]
+    safe_title = "".join(c if c.isalnum() or c in "-_" else "_" for c in story_title)[:50].strip()
+    final_filename = f"{safe_title}_{uuid.uuid4().hex[:8]}.mp4"
+    final_path = str(output_path / final_filename)
+
+    concatenate_videos(video_paths=video_paths, output_path=final_path, temp_dir=str(temp_dir))
+    total_duration = sum(seg.duration_seconds for seg in segments)
+
+    minio_final_key: Optional[str] = None
+    minio_manifest_key: Optional[str] = None
+    if _debug_storage and _debug_prefix:
+        minio_final_key = await _upload_debug_artifact(
+            _debug_storage, final_path, f"{_debug_prefix}/final.mp4", "final video"
+        )
+        _manifest["final_video_key"] = minio_final_key
+        _manifest["total_duration_seconds"] = total_duration
+        minio_manifest_key = await _upload_debug_manifest(
+            _debug_storage, f"{_debug_prefix}/manifest.json", _manifest
+        )
+
+    if progress_callback:
+        progress_callback(total, total, "Complete!")
+
+    logger.info(
+        f"scenes_to_video DONE  final={final_path}  "
+        f"scenes={len(segments)}/{total}  duration={total_duration:.1f}s"
+    )
+
+    return StoryVideoResult(
+        final_video_path=final_path,
+        segments=segments,
+        story_title=story_title,
         total_duration_seconds=total_duration,
         debug_minio_prefix=_debug_prefix,
         minio_final_video_key=minio_final_key,
