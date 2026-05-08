@@ -171,6 +171,24 @@ class LTXConfig(BaseModel):
         description="Style suffix appended to prompts",
     )
 
+    def to_video_params(self, prompt: str = "", **overrides):
+        """Build VideoGenerationParams from this LTXConfig's video settings."""
+        from virtual_streamer.video_generation.ltx_client import (
+            VideoGenerationParams,
+            DEFAULT_NEGATIVE_PROMPT,
+        )
+        return VideoGenerationParams(
+            prompt=prompt,
+            negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+            width=self.width,
+            height=self.height,
+            duration_seconds=self.duration_seconds,
+            fps=self.fps,
+            steps=self.steps,
+            cfg_scale=self.cfg_scale,
+            **overrides,
+        )
+
 
 class VideoGenerationConfig(BaseSettings):
     """Main configuration for video generation workflow.

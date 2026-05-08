@@ -146,7 +146,7 @@
             gap: 0.5rem;
         }
         .drop-preview.visible { display: flex; }
-        .drop-preview img, .drop-preview audio {
+        .drop-preview img, .drop-preview audio, .drop-preview video {
             max-width: 100%;
             max-height: 120px;
             border-radius: 6px;
@@ -301,9 +301,38 @@
             <textarea id="negative-prompt" rows="2">worst quality, inconsistent motion, blurry, jittery, distorted</textarea>
         </div>
 
+        <!-- Source video input (v2v) -->
+        <div>
+            <div class="section-label" style="margin-bottom:0.75rem;">Source video <span style="font-weight:400;text-transform:none;font-size:0.72rem;">(optional — enables v2v, clears image)</span></div>
+            <div class="drop-zone" id="video-drop">
+                <input type="file" id="video-file" accept="video/*">
+                <div class="drop-icon">🎞️</div>
+                <div>Drop video or click to browse</div>
+            </div>
+            <div class="drop-preview" id="video-preview">
+                <video id="video-thumb" src="" muted playsinline controls></video>
+                <span class="drop-clear" id="video-clear">Remove</span>
+            </div>
+        </div>
+
+        <!-- V2V settings (shown when source video is loaded) -->
+        <div id="v2v-settings" style="display:none;">
+            <div class="section-label" style="margin-bottom:0.75rem;">Video-to-video</div>
+            <div class="row">
+                <div class="field">
+                    <label>Denoising strength</label>
+                    <input type="number" id="denoising-strength" value="0.7" min="0.0" max="1.0" step="0.05">
+                </div>
+                <div class="field">
+                    <label>Input video strength</label>
+                    <input type="number" id="input-video-strength" value="0.85" min="0.0" max="1.0" step="0.05">
+                </div>
+            </div>
+        </div>
+
         <!-- Image input -->
         <div>
-            <div class="section-label" style="margin-bottom:0.75rem;">Conditioning image <span style="font-weight:400;text-transform:none;font-size:0.72rem;">(optional — enables i2v)</span></div>
+            <div class="section-label" style="margin-bottom:0.75rem;">Conditioning image <span style="font-weight:400;text-transform:none;font-size:0.72rem;">(optional — enables i2v, clears video)</span></div>
             <div class="drop-zone" id="image-drop">
                 <input type="file" id="image-file" accept="image/*">
                 <div class="drop-icon">🖼️</div>
@@ -516,9 +545,13 @@
     const BTN_DL       = document.getElementById('btn-download');
     const ERR_TOAST    = document.getElementById('error-toast');
 
+    const DENOISING_STR   = document.getElementById('denoising-strength');
+    const INPUT_VID_STR   = document.getElementById('input-video-strength');
+
     // ── State ──────────────────────────────────────────────────────
     let imageFile = null;
     let audioFile = null;
+    let videoFile = null;
     let pollTimer = null;
 
     // ── Health check ───────────────────────────────────────────────
@@ -538,6 +571,40 @@
     setInterval(checkHealth, 20000);
     API_BASE.addEventListener('change', checkHealth);
 
+    // ── Source video drop zone (v2v) ──────────────────────────────
+    const videoDropEl   = document.getElementById('video-drop');
+    const videoFileEl   = document.getElementById('video-file');
+    const videoPreview  = document.getElementById('video-preview');
+    const videoThumb    = document.getElementById('video-thumb');
+    const videoClear    = document.getElementById('video-clear');
+    const v2vSettings   = document.getElementById('v2v-settings');
+
+    function loadSourceVideo(file) {
+        if (!file.type.startsWith('video/')) return;
+        videoFile = file;
+        videoThumb.src = URL.createObjectURL(file);
+        videoPreview.classList.add('visible');
+        v2vSettings.style.display = 'block';
+        // v2v is mutually exclusive with image conditioning
+        clearImage();
+    }
+
+    function clearSourceVideo() {
+        videoFile = null; videoThumb.src = '';
+        videoPreview.classList.remove('visible');
+        v2vSettings.style.display = 'none';
+        videoFileEl.value = '';
+    }
+
+    videoFileEl.addEventListener('change', e => e.target.files[0] && loadSourceVideo(e.target.files[0]));
+    videoDropEl.addEventListener('dragover', e => { e.preventDefault(); videoDropEl.classList.add('drag-over'); });
+    videoDropEl.addEventListener('dragleave', () => videoDropEl.classList.remove('drag-over'));
+    videoDropEl.addEventListener('drop', e => {
+        e.preventDefault(); videoDropEl.classList.remove('drag-over');
+        e.dataTransfer.files[0] && loadSourceVideo(e.dataTransfer.files[0]);
+    });
+    videoClear.addEventListener('click', clearSourceVideo);
+
     // ── Image drop zone ───────────────────────────────────────────
     const imageDropEl  = document.getElementById('image-drop');
     const imageFileEl  = document.getElementById('image-file');
@@ -550,6 +617,13 @@
         imageFile = file;
         imageThumb.src = URL.createObjectURL(file);
         imagePreview.classList.add('visible');
+        // i2v is mutually exclusive with v2v
+        clearSourceVideo();
+    }
+
+    function clearImage() {
+        imageFile = null; imageThumb.src = '';
+        imagePreview.classList.remove('visible'); imageFileEl.value = '';
     }
 
     imageFileEl.addEventListener('change', e => e.target.files[0] && loadImage(e.target.files[0]));
@@ -559,10 +633,7 @@
         e.preventDefault(); imageDropEl.classList.remove('drag-over');
         e.dataTransfer.files[0] && loadImage(e.dataTransfer.files[0]);
     });
-    imageClear.addEventListener('click', () => {
-        imageFile = null; imageThumb.src = '';
-        imagePreview.classList.remove('visible'); imageFileEl.value = '';
-    });
+    imageClear.addEventListener('click', clearImage);
 
     // ── Audio drop zone ────────────────────────────────────────────
     const audioDropEl   = document.getElementById('audio-drop');
@@ -686,9 +757,12 @@
         fd.append('guidance_scale',   CFG_SCALE.value);
         fd.append('flow_shift',       FLOW_SHIFT.value);
         fd.append('seed',             SEED.value);
-        fd.append('audio_scale',      AUDIO_SCALE.value);
-        fd.append('audio_guidance',   AUDIO_GUID.value);
-        if (imageFile) fd.append('image', imageFile, imageFile.name);
+        fd.append('audio_scale',           AUDIO_SCALE.value);
+        fd.append('audio_guidance',        AUDIO_GUID.value);
+        fd.append('denoising_strength',    DENOISING_STR.value);
+        fd.append('input_video_strength',  INPUT_VID_STR.value);
+        if (videoFile) fd.append('video', videoFile, videoFile.name);
+        if (imageFile && !videoFile) fd.append('image', imageFile, imageFile.name);
         if (audioFile) fd.append('audio', audioFile, audioFile.name);
 
         try {

@@ -2,7 +2,7 @@
 LTX Video Client (WanGP REST API)
 
 Client for generating videos via a remote WanGP server (wangp_server.py).
-Supports text-to-video, image-to-video, and audio-conditioned i2v.
+Supports text-to-video, image-to-video, audio-conditioned i2v, and video-to-video.
 
 Usage:
     from virtual_streamer.video_generation.ltx_client import (
@@ -17,6 +17,15 @@ Usage:
     async with WanGPLTXClient(LTXVideoConfig()) as client:
         result = await client.generate_video(params, output_dir="./output")
         print(result.video_path)
+
+    # Video-to-video: edit an existing clip
+    params = VideoGenerationParams(
+        prompt="same scene but at night, neon lights",
+        video_path="path/to/source.mp4",
+        denoising_strength=0.7,
+    )
+    async with WanGPLTXClient(LTXVideoConfig()) as client:
+        result = await client.generate_video(params, output_dir="./output")
 """
 
 from __future__ import annotations
@@ -35,6 +44,8 @@ from pydantic import BaseModel, Field, model_validator
 # Defaults
 # =============================================================================
 
+DEFAULT_NEGATIVE_PROMPT = "worst quality, inconsistent motion, blurry, jittery, distorted"
+
 _DEFAULTS = {
     "model_type":      "ltx2_22B_distilled",
     "resolution":      "1280x720",
@@ -46,7 +57,7 @@ _DEFAULTS = {
     "fps":             "24",
     "audio_scale":     1.0,
     "audio_guidance":  4.5,
-    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+    "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
 }
 
 _DEFAULTS_QUALITY = {
@@ -60,7 +71,7 @@ _DEFAULTS_QUALITY = {
     "fps":             "24",
     "audio_scale":     1.0,
     "audio_guidance":  4.5,
-    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+    "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
 }
 
 
@@ -75,8 +86,16 @@ _DEFAULTS_HIGH_QUALITY = {
     "fps":             "50",
     "audio_scale":     1.0,
     "audio_guidance":  4.5,
-    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+    "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
 }
+
+# Union-control IC-LoRA filename by model — required for DVG/PVG/OVG/EVG v2v modes.
+_V2V_UNION_CONTROL_LORA: dict[str, str] = {
+    "ltx2_22B_distilled":     "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+    "ltx2_22B_distilled_1_1": "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+    "ltx2_distilled":         "ltx-2-19b-ic-lora-union-control-ref0.5.safetensors",
+}
+_DEFAULT_V2V_LORA = "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
 
 # Named presets exposed to callers (API, UI, etc.)
 VIDEO_PRESETS: dict[str, dict] = {
@@ -147,6 +166,32 @@ class VideoGenerationParams(BaseModel):
             "Local path to a conditioning audio file (WAV/MP3/FLAC). "
             "When set the audio drives video motion. "
             "Only distilled LTX models support this."
+        ),
+    )
+
+    # --- V2V inputs ---
+    video_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Local path to a source video (MP4/WebM). "
+            "When set the generation runs in video-to-video mode. "
+            "Mutually exclusive with image_path."
+        ),
+    )
+    video_prompt_type: str = Field(
+        default="DVG",
+        description=(
+            "V2V preprocessing mode. 'DVG'=depth map, 'PVG'=pose, 'OVG'=pose+align, "
+            "'EVG'=Canny edges (all use union-control LoRA). 'VG'=raw (task-specific LoRA)."
+        ),
+    )
+    denoising_strength: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "V2V Control Video Strength: higher = output closer to source (0.9–1.0 subtle, "
+            "0.6–0.8 moderate, 0.3–0.5 light)."
         ),
     )
 
@@ -223,6 +268,17 @@ class VideoGenerationParams(BaseModel):
     @property
     def frame_count(self) -> int:
         return self.effective_frames
+
+    @classmethod
+    def from_preset(
+        cls,
+        preset_name: str = "fast",
+        prompt: str = "",
+        **overrides,
+    ) -> "VideoGenerationParams":
+        """Create VideoGenerationParams from a named quality preset ('fast', 'quality', 'high_quality')."""
+        preset = VIDEO_PRESETS[preset_name]
+        return cls(prompt=prompt, **preset, **overrides)
 
 
 # =============================================================================
@@ -327,6 +383,7 @@ class WanGPLTXClient(LTXClientInterface):
         params: VideoGenerationParams,
         image_file_id: Optional[str],
         audio_file_id: Optional[str],
+        video_file_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         settings: Dict[str, Any] = {
             "model_type":           params.model_type,
@@ -341,7 +398,16 @@ class WanGPLTXClient(LTXClientInterface):
             "force_fps":            params.effective_fps,
         }
 
-        if image_file_id is not None:
+        if video_file_id is not None:
+            settings["video_guide"] = f"file:{video_file_id}"
+            settings["video_prompt_type"] = params.video_prompt_type
+            settings["denoising_strength"] = params.denoising_strength
+            # DVG/PVG/OVG/EVG all require the union-control IC-LoRA; VG needs a task-specific one.
+            if params.video_prompt_type != "VG":
+                lora = _V2V_UNION_CONTROL_LORA.get(params.model_type, _DEFAULT_V2V_LORA)
+                settings["activated_loras"] = [lora]
+                settings["loras_multipliers"] = "1"
+        elif image_file_id is not None:
             settings["image_start"] = f"file:{image_file_id}"
             settings["image_prompt_type"] = "S"
 
@@ -455,7 +521,9 @@ class WanGPLTXClient(LTXClientInterface):
         """Execute the full REST generation pipeline synchronously. Returns local paths."""
         base = self.config.server_url.rstrip("/")
 
-        if image_ref := params.image_path:
+        if params.video_path:
+            mode_label = "v2v"
+        elif params.image_path:
             mode_label = "audio-conditioned i2v" if params.audio_path else "i2v"
         else:
             mode_label = "t2v"
@@ -465,17 +533,22 @@ class WanGPLTXClient(LTXClientInterface):
 
         image_file_id: Optional[str] = None
         audio_file_id: Optional[str] = None
+        video_file_id: Optional[str] = None
 
-        if params.image_path:
-            print(f"[2a] Uploading start image ({mode_label})")
-            image_file_id = self._upload_file(params.image_path)
+        if params.video_path:
+            print(f"[2] Uploading source video ({mode_label})")
+            video_file_id = self._upload_file(params.video_path)
+        else:
+            if params.image_path:
+                print(f"[2a] Uploading start image ({mode_label})")
+                image_file_id = self._upload_file(params.image_path)
 
-        if params.audio_path:
-            print("[2b] Uploading audio guide")
-            audio_file_id = self._upload_file(params.audio_path)
+            if params.audio_path:
+                print("[2b] Uploading audio guide")
+                audio_file_id = self._upload_file(params.audio_path)
 
         print(f"[3] Submitting job  model={params.model_type}  mode={mode_label}")
-        settings = self._build_settings(params, image_file_id, audio_file_id)
+        settings = self._build_settings(params, image_file_id, audio_file_id, video_file_id)
         job_id, _ = self._submit_job(settings)
 
         print("[4] Polling job status …")
@@ -516,6 +589,7 @@ class WanGPLTXClient(LTXClientInterface):
                 - Text-to-video: only ``prompt`` required.
                 - Image-to-video: set ``image_path``.
                 - Audio-conditioned i2v: set both ``image_path`` and ``audio_path``.
+                - Video-to-video: set ``video_path`` (mutually exclusive with ``image_path``).
             output_dir: Local directory to save the downloaded video.
             progress_callback: Optional ``callback(fraction, message)``.
 
@@ -558,22 +632,30 @@ class WanGPLTXClient(LTXClientInterface):
 
 async def generate_video(
     prompt: str,
-    image_path: str,
+    image_path: Optional[str] = None,
     output_dir: str = "./output",
     server_url: str = "http://localhost:8082",
     audio_path: Optional[str] = None,
+    video_path: Optional[str] = None,
     **kwargs,
 ) -> VideoGenerationResult:
     """
     Generate a video with a single async call.
 
+    Modes (determined by which path arguments are set):
+        - Text-to-video: only ``prompt``.
+        - Image-to-video: ``image_path`` (+ optional ``audio_path``).
+        - Video-to-video: ``video_path`` (``image_path`` must be None).
+
     Args:
         prompt: Text prompt describing the video content.
-        image_path: Local path to the start image.
+        image_path: Local path to the start image (i2v). Mutually exclusive with video_path.
         output_dir: Directory to save the output video.
         server_url: URL of the remote WanGP REST server.
         audio_path: Optional conditioning audio file. Enables audio-driven i2v.
-        **kwargs: Additional :class:`VideoGenerationParams` fields.
+        video_path: Local path to the source video (v2v). Mutually exclusive with image_path.
+        **kwargs: Additional :class:`VideoGenerationParams` fields
+                  (e.g. ``denoising_strength``, ``video_prompt_type``).
 
     Returns:
         :class:`VideoGenerationResult`
@@ -583,6 +665,7 @@ async def generate_video(
         prompt=prompt,
         image_path=image_path,
         audio_path=audio_path,
+        video_path=video_path,
         **kwargs,
     )
     async with WanGPLTXClient(config) as client:

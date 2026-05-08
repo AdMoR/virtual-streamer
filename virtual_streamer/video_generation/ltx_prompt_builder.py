@@ -7,6 +7,7 @@ Combines scene description with dialog text to create coherent video+audio promp
 
 from typing import Optional
 from virtual_streamer.video_generation.config import DialogLine, StoryOutput
+from virtual_streamer.video_generation.ltx_client import DEFAULT_NEGATIVE_PROMPT
 
 
 def build_ltx_prompt(
@@ -112,18 +113,8 @@ def build_ltx_prompt_detailed(
 
 
 def build_negative_prompt() -> str:
-    """
-    Build a standard negative prompt for LTX-2 video generation.
-    
-    Returns:
-        Negative prompt string to avoid common artifacts
-    """
-    return (
-        "blurry, low quality, still frame, static, frozen, "
-        "watermark, overlay, titles, subtitles, text on screen, "
-        "distorted face, deformed hands, isolated hands, artifacts, glitches, "
-        "inconsistent lighting"
-    )
+    """Return the standard negative prompt for LTX video generation."""
+    return DEFAULT_NEGATIVE_PROMPT
 
 
 def build_prompts_from_story(

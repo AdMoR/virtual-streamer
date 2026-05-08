@@ -76,6 +76,9 @@ from .ltx_client import (
     # User-facing models
     VideoGenerationParams,
     VideoGenerationResult,
+    # Presets and defaults
+    VIDEO_PRESETS,
+    DEFAULT_NEGATIVE_PROMPT,
     # Convenience function
     generate_video,
 )
@@ -139,6 +142,8 @@ __all__ = [
     "LTXVideoConfig",
     "VideoGenerationParams",
     "VideoGenerationResult",
+    "VIDEO_PRESETS",
+    "DEFAULT_NEGATIVE_PROMPT",
     "generate_video",
     # LTX prompt builder
     "build_ltx_prompt",

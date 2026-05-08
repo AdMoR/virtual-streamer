@@ -81,8 +81,8 @@ from virtual_streamer.video_generation.ltx_client import (
     LTXVideoConfig,
     VideoGenerationParams,
     VIDEO_PRESETS,
+    DEFAULT_NEGATIVE_PROMPT,
 )
-from virtual_streamer.video_generation.ltx_prompt_builder import build_negative_prompt
 from virtual_streamer.video_generation.story_to_video import (
     story_to_video,
     scenes_to_video,
@@ -388,16 +388,7 @@ async def generate_ltx_fallback_video(
 
     # Build video generation params from scene description
     prompt = f"{scene_description} {ltx_config.style_suffix}"
-    params = VideoGenerationParams(
-        prompt=prompt,
-        negative_prompt=build_negative_prompt(),
-        width=ltx_config.width,
-        height=ltx_config.height,
-        duration_seconds=ltx_config.duration_seconds,
-        fps=ltx_config.fps,
-        steps=ltx_config.steps,
-        cfg_scale=ltx_config.cfg_scale,
-    )
+    params = ltx_config.to_video_params(prompt=prompt)
 
     # Generate video
     segment_dir = os.path.join(output_dir, f"ltx_segment_{segment_index:03d}")
@@ -675,6 +666,22 @@ class LTXVideoGenerationRequest(BaseModel):
     # Debug: upload intermediate artifacts (segment videos, audio, images,
     # manifest) to MinIO under debug/ltx/{story_template_id}/{job_id}/
     enable_debug_dump: bool = True
+
+    def to_video_params(self, prompt: str = "", **overrides) -> VideoGenerationParams:
+        """Build base VideoGenerationParams from this request's video_* fields."""
+        return VideoGenerationParams(
+            prompt=prompt,
+            negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+            width=self.video_width,
+            height=self.video_height,
+            duration_seconds=self.video_duration_seconds,
+            fps=self.video_fps,
+            steps=self.video_steps,
+            cfg_scale=self.video_cfg_scale,
+            seed=self.video_seed,
+            enable_audio=self.enable_audio,
+            **overrides,
+        )
 
 
 class LTXVideoGenerationResponse(BaseModel):
@@ -995,17 +1002,7 @@ async def _run_ltx_video_generation(job_id: str, request: LTXVideoGenerationRequ
         )
 
         # Build video generation parameters
-        video_params = VideoGenerationParams(
-            prompt="",  # Will be set per segment
-            width=request.video_width,
-            height=request.video_height,
-            duration_seconds=request.video_duration_seconds,
-            fps=request.video_fps,
-            steps=request.video_steps,
-            cfg_scale=request.video_cfg_scale,
-            seed=request.video_seed,
-            enable_audio=request.enable_audio,
-        )
+        video_params = request.to_video_params()
 
         output_dir = request.output_dir or f"./output/ltx_{job_id}"
 
@@ -1495,6 +1492,7 @@ class _SingleClipJob:
         negative_prompt: str,
         image_bytes: Optional[bytes],
         audio_bytes: Optional[bytes],
+        video_bytes: Optional[bytes],
         wangp_url: str,
         wangp_timeout: float,
         model_type: str,
@@ -1507,23 +1505,28 @@ class _SingleClipJob:
         seed: int,
         audio_scale: float,
         audio_guidance: float,
+        denoising_strength: float,
+        video_prompt_type: str,
     ):
-        self.prompt           = prompt
-        self.negative_prompt  = negative_prompt
-        self.image_bytes      = image_bytes
-        self.audio_bytes      = audio_bytes
-        self.wangp_url        = wangp_url
-        self.wangp_timeout    = wangp_timeout
-        self.model_type       = model_type
-        self.resolution       = resolution
-        self.duration_seconds = duration_seconds
-        self.fps              = fps
-        self.steps            = steps
-        self.guidance_scale   = guidance_scale
-        self.flow_shift       = flow_shift
-        self.seed             = seed
-        self.audio_scale      = audio_scale
-        self.audio_guidance   = audio_guidance
+        self.prompt             = prompt
+        self.negative_prompt    = negative_prompt
+        self.image_bytes        = image_bytes
+        self.audio_bytes        = audio_bytes
+        self.video_bytes        = video_bytes
+        self.wangp_url          = wangp_url
+        self.wangp_timeout      = wangp_timeout
+        self.model_type         = model_type
+        self.resolution         = resolution
+        self.duration_seconds   = duration_seconds
+        self.fps                = fps
+        self.steps              = steps
+        self.guidance_scale     = guidance_scale
+        self.flow_shift         = flow_shift
+        self.seed               = seed
+        self.audio_scale        = audio_scale
+        self.audio_guidance     = audio_guidance
+        self.denoising_strength = denoising_strength
+        self.video_prompt_type  = video_prompt_type
 
 
 async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
@@ -1535,8 +1538,14 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             image_path: Optional[str] = None
             audio_path: Optional[str] = None
+            video_path: Optional[str] = None
 
-            if job.image_bytes:
+            if job.video_bytes:
+                video_path = os.path.join(tmpdir, "input_video.mp4")
+                with open(video_path, "wb") as fh:
+                    fh.write(job.video_bytes)
+
+            if job.image_bytes and not job.video_bytes:
                 image_path = os.path.join(tmpdir, "input_image.png")
                 with open(image_path, "wb") as fh:
                     fh.write(job.image_bytes)
@@ -1555,6 +1564,7 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
                 negative_prompt=job.negative_prompt,
                 image_path=image_path,
                 audio_path=audio_path,
+                video_path=video_path,
                 model_type=job.model_type,
                 resolution=job.resolution,
                 duration_seconds=job.duration_seconds,
@@ -1565,6 +1575,8 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
                 seed=job.seed,
                 audio_scale=job.audio_scale,
                 audio_guidance=job.audio_guidance,
+                denoising_strength=job.denoising_strength,
+                video_prompt_type=job.video_prompt_type,
             )
 
             output_dir = os.path.join(tmpdir, "output")
@@ -1596,7 +1608,7 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
 async def generate_single_clip(
     background_tasks: BackgroundTasks,
     prompt:           str          = Form(...),
-    negative_prompt:  str          = Form("worst quality, inconsistent motion, blurry, jittery, distorted"),
+    negative_prompt:  str          = Form(DEFAULT_NEGATIVE_PROMPT),
     wangp_url:        str          = Form("http://gx10-cbc5:8082"),
     wangp_timeout:    float        = Form(600.0),
     quality_preset:   Optional[str] = Form(None, description="Named preset: 'fast', 'quality', 'high_quality'. Overrides model_type/steps/fps defaults when set."),
@@ -1608,10 +1620,13 @@ async def generate_single_clip(
     guidance_scale:   float        = Form(3.0),
     flow_shift:       float        = Form(3.0),
     seed:             int          = Form(-1),
-    audio_scale:      float        = Form(1.0),
-    audio_guidance:   float        = Form(4.5),
-    image:            Optional[UploadFile] = File(default=None),
-    audio:            Optional[UploadFile] = File(default=None),
+    audio_scale:        float        = Form(1.0),
+    audio_guidance:     float        = Form(4.5),
+    denoising_strength: float        = Form(0.7),
+    video_prompt_type:  str          = Form("DVG", description="V2V preprocessing mode: DVG, PVG, OVG, EVG, or VG"),
+    image:              Optional[UploadFile] = File(default=None),
+    audio:                Optional[UploadFile] = File(default=None),
+    video:                Optional[UploadFile] = File(default=None),
 ):
     """
     Generate a single video clip from an optional conditioning image and/or audio.
@@ -1619,9 +1634,10 @@ async def generate_single_clip(
     Accepts ``multipart/form-data`` — no base64 encoding required, no body-size issues.
 
     Modes:
-    - Text-to-video:          prompt only, no image, no audio
+    - Text-to-video:          prompt only
     - Image-to-video (i2v):   prompt + image file
     - Audio-conditioned i2v:  prompt + image file + audio file
+    - Video-to-video (v2v):   prompt + video file (mutually exclusive with image)
 
     Quality presets (``quality_preset`` field): ``fast`` · ``quality`` · ``high_quality``.
     When a preset is supplied it sets model_type, steps and fps; individual fields
@@ -1651,12 +1667,14 @@ async def generate_single_clip(
 
     image_bytes = await image.read() if image else None
     audio_bytes = await audio.read() if audio else None
+    video_bytes = await video.read() if video else None
 
     job = _SingleClipJob(
         prompt=prompt,
         negative_prompt=negative_prompt,
         image_bytes=image_bytes,
         audio_bytes=audio_bytes,
+        video_bytes=video_bytes,
         wangp_url=wangp_url,
         wangp_timeout=wangp_timeout,
         model_type=model_type,
@@ -1669,6 +1687,8 @@ async def generate_single_clip(
         seed=seed,
         audio_scale=audio_scale,
         audio_guidance=audio_guidance,
+        denoising_strength=denoising_strength,
+        video_prompt_type=video_prompt_type,
     )
 
     job_store = await get_global_job_store()

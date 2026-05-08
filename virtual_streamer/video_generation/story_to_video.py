@@ -489,7 +489,7 @@ async def generate_segment(
         frames=frames,
         fps=video_params.fps,
         steps=video_params.steps,
-        cfg_scale=video_params.cfg_scale,
+        guidance_scale=video_params.guidance_scale,
         seed=video_params.seed,
         enable_audio=audio_path is not None,
         audio_path=audio_path,
@@ -567,15 +567,7 @@ async def story_to_video(
             are best-effort and never fail the pipeline.
     """
     config = ltx_config or LTXVideoConfig()
-    params = video_params or VideoGenerationParams(
-        prompt="",
-        duration_seconds=5.0,
-        width=1280,
-        height=720,
-        fps=24,
-        steps=8,
-        cfg_scale=4.0,
-    )
+    params = video_params or VideoGenerationParams.from_preset("fast", duration_seconds=5.0)
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -953,7 +945,7 @@ async def generate_scene_segment(
         frames=frames,
         fps=video_params.fps,
         steps=video_params.steps,
-        cfg_scale=video_params.cfg_scale,
+        guidance_scale=video_params.guidance_scale,
         seed=video_params.seed,
         enable_audio=audio_path is not None,
         audio_path=audio_path,
@@ -1007,15 +999,7 @@ async def scenes_to_video(
     Audio paths (TTS pre-generated) are passed via segment_audio_paths.
     """
     config = ltx_config or LTXVideoConfig()
-    params = video_params or VideoGenerationParams(
-        prompt="",
-        duration_seconds=5.0,
-        width=1280,
-        height=720,
-        fps=24,
-        steps=8,
-        cfg_scale=4.0,
-    )
+    params = video_params or VideoGenerationParams.from_preset("fast", duration_seconds=5.0)
     _sd_url = sd_server_url or os.environ.get("SD_SERVER_URL", "http://gx10-cbc5:1234")
 
     output_path = Path(output_dir)
