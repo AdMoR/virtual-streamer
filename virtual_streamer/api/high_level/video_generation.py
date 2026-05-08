@@ -1545,7 +1545,7 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
                 with open(video_path, "wb") as fh:
                     fh.write(job.video_bytes)
 
-            if job.image_bytes and not job.video_bytes:
+            if job.image_bytes:
                 image_path = os.path.join(tmpdir, "input_image.png")
                 with open(image_path, "wb") as fh:
                     fh.write(job.image_bytes)
@@ -1634,10 +1634,11 @@ async def generate_single_clip(
     Accepts ``multipart/form-data`` — no base64 encoding required, no body-size issues.
 
     Modes:
-    - Text-to-video:          prompt only
-    - Image-to-video (i2v):   prompt + image file
-    - Audio-conditioned i2v:  prompt + image file + audio file
-    - Video-to-video (v2v):   prompt + video file (mutually exclusive with image)
+    - Text-to-video:                   prompt only
+    - Image-to-video (i2v):            prompt + image file
+    - Audio-conditioned i2v:           prompt + image file + audio file
+    - Video-to-video (v2v):            prompt + video file
+    - V2V with pinned first frame:     prompt + video file + image file
 
     Quality presets (``quality_preset`` field): ``fast`` · ``quality`` · ``high_quality``.
     When a preset is supplied it sets model_type, steps and fps; individual fields

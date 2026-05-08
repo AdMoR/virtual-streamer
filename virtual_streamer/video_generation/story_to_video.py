@@ -40,6 +40,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from virtual_streamer.video_generation.config import DialogLine, StoryOutput
 from virtual_streamer.agents.story_pipeline.schema import DetailedScene
+from virtual_streamer.agents.scene_enricher.agent import run_scene_enricher
 from virtual_streamer.video_generation.ltx_client import (
     WanGPLTXClient,
     LTXVideoConfig,
@@ -984,6 +985,7 @@ async def scenes_to_video(
     sd_server_url: Optional[str] = None,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     debug_minio_prefix: Optional[str] = None,
+    reference_videos: Optional[Dict[int, str]] = None,
 ) -> StoryVideoResult:
     """
     Convert a list of DetailedScene objects into a final concatenated video.
@@ -1081,6 +1083,15 @@ async def scenes_to_video(
                 output_dir=image_dir,
                 sd_server_url=_sd_url,
             )
+
+            if reference_videos and i in reference_videos:
+                ref_path = reference_videos[i]
+                if os.path.exists(ref_path):
+                    enriched_prompt = await run_scene_enricher(ref_path, scene.ltx_prompt)
+                    scene = scene.model_copy(update={"ltx_prompt": enriched_prompt})
+                    logger.info(f"[scene {i}] ltx_prompt enriched via {ref_path!r}")
+                else:
+                    logger.warning(f"[scene {i}] Reference video not found: {ref_path!r}")
 
             try:
                 segment = await generate_scene_segment(

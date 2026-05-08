@@ -122,6 +122,53 @@ def extract_middle_frame(video_path: str) -> Optional[bytes]:
 
 
 
+def extract_evenly_spaced_frames(video_path: str, n: int = 4) -> list[bytes]:
+    """
+    Extract n evenly-spaced frames from a video and return as JPEG bytes.
+
+    Args:
+        video_path: Path to the video file
+        n: Number of frames to extract (default 4)
+
+    Returns:
+        List of JPEG bytes, length <= n. Empty list if cap fails to open.
+    """
+    if video_path.startswith("minio"):
+        from virtual_streamer.utils.minio_client import download_remote_video
+        video_path = download_remote_video(video_path)
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return []
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        return []
+
+    if n == 1:
+        indices = [total_frames // 2]
+    else:
+        indices = [int(i * (total_frames - 1) / (n - 1)) for i in range(n)]
+
+    frames: list[bytes] = []
+    try:
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_im = Image.fromarray(frame_rgb, mode="RGB")
+            buf = io.BytesIO()
+            pil_im.save(buf, format="JPEG")
+            frames.append(buf.getvalue())
+    finally:
+        cap.release()
+
+    return frames
+
+
 def combine_segment(
     video_path: str,
     audio_path: str,

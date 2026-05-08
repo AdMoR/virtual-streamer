@@ -69,6 +69,12 @@ def _get_atari_action_agent():
     return get_atari_action_agent()
 
 
+@register_agent("scene_enricher_pipeline")
+def _get_scene_enricher_pipeline():
+    from virtual_streamer.agents.scene_enricher.agent import get_scene_enricher_pipeline
+    return get_scene_enricher_pipeline()
+
+
 # Add more agents here as needed:
 # @register_agent("story_generator")
 # def _get_story_generator():

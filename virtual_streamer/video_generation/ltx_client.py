@@ -175,7 +175,7 @@ class VideoGenerationParams(BaseModel):
         description=(
             "Local path to a source video (MP4/WebM). "
             "When set the generation runs in video-to-video mode. "
-            "Mutually exclusive with image_path."
+            "Can be combined with image_path to pin the first frame via image_start."
         ),
     )
     video_prompt_type: str = Field(
@@ -407,7 +407,8 @@ class WanGPLTXClient(LTXClientInterface):
                 lora = _V2V_UNION_CONTROL_LORA.get(params.model_type, _DEFAULT_V2V_LORA)
                 settings["activated_loras"] = [lora]
                 settings["loras_multipliers"] = "1"
-        elif image_file_id is not None:
+
+        if image_file_id is not None:
             settings["image_start"] = f"file:{image_file_id}"
             settings["image_prompt_type"] = "S"
 
@@ -521,7 +522,9 @@ class WanGPLTXClient(LTXClientInterface):
         """Execute the full REST generation pipeline synchronously. Returns local paths."""
         base = self.config.server_url.rstrip("/")
 
-        if params.video_path:
+        if params.video_path and params.image_path:
+            mode_label = "v2v+image_start"
+        elif params.video_path:
             mode_label = "v2v"
         elif params.image_path:
             mode_label = "audio-conditioned i2v" if params.audio_path else "i2v"
@@ -536,16 +539,16 @@ class WanGPLTXClient(LTXClientInterface):
         video_file_id: Optional[str] = None
 
         if params.video_path:
-            print(f"[2] Uploading source video ({mode_label})")
+            print(f"[2a] Uploading source video ({mode_label})")
             video_file_id = self._upload_file(params.video_path)
-        else:
-            if params.image_path:
-                print(f"[2a] Uploading start image ({mode_label})")
-                image_file_id = self._upload_file(params.image_path)
 
-            if params.audio_path:
-                print("[2b] Uploading audio guide")
-                audio_file_id = self._upload_file(params.audio_path)
+        if params.image_path:
+            print(f"[2b] Uploading start image")
+            image_file_id = self._upload_file(params.image_path)
+
+        if params.audio_path:
+            print("[2c] Uploading audio guide")
+            audio_file_id = self._upload_file(params.audio_path)
 
         print(f"[3] Submitting job  model={params.model_type}  mode={mode_label}")
         settings = self._build_settings(params, image_file_id, audio_file_id, video_file_id)
@@ -589,7 +592,8 @@ class WanGPLTXClient(LTXClientInterface):
                 - Text-to-video: only ``prompt`` required.
                 - Image-to-video: set ``image_path``.
                 - Audio-conditioned i2v: set both ``image_path`` and ``audio_path``.
-                - Video-to-video: set ``video_path`` (mutually exclusive with ``image_path``).
+                - Video-to-video: set ``video_path``.
+                - V2V with pinned first frame: set both ``video_path`` and ``image_path``.
             output_dir: Local directory to save the downloaded video.
             progress_callback: Optional ``callback(fraction, message)``.
 
@@ -645,15 +649,16 @@ async def generate_video(
     Modes (determined by which path arguments are set):
         - Text-to-video: only ``prompt``.
         - Image-to-video: ``image_path`` (+ optional ``audio_path``).
-        - Video-to-video: ``video_path`` (``image_path`` must be None).
+        - Video-to-video: ``video_path``.
+        - V2V with pinned first frame: ``video_path`` + ``image_path``.
 
     Args:
         prompt: Text prompt describing the video content.
-        image_path: Local path to the start image (i2v). Mutually exclusive with video_path.
+        image_path: Local path to the start image. Used alone for i2v, or with video_path to pin the first frame.
         output_dir: Directory to save the output video.
         server_url: URL of the remote WanGP REST server.
         audio_path: Optional conditioning audio file. Enables audio-driven i2v.
-        video_path: Local path to the source video (v2v). Mutually exclusive with image_path.
+        video_path: Local path to the source video (v2v). Can be combined with image_path.
         **kwargs: Additional :class:`VideoGenerationParams` fields
                   (e.g. ``denoising_strength``, ``video_prompt_type``).
 

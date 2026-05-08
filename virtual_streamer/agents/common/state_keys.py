@@ -123,6 +123,22 @@ VIDEO_SEGMENTS = "video_segments"
 """List[str]: Combined video segment paths (video+audio+subtitles), one per sentence."""
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# SCENE ENRICHER STATE (used by SceneEnricherPipeline)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ENRICHMENT_VIDEO_PATH = "enrichment_video_path"
+"""str: Absolute path to the reference video for scene enrichment."""
+
+ENRICHMENT_SCENE_TEXT = "enrichment_scene_text"
+"""str: The original ltx_prompt or scene description to be enriched."""
+
+ENRICHMENT_VIDEO_DESCRIPTION = "enrichment_video_description"
+"""str: Video action description produced by VideoDescriptionAgent (step 1)."""
+
+ENRICHED_SCENE = "enriched_scene"
+"""str: Final enriched scene text produced by SceneEnrichmentAgent (step 2)."""
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # OUTPUT STATE (after FinalizeVideoCallback)
 # ═══════════════════════════════════════════════════════════════════════════════
 
