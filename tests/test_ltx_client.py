@@ -67,6 +67,26 @@ class TestVideoGenerationParams:
         params = VideoGenerationParams(prompt="test", frames=97, fps=24)
         assert abs(params.actual_duration - 97 / 24) < 0.01
 
+    def test_v2v_fields_default(self):
+        params = VideoGenerationParams(prompt="test")
+        assert params.video_path is None
+        assert params.denoising_strength == 0.7
+        assert params.video_prompt_type == "DVG"
+
+    def test_v2v_video_path_set(self):
+        params = VideoGenerationParams(prompt="test", video_path="/tmp/source.mp4")
+        assert params.video_path == "/tmp/source.mp4"
+
+    def test_v2v_denoising_strength_range(self):
+        params = VideoGenerationParams(prompt="test", video_path="/tmp/v.mp4", denoising_strength=0.4)
+        assert params.denoising_strength == 0.4
+
+    def test_v2v_denoising_strength_out_of_range(self):
+        import pytest
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            VideoGenerationParams(prompt="test", denoising_strength=1.5)
+
 
 # ---------------------------------------------------------------------------
 # _frames_from_duration (story_to_video helper)
