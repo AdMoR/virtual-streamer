@@ -1,0 +1,11 @@
+name: video_description_agent
+
+model:
+  provider: anthropic
+  model: anthropic/claude-haiku-4-5-20251001
+  parameters:
+    max_output_tokens: 1024
+
+metadata:
+  version: "1.0.0"
+  description: "Step 1 of SceneEnricherPipeline: describes the action in N video frames."

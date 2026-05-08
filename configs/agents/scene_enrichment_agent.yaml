@@ -1,0 +1,11 @@
+name: scene_enrichment_agent
+
+model:
+  provider: anthropic
+  model: anthropic/claude-haiku-4-5-20251001
+  parameters:
+    max_output_tokens: 2048
+
+metadata:
+  version: "1.0.0"
+  description: "Step 2 of SceneEnricherPipeline: enriches a scene text using video frames and description."
