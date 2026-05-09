@@ -1507,6 +1507,7 @@ class _SingleClipJob:
         audio_guidance: float,
         denoising_strength: float,
         video_prompt_type: str,
+        transition_frames: int,
     ):
         self.prompt             = prompt
         self.negative_prompt    = negative_prompt
@@ -1527,6 +1528,7 @@ class _SingleClipJob:
         self.audio_guidance     = audio_guidance
         self.denoising_strength = denoising_strength
         self.video_prompt_type  = video_prompt_type
+        self.transition_frames  = transition_frames
 
 
 async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
@@ -1577,6 +1579,7 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
                 audio_guidance=job.audio_guidance,
                 denoising_strength=job.denoising_strength,
                 video_prompt_type=job.video_prompt_type,
+                transition_frames=job.transition_frames,
             )
 
             output_dir = os.path.join(tmpdir, "output")
@@ -1624,6 +1627,7 @@ async def generate_single_clip(
     audio_guidance:     float        = Form(4.5),
     denoising_strength: float        = Form(0.7),
     video_prompt_type:  str          = Form("DVG", description="V2V preprocessing mode: DVG, PVG, OVG, EVG, or VG"),
+    transition_frames:  int          = Form(0, description="Smoothing frames between image_start and video_guide (0=off, 8/16/24). Only applied when both video and image are provided."),
     image:              Optional[UploadFile] = File(default=None),
     audio:                Optional[UploadFile] = File(default=None),
     video:                Optional[UploadFile] = File(default=None),
@@ -1690,6 +1694,7 @@ async def generate_single_clip(
         audio_guidance=audio_guidance,
         denoising_strength=denoising_strength,
         video_prompt_type=video_prompt_type,
+        transition_frames=transition_frames,
     )
 
     job_store = await get_global_job_store()

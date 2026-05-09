@@ -121,7 +121,7 @@ class LTXVideoConfig(BaseModel):
         description="HTTP timeout in seconds for uploads and downloads",
     )
     stream_timeout: float = Field(
-        default=1800.0,
+        default=12*3600.0,
         description="Timeout in seconds for the SSE event stream",
     )
     api_key: Optional[str] = Field(
@@ -192,6 +192,18 @@ class VideoGenerationParams(BaseModel):
         description=(
             "V2V Control Video Strength: higher = output closer to source (0.9–1.0 subtle, "
             "0.6–0.8 moderate, 0.3–0.5 light)."
+        ),
+    )
+    transition_frames: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Soften the hard cut between image_start (frame 0) and video_guide. "
+            "Blanks the first N guide frames so the model generates freely from image_start "
+            "before guide conditioning takes over at frame N+1. "
+            "0=disabled, 8=minimal, 16=recommended, 24=strong. "
+            "Only applied when both video_path and image_path are set. "
+            "Not supported for model_type='ltxv_13B'."
         ),
     )
 
@@ -411,6 +423,12 @@ class WanGPLTXClient(LTXClientInterface):
         if image_file_id is not None:
             settings["image_start"] = f"file:{image_file_id}"
             settings["image_prompt_type"] = "S"
+            if (
+                video_file_id is not None
+                and params.transition_frames > 0
+                and params.model_type != "ltxv_13B"
+            ):
+                settings["transition_frames"] = params.transition_frames
 
         if audio_file_id is not None:
             settings["audio_guide"] = f"file:{audio_file_id}"
@@ -441,7 +459,7 @@ class WanGPLTXClient(LTXClientInterface):
         self,
         job_id: str,
         progress_callback: Optional[Callable[[float, str], None]],
-        poll_interval: float = 2.0,
+        poll_interval: float = 5.0,
     ) -> List[str]:
         """Poll GET /jobs/{job_id} until the job is done. Returns list of output URLs."""
         url = f"{self.config.server_url.rstrip('/')}/jobs/{job_id}"
