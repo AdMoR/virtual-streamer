@@ -23,6 +23,7 @@ from virtual_streamer.video_generation.ltx_client import (
     VideoGenerationParams,
     VideoGenerationResult,
 )
+from virtual_streamer.video_generation.scene_input import SceneInput, StoryInput
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +100,37 @@ def sample_video_params() -> VideoGenerationParams:
 @pytest.fixture
 def sample_ltx_config() -> LTXVideoConfig:
     return LTXVideoConfig(server_url="http://mock-server:8082")
+
+
+@pytest.fixture
+def sample_scene_input() -> SceneInput:
+    return SceneInput(
+        scene_index=0,
+        ltx_prompt="A scientist in a lab explaining something",
+        speaker_id="fred",
+        spoken_line="Eh dis donc Jamy!",
+        location_id="loc-1",
+        character_ids_on_screen=["fred"],
+        scene_visual_description={
+            "scene": "science lab",
+            "subjects": [],
+            "lighting": "soft",
+            "camera": {"angle": "eye level", "distance": "medium shot"},
+        },
+        raw_scene_data={},
+    )
+
+
+@pytest.fixture
+def sample_story_input(sample_scene_input) -> StoryInput:
+    scene_1 = sample_scene_input.model_copy(update={"scene_index": 1})
+    return StoryInput(
+        title="Test Story",
+        story_plan="A test story plan.",
+        story_template_id="tmpl-1",
+        raw_agent_output={},
+        scenes=[sample_scene_input, scene_1],
+    )
 
 
 # ---------------------------------------------------------------------------

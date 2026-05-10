@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Edit Benchmark — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-purple: #a371f7;
+            --accent-red:    #f85149;
+            --accent-orange: #f0883e;
+            --accent-yellow: #e3b341;
+            --accent-pink:   #f778ba;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.65rem 1.25rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        header a { color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; }
+        header a:hover { color: var(--accent-cyan); }
+        header .sep { color: var(--border-color); }
+        header h1 {
+            font-size: 1rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-pink), var(--accent-cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-red); transition: background 0.3s; }
+        .status-dot.ok { background: var(--accent-green); }
+        .status-label { font-size: 0.75rem; color: var(--text-secondary); }
+        .url-input {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 5px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem; padding: 0.3rem 0.5rem; width: 220px;
+        }
+        .url-input:focus { outline: none; border-color: var(--accent-cyan); color: var(--text-primary); }
+
+        .app { display: grid; grid-template-columns: 330px 1fr; flex: 1; min-height: 0; }
+
+        /* ── Sidebar ──────────────────────────────────────────────── */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column;
+            overflow-y: auto;
+        }
+        .panel { padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color); }
+
+        .section-label {
+            font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--text-secondary);
+            margin-bottom: 0.6rem;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0.55rem; }
+        .field:last-child { margin-bottom: 0; }
+        label { font-size: 0.78rem; color: var(--text-secondary); }
+
+        input[type=text], input[type=number], textarea, select {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 5px; color: var(--text-primary); font-family: inherit;
+            font-size: 0.85rem; padding: 0.42rem 0.6rem; width: 100%;
+            transition: border-color 0.15s;
+        }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-cyan); }
+        textarea { resize: vertical; }
+        .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+        .btn {
+            padding: 0.33rem 0.65rem;
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 5px; color: var(--text-primary); font-family: inherit;
+            font-size: 0.8rem; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+            display: inline-block; white-space: nowrap;
+        }
+        .btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .btn-run {
+            padding: 0.62rem; background: linear-gradient(135deg, var(--accent-pink), var(--accent-cyan));
+            border: none; border-radius: 7px; color: #fff; font-family: inherit;
+            font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; width: 100%;
+        }
+        .btn-run:hover { opacity: 0.85; }
+        .btn-run:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-danger { color: var(--accent-red); border-color: var(--accent-red); }
+        .btn-danger:hover { background: rgba(248,81,73,0.1); }
+        .btn-sm { padding: 0.2rem 0.42rem; font-size: 0.72rem; }
+
+        .info-text { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.4rem; }
+        .info-text.warn { color: var(--accent-yellow); }
+
+        /* Case list */
+        .case-list { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.6rem; }
+        .case-card {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 6px; padding: 0.5rem 0.65rem;
+            display: flex; align-items: flex-start; gap: 0.45rem; cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .case-card:hover { border-color: var(--accent-cyan); }
+        .case-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 3px; border: 1px solid var(--border-color); flex-shrink: 0; }
+        .case-thumb-empty { width: 40px; height: 40px; background: var(--bg-primary); border-radius: 3px; border: 1px dashed var(--border-color); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; }
+        .case-info { flex: 1; min-width: 0; }
+        .case-name { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .case-prompt { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .case-del { color: var(--text-secondary); font-size: 0.8rem; cursor: pointer; flex-shrink: 0; padding: 0 2px; }
+        .case-del:hover { color: var(--accent-red); }
+
+        .checkbox-row {
+            display: flex; align-items: center; gap: 0.4rem;
+            font-size: 0.82rem; cursor: pointer; margin-bottom: 0.4rem;
+        }
+        .checkbox-row input[type=checkbox] { width: auto; cursor: pointer; }
+
+        .sidebar-footer { padding: 0.85rem 1rem; margin-top: auto; }
+
+        /* ── Results area ─────────────────────────────────────────── */
+        .results-area { display: flex; flex-direction: column; overflow: hidden; }
+
+        .results-toolbar {
+            padding: 0.6rem 1rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; gap: 1rem; flex-shrink: 0;
+        }
+        .results-summary { font-size: 0.82rem; color: var(--text-secondary); flex: 1; }
+        .results-summary strong { color: var(--text-primary); }
+
+        .progress-bar-bg { width: 200px; height: 3px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
+        .progress-bar-fg {
+            height: 100%; border-radius: 2px;
+            background: linear-gradient(90deg, var(--accent-pink), var(--accent-cyan));
+            transition: width 0.4s;
+        }
+
+        .results-scroll { flex: 1; overflow-y: auto; }
+
+        .results-placeholder {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; color: var(--text-secondary); gap: 0.75rem;
+        }
+        .results-placeholder .icon { font-size: 3rem; opacity: 0.3; }
+        .results-placeholder p { font-size: 0.9rem; }
+
+        /* ── Per-case sections ────────────────────────────────────── */
+        .case-section { border-bottom: 2px solid var(--border-color); }
+
+        .case-header {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.65rem 1rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky; top: 0; z-index: 2;
+        }
+        .case-header-thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color); flex-shrink: 0; }
+        .case-header-thumb-empty { width: 52px; height: 52px; background: var(--bg-tertiary); border-radius: 4px; border: 1px dashed var(--border-color); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+        .case-header-info { flex: 1; min-width: 0; }
+        .case-header-name { font-size: 0.9rem; font-weight: 600; }
+        .case-header-prompt { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* ── Card grid ────────────────────────────────────────────── */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 0.6rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-primary);
+        }
+
+        .result-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 7px;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        .card-label {
+            padding: 0.38rem 0.5rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex; flex-direction: column; gap: 1px;
+        }
+        .col-tag {
+            font-size: 0.6rem; padding: 0.08rem 0.3rem; border-radius: 2px;
+            display: inline-block; align-self: flex-start; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .col-tag.edit    { background: rgba(247,120,186,0.15); color: var(--accent-pink); }
+        .col-tag.no-img  { background: rgba(163,113,247,0.15); color: var(--accent-purple); }
+        .col-params { font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; color: var(--text-primary); }
+
+        .card-body { padding: 0.4rem; flex: 1; }
+        .card-body img { width: 100%; display: block; border-radius: 4px; border: 1px solid var(--border-color); }
+
+        .cell-idle, .cell-spinner, .cell-error, .cell-na {
+            width: 100%; aspect-ratio: 1;
+            border-radius: 5px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.72rem;
+        }
+        .cell-idle { background: var(--bg-tertiary); border: 1px dashed var(--border-color); color: var(--text-secondary); }
+        .cell-spinner { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); flex-direction: column; gap: 0.4rem; }
+        .cell-error {
+            background: rgba(248,81,73,0.05); border: 1px solid var(--accent-red);
+            color: var(--accent-red); padding: 0.5rem; word-break: break-word;
+            white-space: normal; text-align: center;
+        }
+        .cell-na { background: var(--bg-tertiary); border: 1px dashed var(--border-color); color: var(--border-color); }
+
+        .spin-ring {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border-color); border-top-color: var(--accent-pink);
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .cell-meta { font-size: 0.63rem; color: var(--text-secondary); margin-top: 0.28rem; font-family: 'JetBrains Mono', monospace; }
+        .cell-dl { font-size: 0.68rem; color: var(--accent-cyan); text-decoration: underline; margin-top: 0.18rem; display: inline-block; }
+
+        /* ── Modal ────────────────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+        .modal-box {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 1.2rem; width: 520px; max-width: 95vw;
+            max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem;
+        }
+        .modal-box h3 { font-size: 1rem; font-weight: 600; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.2rem; }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color); border-radius: 7px;
+            padding: 0.85rem; text-align: center; color: var(--text-secondary);
+            font-size: 0.82rem; cursor: pointer; transition: all 0.2s; position: relative;
+        }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(88,166,255,0.04); }
+        .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+        .drop-icon { font-size: 1.1rem; margin-bottom: 0.15rem; }
+
+        /* Thumbnails in modal */
+        .modal-thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.5rem; }
+        .modal-thumb-wrap { position: relative; width: 64px; height: 64px; }
+        .modal-thumb-wrap img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color); }
+        .modal-thumb-del {
+            position: absolute; top: 2px; right: 2px;
+            width: 16px; height: 16px;
+            background: rgba(248,81,73,0.85); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; cursor: pointer; color: #fff;
+        }
+
+        #toast {
+            position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+            background: rgba(248,81,73,0.15); border: 1px solid var(--accent-red);
+            color: var(--accent-red); padding: 0.62rem 1.1rem; border-radius: 7px;
+            font-size: 0.82rem; z-index: 999; max-width: 480px; text-align: center; display: none;
+        }
+        #toast.visible { display: block; }
+        #toast.success { background: rgba(63,185,80,0.15); border-color: var(--accent-green); color: var(--accent-green); }
+    </style>
+</head>
+<body>
+
+<!-- ── Case Editor Modal ─────────────────────────────────────────────────── -->
+<div id="case-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+        <h3 id="modal-title">Add Case</h3>
+        <div class="field">
+            <label>Case name</label>
+            <input type="text" id="modal-name" placeholder="e.g. Beach sunset edit">
+        </div>
+        <div class="field">
+            <label>Edit prompt</label>
+            <textarea id="modal-prompt" rows="3" placeholder="Describe the desired edit…"></textarea>
+        </div>
+        <div class="field">
+            <label>Negative prompt (overrides fixed param for this case if filled)</label>
+            <textarea id="modal-negative" rows="2" placeholder="Leave blank to use the fixed negative prompt…"></textarea>
+        </div>
+        <div>
+            <div class="section-label" style="margin-bottom:0.35rem">Reference image(s) <span style="font-weight:400;text-transform:none;font-size:0.7rem">(optional — omit for txt2img ablation only)</span></div>
+            <div class="drop-zone" id="modal-image-drop">
+                <input type="file" id="modal-image-file" accept="image/*" multiple>
+                <div class="drop-icon">🖼️</div>
+                <div>Drop images or click to browse (multiple allowed)</div>
+            </div>
+            <div class="modal-thumbs" id="modal-thumbs"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="modal-cancel">Cancel</button>
+            <button class="btn" id="modal-save" style="border-color:var(--accent-cyan);color:var(--accent-cyan)">Save Case</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<header>
+    <a href="index.html">Apps</a>
+    <span class="sep">/</span>
+    <h1>Image Edit Benchmark</h1>
+    <div class="header-right">
+        <input class="url-input" id="server-url" type="text" value="http://gx10-cbc5:1234" placeholder="SD.cpp server URL">
+        <span class="status-label" id="status-label">checking…</span>
+        <div class="status-dot" id="status-dot"></div>
+    </div>
+</header>
+
+<div class="app">
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+
+        <div class="panel">
+            <div class="section-label">
+                Dataset
+                <div style="display:flex;gap:0.3rem">
+                    <button class="btn btn-sm" id="btn-save-dataset">Save JSON</button>
+                    <label class="btn btn-sm" for="load-file-input" style="cursor:pointer">Load JSON</label>
+                    <input type="file" id="load-file-input" accept=".json" style="display:none">
+                </div>
+            </div>
+            <div class="case-list" id="case-list">
+                <div style="font-size:0.78rem;color:var(--text-secondary)">No cases yet. Add one below.</div>
+            </div>
+            <button class="btn" id="btn-add-case" style="width:100%">+ Add Case</button>
+        </div>
+
+        <div class="panel">
+            <div class="section-label">Grid Search</div>
+            <div class="field">
+                <label>Denoising strength (comma-separated)</label>
+                <input type="text" id="grid-strength" value="0.5, 0.65, 0.8">
+            </div>
+            <div class="field">
+                <label>CFG scale</label>
+                <input type="text" id="grid-cfg" value="5.0, 7.0">
+            </div>
+            <div class="section-label" style="margin-top:0.55rem;margin-bottom:0.35rem">Also run…</div>
+            <label class="checkbox-row">
+                <input type="checkbox" id="abl-txt2img" checked>
+                txt2img (no reference image)
+            </label>
+            <div id="combo-count" class="info-text" style="margin-top:0.3rem">0 cards per case</div>
+        </div>
+
+        <div class="panel">
+            <div class="section-label">Fixed Parameters</div>
+            <div class="row2">
+                <div class="field">
+                    <label>Width</label>
+                    <input type="number" id="fix-width" value="680" min="64" max="2048" step="8">
+                </div>
+                <div class="field">
+                    <label>Height</label>
+                    <input type="number" id="fix-height" value="496" min="64" max="2048" step="8">
+                </div>
+            </div>
+            <div class="row2" style="margin-top:0.4rem">
+                <div class="field">
+                    <label>Steps</label>
+                    <input type="number" id="fix-steps" value="20" min="1" max="200">
+                </div>
+                <div class="field">
+                    <label>Seed (-1 = random)</label>
+                    <input type="number" id="fix-seed" value="-1">
+                </div>
+            </div>
+            <div class="row2" style="margin-top:0.4rem">
+                <div class="field">
+                    <label>Sampler</label>
+                    <input type="text" id="fix-sampler" value="Euler a">
+                </div>
+                <div class="field">
+                    <label>Scheduler</label>
+                    <input type="text" id="fix-scheduler" value="Automatic">
+                </div>
+            </div>
+            <div class="field" style="margin-top:0.4rem">
+                <label>Negative prompt</label>
+                <textarea id="fix-negative" rows="2">worst quality, blurry, distorted, artifacts</textarea>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="btn-run" id="btn-run" disabled>Run Benchmark</button>
+            <div id="run-info" class="info-text" style="text-align:center;margin-top:0.35rem"></div>
+        </div>
+
+    </aside>
+
+    <!-- ── Results area ──────────────────────────────────────────────────── -->
+    <main class="results-area">
+        <div class="results-toolbar">
+            <div class="results-summary" id="results-summary">Add cases and configure the grid to run a benchmark.</div>
+            <div class="progress-bar-bg" id="progress-wrap" style="display:none">
+                <div class="progress-bar-fg" id="progress-bar" style="width:0%"></div>
+            </div>
+            <button class="btn btn-sm btn-danger" id="btn-clear-results" style="display:none">Clear</button>
+        </div>
+
+        <div class="results-scroll" id="results-scroll">
+            <div class="results-placeholder" id="results-placeholder">
+                <div class="icon">🎨</div>
+                <p>Add at least one case and click <strong>Run Benchmark</strong></p>
+            </div>
+            <div id="results-content" style="display:none"></div>
+        </div>
+    </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+
+let dataset       = { version: 1, cases: [] };
+let columns       = [];
+let editingCaseId = null;
+let modalImages   = [];   // { dataUrl } for the open modal
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+function parseFloatList(str) {
+    return str.split(',').map(s => parseFloat(s.trim())).filter(v => !isNaN(v));
+}
+
+function cartesian(...arrays) {
+    return arrays.reduce((acc, arr) =>
+        acc.flatMap(combo => arr.map(val => [...combo, val])), [[]]
+    );
+}
+
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload  = e => resolve(e.target.result);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+    });
+}
+
+function dataUrlToB64(dataUrl) {
+    return dataUrl.split(',')[1];
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type = 'error') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'visible' + (type === 'success' ? ' success' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('visible'), 5000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health check
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function checkHealth() {
+    try {
+        const base = document.getElementById('server-url').value.replace(/\/$/, '');
+        const r = await fetch(`${base}/v1/models`);
+        if (!r.ok) throw new Error();
+        const data = await r.json();
+        document.getElementById('status-dot').className   = 'status-dot ok';
+        document.getElementById('status-label').textContent = data.data?.[0]?.id || 'ready';
+    } catch {
+        document.getElementById('status-dot').className   = 'status-dot';
+        document.getElementById('status-label').textContent = 'unreachable';
+    }
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+document.getElementById('server-url').addEventListener('change', checkHealth);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Column generation
+// ─────────────────────────────────────────────────────────────────────────────
+
+function generateColumns() {
+    const strengths  = parseFloatList(document.getElementById('grid-strength').value);
+    const cfgs       = parseFloatList(document.getElementById('grid-cfg').value);
+    const txt2imgAbl = document.getElementById('abl-txt2img').checked;
+    const cols       = [];
+
+    for (const [s, c] of cartesian(strengths, cfgs)) {
+        cols.push({
+            id:       `s${s}_c${c}`,
+            type:     'edit',
+            strength: s,
+            cfg:      c,
+            ablation: null,
+            paramStr: `DS=${s} CFG=${c}`,
+        });
+    }
+    if (txt2imgAbl) {
+        for (const c of cfgs) {
+            cols.push({
+                id:       `txt2img_c${c}`,
+                type:     'no-img',
+                strength: null,
+                cfg:      c,
+                ablation: 'txt2img',
+                paramStr: `txt2img CFG=${c}`,
+            });
+        }
+    }
+    return cols;
+}
+
+const GRID_INPUTS = ['grid-strength', 'grid-cfg', 'abl-txt2img'];
+
+function updateComboCount() {
+    const strengths = parseFloatList(document.getElementById('grid-strength').value);
+    const cfgs      = parseFloatList(document.getElementById('grid-cfg').value);
+    const txt2img   = document.getElementById('abl-txt2img').checked;
+    const editN     = strengths.length * cfgs.length;
+    const ablN      = txt2img ? cfgs.length : 0;
+    const perCase   = editN + ablN;
+    const el        = document.getElementById('combo-count');
+    el.textContent  = `${editN} edit combo${editN!==1?'s':''} + ${ablN} txt2img = ${perCase} card${perCase!==1?'s':''}/case`;
+    el.className    = 'info-text' + (perCase > 20 ? ' warn' : '');
+    if (perCase > 20) el.textContent += ' — consider fewer values';
+    updateRunInfo();
+}
+
+GRID_INPUTS.forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', updateComboCount);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run info
+// ─────────────────────────────────────────────────────────────────────────────
+
+function updateRunInfo() {
+    const nCases = dataset.cases.length;
+    const nCols  = generateColumns().length;
+    const total  = nCases * nCols;
+    const infoEl = document.getElementById('run-info');
+    const btnEl  = document.getElementById('btn-run');
+    if (nCases === 0 || nCols === 0) {
+        infoEl.textContent = 'Need at least 1 case and 1 grid value';
+        btnEl.disabled = true;
+    } else {
+        infoEl.textContent = `${total} job${total!==1?'s':''} (${nCases} × ${nCols})`;
+        btnEl.disabled = false;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Case list
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderCaseList() {
+    const el = document.getElementById('case-list');
+    if (dataset.cases.length === 0) {
+        el.innerHTML = '<div style="font-size:0.78rem;color:var(--text-secondary)">No cases yet. Add one below.</div>';
+        updateRunInfo();
+        return;
+    }
+    el.innerHTML = dataset.cases.map(c => {
+        const firstImg = c.images?.[0];
+        const thumb = firstImg
+            ? `<img class="case-thumb" src="${firstImg}" alt="">`
+            : `<div class="case-thumb-empty">🖼️</div>`;
+        return `
+        <div class="case-card" onclick="openModal('${c.id}')">
+            ${thumb}
+            <div class="case-info">
+                <div class="case-name">${escHtml(c.name||'Unnamed')}</div>
+                <div class="case-prompt">${escHtml(c.prompt||'')}</div>
+            </div>
+            <span class="case-del" title="Delete" onclick="event.stopPropagation();deleteCase('${c.id}')">✕</span>
+        </div>`;
+    }).join('');
+    updateRunInfo();
+}
+
+function deleteCase(id) {
+    if (!confirm('Delete this case?')) return;
+    dataset.cases = dataset.cases.filter(c => c.id !== id);
+    renderCaseList();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
+function openModal(caseId) {
+    editingCaseId = caseId || null;
+    modalImages   = [];
+    document.getElementById('case-modal').style.display = 'flex';
+
+    if (caseId) {
+        const c = dataset.cases.find(x => x.id === caseId);
+        document.getElementById('modal-title').textContent    = 'Edit Case';
+        document.getElementById('modal-name').value           = c.name    || '';
+        document.getElementById('modal-prompt').value         = c.prompt  || '';
+        document.getElementById('modal-negative').value       = c.negative || '';
+        modalImages = (c.images || []).map(dataUrl => ({ dataUrl }));
+    } else {
+        document.getElementById('modal-title').textContent    = 'Add Case';
+        document.getElementById('modal-name').value           = '';
+        document.getElementById('modal-prompt').value         = '';
+        document.getElementById('modal-negative').value       = '';
+    }
+    renderModalThumbs();
+}
+
+function closeModal() {
+    document.getElementById('case-modal').style.display = 'none';
+    document.getElementById('modal-image-file').value   = '';
+}
+
+function renderModalThumbs() {
+    const el = document.getElementById('modal-thumbs');
+    el.innerHTML = modalImages.map((img, i) => `
+        <div class="modal-thumb-wrap">
+            <img src="${img.dataUrl}" alt="">
+            <div class="modal-thumb-del" onclick="removeModalImage(${i})">✕</div>
+        </div>`).join('');
+}
+
+function removeModalImage(idx) {
+    modalImages.splice(idx, 1);
+    renderModalThumbs();
+}
+
+document.getElementById('modal-image-file').addEventListener('change', async e => {
+    for (const f of e.target.files) {
+        if (!f.type.startsWith('image/')) continue;
+        modalImages.push({ dataUrl: await fileToDataUrl(f) });
+    }
+    renderModalThumbs();
+    e.target.value = '';
+});
+
+['dragover','dragleave','drop'].forEach(ev => {
+    document.getElementById('modal-image-drop').addEventListener(ev, async e => {
+        e.preventDefault();
+        const zone = document.getElementById('modal-image-drop');
+        if (ev === 'dragover') { zone.classList.add('drag-over'); return; }
+        zone.classList.remove('drag-over');
+        if (ev === 'drop') {
+            for (const f of e.dataTransfer.files) {
+                if (!f.type.startsWith('image/')) continue;
+                modalImages.push({ dataUrl: await fileToDataUrl(f) });
+            }
+            renderModalThumbs();
+        }
+    });
+});
+
+document.getElementById('modal-cancel').addEventListener('click', closeModal);
+document.getElementById('case-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('case-modal')) closeModal();
+});
+document.getElementById('modal-save').addEventListener('click', () => {
+    const name     = document.getElementById('modal-name').value.trim();
+    const prompt   = document.getElementById('modal-prompt').value.trim();
+    const negative = document.getElementById('modal-negative').value.trim();
+    if (!prompt) { showToast('Prompt is required.'); return; }
+    const images = modalImages.map(i => i.dataUrl);
+    if (editingCaseId) {
+        const c = dataset.cases.find(x => x.id === editingCaseId);
+        c.name     = name || c.name;
+        c.prompt   = prompt;
+        c.negative = negative;
+        c.images   = images;
+    } else {
+        dataset.cases.push({
+            id: uuid(),
+            name:     name || `Case ${dataset.cases.length + 1}`,
+            prompt,
+            negative,
+            images,
+        });
+    }
+    renderCaseList(); closeModal();
+});
+document.getElementById('btn-add-case').addEventListener('click', () => openModal(null));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save / Load dataset
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-save-dataset').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(dataset, null, 2)], { type: 'application/json' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'image_edit_benchmark.json' });
+    a.click();
+    showToast('Dataset saved.', 'success');
+});
+
+document.getElementById('load-file-input').addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => {
+        try {
+            const data = JSON.parse(ev.target.result);
+            if (!Array.isArray(data.cases)) throw new Error('Invalid format');
+            dataset = data;
+            renderCaseList();
+            showToast(`Loaded ${dataset.cases.length} case(s).`, 'success');
+        } catch (err) { showToast(`Load failed: ${err.message}`); }
+        e.target.value = '';
+    };
+    r.readAsText(file);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Results rendering
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderResults(cols) {
+    const content = document.getElementById('results-content');
+    content.innerHTML = dataset.cases.map(c => {
+        const firstImg = c.images?.[0];
+        const thumb = firstImg
+            ? `<img class="case-header-thumb" src="${firstImg}" alt="">`
+            : `<div class="case-header-thumb-empty">🖼️</div>`;
+        const cards = cols.map(col => {
+            const cellId = makeCellId(c.id, col.id);
+            return `
+            <div class="result-card">
+                <div class="card-label">
+                    <span class="col-tag ${col.type}">${escHtml(col.type === 'no-img' ? 'txt2img' : 'edit')}</span>
+                    <span class="col-params">${escHtml(col.paramStr)}</span>
+                </div>
+                <div class="card-body" id="${cellId}">${idleCell()}</div>
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="case-section">
+            <div class="case-header">
+                ${thumb}
+                <div class="case-header-info">
+                    <div class="case-header-name">${escHtml(c.name||'Unnamed')}</div>
+                    <div class="case-header-prompt">${escHtml((c.prompt||'').slice(0,120))}${c.prompt&&c.prompt.length>120?'…':''}</div>
+                </div>
+            </div>
+            <div class="cards-grid">${cards}</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('results-placeholder').style.display = 'none';
+    content.style.display = '';
+}
+
+function makeCellId(caseId, colId) {
+    return 'cell__' + (caseId + '__' + colId).replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function idleCell()   { return `<div class="cell-idle">idle</div>`; }
+function naCell()     { return `<div class="cell-na">N/A</div>`; }
+function pendCell()   { return `<div class="cell-spinner"><div class="spin-ring"></div><span>generating…</span></div>`; }
+function errCell(msg) { return `<div class="cell-error">✕ ${escHtml(msg||'failed')}</div>`; }
+function doneCell(b64, meta) {
+    const src = `data:image/png;base64,${b64}`;
+    return `
+    <img src="${src}" style="width:100%;display:block;border-radius:4px;border:1px solid var(--border-color)">
+    <div class="cell-meta">${escHtml(meta)}</div>
+    <a class="cell-dl" href="${src}" download="bench_result.png">↓ download</a>`;
+}
+
+function setCell(caseId, colId, html) {
+    const el = document.getElementById(makeCellId(caseId, colId));
+    if (el) el.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Job submission — synchronous SD.cpp call
+// ─────────────────────────────────────────────────────────────────────────────
+
+let runStats = { total: 0, done: 0, failed: 0 };
+
+function updateProgress() {
+    const { total, done, failed } = runStats;
+    const pct = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+    document.getElementById('progress-bar').style.width = `${pct}%`;
+    document.getElementById('results-summary').innerHTML =
+        `<strong>${done}</strong> done · <strong>${failed}</strong> failed · <strong>${total - done - failed}</strong> pending — ${pct}%`;
+}
+
+async function runJob(caseObj, col) {
+    const baseUrl  = document.getElementById('server-url').value.replace(/\/$/, '');
+    const hasImages = caseObj.images && caseObj.images.length > 0;
+    const isTxt2Img = col.ablation === 'txt2img';
+
+    // txt2img ablation but no images → N/A (nothing to ablate)
+    if (isTxt2Img && !hasImages) {
+        setCell(caseObj.id, col.id, naCell()); runStats.done++; updateProgress(); return;
+    }
+
+    setCell(caseObj.id, col.id, pendCell());
+
+    try {
+        const negativePrompt = caseObj.negative?.trim()
+            || document.getElementById('fix-negative').value.trim();
+        const extraArgs = {
+            negative_prompt: negativePrompt,
+            steps:           parseInt(document.getElementById('fix-steps').value),
+            cfg_scale:       col.cfg,
+            seed:            parseInt(document.getElementById('fix-seed').value),
+            sampler_name:    document.getElementById('fix-sampler').value.trim(),
+            scheduler:       document.getElementById('fix-scheduler').value.trim(),
+        };
+        const fullPrompt = `${caseObj.prompt}\n<sd_cpp_extra_args>${JSON.stringify(extraArgs)}</sd_cpp_extra_args>`;
+        const size = `${parseInt(document.getElementById('fix-width').value)}x${parseInt(document.getElementById('fix-height').value)}`;
+
+        let resp;
+        if (isTxt2Img) {
+            resp = await fetch(`${baseUrl}/v1/images/generations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: fullPrompt, n: 1, size, output_format: 'png' }),
+            });
+        } else {
+            if (!hasImages) {
+                setCell(caseObj.id, col.id, naCell()); runStats.done++; updateProgress(); return;
+            }
+            // Tile multiple images via FormData
+            const form = new FormData();
+            form.append('prompt',        fullPrompt);
+            form.append('n',             '1');
+            form.append('size',          size);
+            form.append('output_format', 'png');
+            if (col.strength != null) {
+                form.append('strength', String(col.strength));
+            }
+            for (const imgDataUrl of caseObj.images) {
+                const blob = await fetch(imgDataUrl).then(r => r.blob());
+                const ext  = blob.type.split('/')[1] || 'png';
+                form.append('image[]', blob, `image.${ext}`);
+            }
+            resp = await fetch(`${baseUrl}/v1/images/edits`, { method: 'POST', body: form });
+        }
+
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({}));
+            throw new Error(body.error?.message || resp.statusText);
+        }
+
+        const data = await resp.json();
+        const b64  = (data.data || [])[0]?.b64_json;
+        if (!b64) throw new Error('Server returned no image data');
+
+        const meta = isTxt2Img ? `${size} · txt2img` : `${size} · DS=${col.strength}`;
+        setCell(caseObj.id, col.id, doneCell(b64, meta));
+        runStats.done++; updateProgress();
+
+    } catch (err) {
+        setCell(caseObj.id, col.id, errCell(err.message));
+        runStats.failed++; updateProgress();
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-run').addEventListener('click', async () => {
+    if (dataset.cases.length === 0) { showToast('No cases in dataset.'); return; }
+
+    columns = generateColumns();
+    if (columns.length === 0) { showToast('No grid combinations configured.'); return; }
+
+    renderResults(columns);
+    document.getElementById('progress-wrap').style.display = 'block';
+    document.getElementById('btn-clear-results').style.display = '';
+
+    runStats = { total: dataset.cases.length * columns.length, done: 0, failed: 0 };
+    updateProgress();
+    document.getElementById('btn-run').disabled = true;
+
+    for (const caseObj of dataset.cases) {
+        for (const col of columns) {
+            await runJob(caseObj, col);
+        }
+    }
+
+    document.getElementById('btn-run').disabled = false;
+    showToast('Benchmark complete.', 'success');
+});
+
+document.getElementById('btn-clear-results').addEventListener('click', () => {
+    const content = document.getElementById('results-content');
+    content.innerHTML = ''; content.style.display = 'none';
+    document.getElementById('results-placeholder').style.display = '';
+    document.getElementById('results-summary').textContent = 'Add cases and configure the grid to run a benchmark.';
+    document.getElementById('progress-wrap').style.display = 'none';
+    document.getElementById('btn-clear-results').style.display = 'none';
+    document.getElementById('btn-run').disabled = false;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+
+updateComboCount();
+renderCaseList();
+</script>
+</body>
+</html>

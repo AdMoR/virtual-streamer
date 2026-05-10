@@ -32,103 +32,55 @@ Characters available (use these exact character_id values):
 
 Locations available for this story (assign one location_id to each dialog line):
 {locations}
-
-IMPORTANT: Each dialogue line must include a location_id from the list above.
-If no locations are listed, invent descriptive location names (they can be registered later).
-Keep location consistent: consecutive scenes in the same place must use the same location_id.
+You can use them for inspiration or create new places. Prefer re-using when you could create an almost similar location.
 
 Generate a story with exactly {target_lines} dialogue lines.
 
 Scenario: {title}
 
-IMPORTANT: Your response must be structured with three parts:
+IMPORTANT: Your response must be structured with 4 parts:
 
-1. **title**: Create a refined, more complete title for the story (based on the user's input: "{title}")
-2. **story_plan**: Describe your overall plan and reasoning for creating this dialog (like a thinking process - what makes this scenario funny, what progression you're following, key elements you're including)
-3. **dialog**: The actual dialog lines. Each line must include:
-   - **character_id**: Use the exact ID from the characters list above (e.g., "fred", "jamy")
-   - **dialog**: The spoken text (what the character says out loud)
-   - **location_id**: The location ID for this scene from the locations list above (e.g., "ski-resort")
-   - **scene_description**: A structured JSON object describing the visual scene for video generation. Do NOT include the dialog text here. Use the following schema:
+- **title**: The refined story title.
+- **story_plan**: The overall creative plan and reasoning described in the story (the thinking section).
+- **dialog**: The list of dialogue lines. For each line extract:
+  - **character_id**: The optional character identifier (e.g. "fred", "jamy"). Use lowercase. If there is no-one on the screen, leave it empty
+  - **text**: The spoken dialogue text (what the character says out loud).
+  - **scene_description**: Describe the action, location, characters present and scene appearance
 
-```json
-{{
-  "scene": "Overall environment and context of the scene",
-  "subjects": [
-    {{
-      "description": "Detailed visual description of the subject (appearance, clothing, expression)",
-      "pose": "Pose or stance",
-      "position": "Where in the frame",
-      "color_palette": ["dominant colors for this subject"]
-    }}
-  ],
-  "style": "Artistic/cinematic style (e.g. 'handheld documentary', 'cinematic 35mm')",
-  "color_palette": ["dominant colors for the whole scene"],
-  "lighting": "Lighting setup and quality",
-  "mood": "Emotional tone or atmosphere",
-  "background": "Background environment details",
-  "composition": "Framing rule or layout (e.g. 'rule of thirds', 'centered')",
-  "camera": {{
-    "angle": "Camera angle (e.g. 'eye level', 'low angle')",
-    "distance": "Shot distance (e.g. 'medium shot', 'close-up')",
-    "focus": "What is in focus and how",
-    "lens-mm": 35,
-    "f-number": "f/2.8",
-    "ISO": 400
-  }}
-}}
-```
+## What Works Well for the scene description 
+Strength	            Description
+Cinematic compositions	Wide, medium, and close-up shots with thoughtful lighting, shallow depth of field, and natural motion
+Emotive human moments	Strong single-subject emotional expressions, subtle gestures, and facial nuance
+Atmosphere & setting	Fog, mist, golden-hour light, rain, reflections, ambient textures
+Clear camera language	Explicit instructions like “slow dolly in” or “handheld tracking”
+Stylized aesthetics	    Painterly, noir, analog film, fashion editorial, pixelated animation
+Lighting & mood control	Backlighting, color palettes, rim light, flickering lamps
 
-The scene_description must mainly support the dialog line, not the opposite.
+## Common Mistakes for the scene description 
+
+Too vague: "A nice video of nature" — the model has too many options and picks arbitrarily. Be specific about what's in the frame.
+Over-constrained: "Exactly 3 birds flying left to right at 45 degrees while the camera pans right at 2 degrees per second" — the model works best with natural language descriptions, not numerical specifications.
+Mismatched duration: A 10-word prompt for a 10-second video — the model doesn't have enough direction to fill the duration. Long videos need long prompts.
+Conflicting directions: "A still, peaceful lake with dramatic waves crashing" — contradictions confuse the model. Be internally consistent.
+Generating precise text - text will not be rendered faithfully 100% of the time, avoid it as much as possible.
+
+
+Example of scene_description : 
+EXT. SMALL TOWN STREET – MORNING – LIVE NEWS BROADCAST The shot opens on a news reporter standing in front of a row of cordoned-off cars, 
+yellow caution tape fluttering behind him. The light is warm, early sun reflecting off the camera lens. The faint hum of chatter and distant drilling fills the air.
+ The reporter, composed but visibly excited, looks directly into the camera, microphone in hand. Reporter (live): 
+ “Thank you, Sylvia. And yes — this is a sentence I never thought I’d say on live television — but this morning, here in the quiet town of New Castle, Vermont… black gold has been found!” He gestures slightly toward the field behind him. Reporter (grinning): “If my cameraman can pan over, you’ll see what all the excitement’s about.” The camera pans right, slowly revealing a construction site surrounded by workers in hard hats. A beat of silence — then, with a sudden roar, a geyser of oil erupts from the ground, blasting upward in a violent plume. Workers cheer and scramble, the black stream glistening in the morning light. The camera shakes slightly, trying to stay focused through the chaos. Reporter (off-screen, shouting over the noise): “There it is, folks — the moment New Castle will never forget!” The camera catches the sunlight gleaming off the oil mist before pulling back, revealing the entire scene — the small-town skyline silhouetted against the wild fountain of oil.
+
 When in a franchise, subjects must use the character names for better context.
-Scene consistency: consecutive scenes with the same characters in the same place must share identical scene_description objects.
-
-Example dialog entry:
-- character_id: "fred"
-- dialog: "Eh dis donc Jamy, ça te dit de faire du surf?"
-- scene_description:
-```json
-{{
-  "scene": "Sunset beach with surfboards lined up along the shore",
-  "subjects": [
-    {{
-      "description": "Fred, middle-aged French man with grey hair, wearing a loud Hawaiian shirt, speaking energetically to camera",
-      "pose": "Gesturing towards the ocean with both hands",
-      "position": "Center frame foreground",
-      "color_palette": ["Hawaiian shirt colors", "tanned skin"]
-    }}
-  ],
-  "style": "Handheld documentary feel",
-  "color_palette": ["golden sunset orange", "ocean blue", "sandy beige"],
-  "lighting": "Warm golden hour backlight with soft fill from the sky",
-  "mood": "Enthusiastic and adventurous",
-  "background": "Ocean waves and surfers in the distance",
-  "composition": "rule of thirds",
-  "camera": {{
-    "angle": "eye level",
-    "distance": "medium shot",
-    "focus": "Sharp on Fred, slightly blurred ocean background",
-    "lens-mm": 35,
-    "f-number": "f/4",
-    "ISO": 400
-  }}
-}}
-```
 
 
 Focus on:
 - Making the refined title catchy and descriptive
-- In story_plan, explain your creative choices and the comedic arc. Please plan for a short format respecting the size mentioned.
+- In story_plan, explain your creative choices and the comedic arc. Please plan for a  format respecting the size mentioned.
 - In dialog, make scene_description specific enough to find visually matching videos
-- Each turn of a character should be small, maximum one sentence of 15 words, for a long sentence, spead the sentence into several DialogLine.
-- This is very import to create short sentences in each DialogLine.
 - Last line of the serie must have a twist.
 
-VISUAL AND AUDIO CONTINUITY NOTES (for the video pipeline that will process this story):
-- Locations: name recurring places consistently throughout the story (e.g. always call it "the ski resort" or "the lab"). Do not invent JSON — just refer to them by name naturally.
-- Character presence: characters cannot teleport. If a character moves from one place to another, explicitly narrate the transition in the story. A character can only appear in a scene if they physically traveled there. Not every character needs to appear in every scene.
-- Each scene has one speaker who says one short line. Make it clear who is speaking each line.
-- Each scene should be visually self-contained — describe what is visible in the environment as if it will be turned into a short video clip."""
+"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

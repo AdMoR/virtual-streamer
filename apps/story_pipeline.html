@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Story Pipeline — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-purple: #a371f7;
+            --accent-red:    #f85149;
+            --accent-orange: #f0883e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        header a { color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; }
+        header a:hover { color: var(--accent-cyan); }
+        header .sep { color: var(--border-color); }
+        header h1 {
+            font-size: 1.1rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-orange), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent-red); margin-left: auto; transition: background 0.3s;
+        }
+        .status-dot.ok { background: var(--accent-green); }
+        .status-label { font-size: 0.78rem; color: var(--text-secondary); }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* ── Controls ─────────────────────────────────────────── */
+        .controls {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 1.25rem;
+            gap: 1.25rem;
+        }
+
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 0.8rem; color: var(--text-secondary); font-weight: 500; }
+
+        textarea, input[type=text] {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            padding: 0.55rem 0.75rem;
+            width: 100%;
+            resize: vertical;
+            transition: border-color 0.15s;
+        }
+        textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent-cyan); }
+
+        select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            padding: 0.55rem 0.75rem;
+            width: 100%;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+
+        .section-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.4rem;
+        }
+
+        .btn-generate {
+            padding: 0.75rem;
+            background: linear-gradient(135deg, var(--accent-orange), var(--accent-purple));
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-generate:hover { opacity: 0.85; }
+        .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .hint { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5; }
+
+        /* ── Output ───────────────────────────────────────────── */
+        .output {
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .placeholder {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%;
+            gap: 0.75rem; color: var(--text-secondary);
+        }
+        .placeholder-icon { font-size: 4rem; opacity: 0.3; }
+        .placeholder p { font-size: 0.9rem; }
+
+        /* Spinner */
+        .spinner {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 1.2rem;
+            color: var(--text-secondary);
+        }
+        .spinner.visible { display: flex; }
+        .spin-ring {
+            width: 48px; height: 48px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-orange);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin-label { font-size: 0.9rem; }
+        .progress-bar-wrap {
+            width: 260px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            height: 4px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-orange), var(--accent-purple));
+            border-radius: 4px;
+            animation: pulse-bar 2s ease-in-out infinite;
+        }
+        @keyframes pulse-bar { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+        /* Results */
+        #results { display: none; flex-direction: column; gap: 1.5rem; }
+        #results.visible { display: flex; }
+
+        .result-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .result-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1.1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            user-select: none;
+        }
+        .result-card-header:hover { background: #2d333a; }
+        .step-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-orange), var(--accent-purple));
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .result-card-title { font-weight: 600; font-size: 0.95rem; }
+        .result-card-count {
+            margin-left: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .chevron {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            transition: transform 0.2s;
+        }
+        .result-card.collapsed .chevron { transform: rotate(-90deg); }
+        .result-card-body { padding: 1.1rem; }
+        .result-card.collapsed .result-card-body { display: none; }
+
+        /* Story text */
+        .story-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            color: var(--text-primary);
+        }
+
+        /* Location cards */
+        .location-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+        .location-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .location-item .loc-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--accent-cyan);
+        }
+        .location-item .loc-id {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+        }
+        .flux-block {
+            margin-top: 0.25rem;
+        }
+        .flux-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .flux-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 0.5rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Scene cards */
+        .scene-list { display: flex; flex-direction: column; gap: 1rem; }
+        .scene-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        .scene-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .scene-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 1px 6px;
+            color: var(--accent-orange);
+        }
+        .scene-location-tag {
+            font-size: 0.72rem;
+            padding: 1px 8px;
+            border-radius: 10px;
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .scene-char-tag {
+            font-size: 0.72rem;
+            padding: 1px 8px;
+            border-radius: 10px;
+            border: 1px solid var(--accent-purple);
+            color: var(--accent-purple);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .scene-field { display: flex; flex-direction: column; gap: 3px; }
+        .scene-field-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+        .scene-field-value {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        .scene-spoken {
+            background: var(--bg-primary);
+            border-left: 3px solid var(--accent-green);
+            padding: 0.4rem 0.7rem;
+            font-style: italic;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+            border-radius: 0 4px 4px 0;
+        }
+        .speaker-line {
+            font-size: 0.75rem;
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Error toast */
+        #error-toast {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            z-index: 999;
+            max-width: 560px;
+            text-align: center;
+        }
+        #error-toast.visible { display: block; }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="index.html">Apps</a>
+    <span class="sep">/</span>
+    <h1>Story Pipeline</h1>
+    <span class="status-label" id="status-label">checking…</span>
+    <div class="status-dot" id="status-dot"></div>
+</header>
+
+<div class="layout">
+    <!-- ── Controls ─────────────────────────────────────── -->
+    <aside class="controls">
+
+        <div class="section-label">Input</div>
+
+        <div class="field">
+            <label for="title">Story Title</label>
+            <input type="text" id="title" placeholder="e.g. Fred se lance dans l'IA"
+                   value="Fred se lance dans l'IA">
+        </div>
+
+        <div class="field">
+            <label for="template-select">Story Template
+                <span id="template-loading" style="font-weight:400;opacity:0.6;display:none;"> loading…</span>
+            </label>
+            <select id="template-select">
+                <option value="">— none (default prompt) —</option>
+            </select>
+            <span class="hint" id="template-hint"></span>
+        </div>
+
+        <div class="section-label">Optional Context</div>
+
+        <div class="field">
+            <label for="news-context">News Context</label>
+            <textarea id="news-context" rows="5"
+                placeholder="Titre: …&#10;Résumé: …&#10;Source: …&#10;Date: …"></textarea>
+            <span class="hint">Leave blank to generate purely from the title.</span>
+        </div>
+
+        <button class="btn-generate" id="btn-run" onclick="runPipeline()">
+            Run Pipeline
+        </button>
+
+        <div class="section-label" style="margin-top:auto;">Config</div>
+
+        <div class="field">
+            <label for="api-url">API Base URL</label>
+            <input type="text" id="api-url" value="http://localhost:8000">
+        </div>
+
+    </aside>
+
+    <!-- ── Output ───────────────────────────────────────── -->
+    <main class="output" id="output-area">
+
+        <div class="placeholder" id="placeholder">
+            <div class="placeholder-icon">📖</div>
+            <p>Enter a title and click <strong>Run Pipeline</strong>.</p>
+        </div>
+
+        <div class="spinner" id="spinner">
+            <div class="spin-ring"></div>
+            <span class="spin-label" id="spin-label">Running pipeline…</span>
+            <div class="progress-bar-wrap">
+                <div class="progress-bar" id="progress-bar" style="width:10%"></div>
+            </div>
+        </div>
+
+        <div id="results">
+
+            <!-- Step 1: Raw Story -->
+            <div class="result-card" id="card-story">
+                <div class="result-card-header" onclick="toggleCard('card-story')">
+                    <span class="step-badge">Step 1</span>
+                    <span class="result-card-title">Raw Story</span>
+                    <span class="result-card-count" id="story-count"></span>
+                    <span class="chevron">▼</span>
+                </div>
+                <div class="result-card-body">
+                    <div class="story-text" id="story-text"></div>
+                </div>
+            </div>
+
+            <!-- Step 2: Recurrent Locations -->
+            <div class="result-card" id="card-locations">
+                <div class="result-card-header" onclick="toggleCard('card-locations')">
+                    <span class="step-badge">Step 2</span>
+                    <span class="result-card-title">Recurrent Locations</span>
+                    <span class="result-card-count" id="locations-count"></span>
+                    <span class="chevron">▼</span>
+                </div>
+                <div class="result-card-body">
+                    <div class="location-grid" id="locations-grid"></div>
+                </div>
+            </div>
+
+            <!-- Step 3: Detailed Scenes -->
+            <div class="result-card" id="card-scenes">
+                <div class="result-card-header" onclick="toggleCard('card-scenes')">
+                    <span class="step-badge">Step 3</span>
+                    <span class="result-card-title">Detailed Scenes</span>
+                    <span class="result-card-count" id="scenes-count"></span>
+                    <span class="chevron">▼</span>
+                </div>
+                <div class="result-card-body">
+                    <div class="scene-list" id="scenes-list"></div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+</div>
+
+<div id="error-toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── Templates ─────────────────────────────────────────────────────────────────
+async function loadTemplates() {
+    const base = $('api-url').value.replace(/\/$/, '');
+    $('template-loading').style.display = 'inline';
+    try {
+        const r = await fetch(`${base}/api/v1/story-templates`, { signal: AbortSignal.timeout(6000) });
+        if (!r.ok) return;
+        const templates = await r.json();
+        const sel = $('template-select');
+        sel.innerHTML = '<option value="">— none (default prompt) —</option>';
+        templates.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.template_id;
+            const chars = (t.character_ids || []).join(', ') || 'no characters';
+            opt.textContent = `${t.name} (${chars})`;
+            sel.appendChild(opt);
+        });
+    } catch {
+        // non-fatal — template dropdown stays with "none" option
+    } finally {
+        $('template-loading').style.display = 'none';
+    }
+}
+
+$('template-select').addEventListener('change', function () {
+    $('template-hint').textContent = this.value
+        ? `Using template: ${this.options[this.selectedIndex].text}`
+        : '';
+});
+
+// ── Health check ─────────────────────────────────────────────────────────────
+async function checkHealth() {
+    const base = $('api-url').value.replace(/\/$/, '');
+    try {
+        const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4000) });
+        if (r.ok) {
+            $('status-dot').classList.add('ok');
+            $('status-label').textContent = 'API online';
+        } else {
+            $('status-label').textContent = `API ${r.status}`;
+        }
+    } catch {
+        $('status-dot').classList.remove('ok');
+        $('status-label').textContent = 'API offline';
+    }
+}
+checkHealth();
+loadTemplates();
+setInterval(checkHealth, 30000);
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function showError(msg) {
+    const t = $('error-toast');
+    t.textContent = msg;
+    t.classList.add('visible');
+    setTimeout(() => t.classList.remove('visible'), 10000);
+}
+
+function toggleCard(id) {
+    $(`${id}`).classList.toggle('collapsed');
+}
+
+// ── Progress animation ────────────────────────────────────────────────────────
+let progressTimer = null;
+function startProgress() {
+    let pct = 10;
+    $('progress-bar').style.width = pct + '%';
+    $('spin-label').textContent = 'Running story_writer…';
+    progressTimer = setInterval(() => {
+        if (pct < 30) {
+            pct += 1;
+            $('spin-label').textContent = 'Running story_writer…';
+        } else if (pct < 60) {
+            pct += 0.5;
+            $('spin-label').textContent = 'Building recurrent locations…';
+        } else if (pct < 85) {
+            pct += 0.3;
+            $('spin-label').textContent = 'Building detailed scenes…';
+        }
+        $('progress-bar').style.width = pct + '%';
+    }, 400);
+}
+function stopProgress() {
+    if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+    $('progress-bar').style.width = '100%';
+}
+
+// ── Render helpers ────────────────────────────────────────────────────────────
+function renderLocations(data) {
+    if (!data || !data.locations) return;
+    const grid = $('locations-grid');
+    grid.innerHTML = '';
+    $('locations-count').textContent = `${data.locations.length} location${data.locations.length !== 1 ? 's' : ''}`;
+    data.locations.forEach(loc => {
+        const el = document.createElement('div');
+        el.className = 'location-item';
+        const fp = loc.flux_prompt;
+        const fpText = fp
+            ? [fp.subject, fp.action, fp.environment, fp.lighting, fp.style]
+                .filter(Boolean).join(', ')
+            : '';
+        el.innerHTML = `
+            <div class="loc-name">${escHtml(loc.name)}</div>
+            <div class="loc-id">${escHtml(loc.location_id)}</div>
+            ${fpText ? `
+            <div class="flux-block">
+                <div class="flux-label">Flux Prompt</div>
+                <div class="flux-text">${escHtml(fpText)}</div>
+            </div>` : ''}
+        `;
+        grid.appendChild(el);
+    });
+}
+
+function renderScenes(data) {
+    if (!data || !data.scenes) return;
+    const list = $('scenes-list');
+    list.innerHTML = '';
+    $('scenes-count').textContent = `${data.scenes.length} scene${data.scenes.length !== 1 ? 's' : ''}`;
+    if (data.title) {
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-weight:600;font-size:1rem;margin-bottom:0.25rem;';
+        titleEl.textContent = data.title;
+        list.appendChild(titleEl);
+    }
+    data.scenes.forEach((scene, i) => {
+        const el = document.createElement('div');
+        el.className = 'scene-item';
+
+        const chars = (scene.character_on_screen || []).map(c =>
+            `<span class="scene-char-tag">${escHtml(c)}</span>`).join(' ');
+        const loc = scene.location
+            ? `<span class="scene-location-tag">${escHtml(scene.location)}</span>` : '';
+
+        const fp = scene.scene_visual_description;
+        const fpText = fp
+            ? [fp.subject, fp.action, fp.environment, fp.lighting, fp.style]
+                .filter(Boolean).join(', ')
+            : '';
+
+        const spokenBlock = scene.spoken_line ? `
+            <div class="scene-field">
+                <div class="scene-field-label">Dialogue</div>
+                ${scene.speaker_id ? `<div class="speaker-line">${escHtml(scene.speaker_id)}</div>` : ''}
+                <div class="scene-spoken">${escHtml(scene.spoken_line)}</div>
+            </div>` : '';
+
+        el.innerHTML = `
+            <div class="scene-header">
+                <span class="scene-num">#${i + 1}</span>
+                ${loc}
+                ${chars}
+            </div>
+            <div class="scene-field">
+                <div class="scene-field-label">LTX Prompt</div>
+                <div class="scene-field-value">${escHtml(scene.ltx_prompt)}</div>
+            </div>
+            ${fpText ? `
+            <div class="scene-field">
+                <div class="scene-field-label">Flux Conditioning</div>
+                <div class="flux-text">${escHtml(fpText)}</div>
+            </div>` : ''}
+            ${spokenBlock}
+        `;
+        list.appendChild(el);
+    });
+}
+
+function escHtml(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ── Main action ───────────────────────────────────────────────────────────────
+async function runPipeline() {
+    const title = $('title').value.trim();
+    if (!title) { showError('Please enter a story title.'); return; }
+
+    const base = $('api-url').value.replace(/\/$/, '');
+    const newsCtx = $('news-context').value.trim() || null;
+    const templateId = $('template-select').value || null;
+
+    // Reset UI
+    $('placeholder').style.display = 'none';
+    $('results').classList.remove('visible');
+    $('spinner').classList.add('visible');
+    $('btn-run').disabled = true;
+    startProgress();
+
+    try {
+        const resp = await fetch(`${base}/api/v1/story-pipeline/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, story_template_id: templateId, news_context: newsCtx }),
+        });
+
+        stopProgress();
+        $('spinner').classList.remove('visible');
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+
+        // Story
+        $('story-text').textContent = data.raw_story_text || '';
+        $('story-count').textContent =
+            `${(data.raw_story_text || '').split(/\s+/).filter(Boolean).length} words`;
+
+        // Locations
+        renderLocations(data.recurrent_locations);
+
+        // Scenes
+        renderScenes(data.detailed_scenes);
+
+        $('results').classList.add('visible');
+
+    } catch (err) {
+        stopProgress();
+        $('spinner').classList.remove('visible');
+        $('placeholder').style.display = '';
+        showError(`Error: ${err.message}`);
+    } finally {
+        $('btn-run').disabled = false;
+    }
+}
+
+// Run on Enter inside title input
+$('title').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runPipeline();
+});
+</script>
+</body>
+</html>

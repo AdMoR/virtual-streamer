@@ -406,7 +406,7 @@ async def submit_feedback(entry_id: str, user: str, feedback: str) -> dict:
     )
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def greet_viewer(user_name: str, character_id: str = "jesus_short") -> dict:
     """Generate a personalized greeting video for a viewer.
     Use this tool when a use enters the channel for the first time
@@ -429,7 +429,7 @@ async def greet_viewer(user_name: str, character_id: str = "jesus_short") -> dic
     )
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def answer_viewer_question(
     question: str, user_name: str, character_id: str = "jesus_short"
 ) -> dict:
@@ -458,7 +458,7 @@ async def answer_viewer_question(
 # TOOLS — Category C: Stream & Playlist Management
 # ===================================================================
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def get_queue_status() -> dict:
     """Get current video queue status (pending count, played count, active jobs).
 
@@ -500,7 +500,7 @@ async def get_queue_status() -> dict:
     }
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def get_playlist(programmation_id: str, status_filter: str | None = None) -> dict:
     """Get all playlist entries for a programmation.
 
@@ -516,7 +516,7 @@ async def get_playlist(programmation_id: str, status_filter: str | None = None) 
     )
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def get_next_video() -> dict:
     """Get the next video to play for the stream.
 
@@ -526,7 +526,7 @@ async def get_next_video() -> dict:
     return await _api_get(f"/api/v1/streams/{cfg.stream_id}/next-video")
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def mark_video_played(entry_id: str) -> dict:
     """Mark a playlist entry as played.
 
@@ -536,7 +536,7 @@ async def mark_video_played(entry_id: str) -> dict:
     return await _api_post(f"/api/v1/playlist/{entry_id}/played")
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def get_active_programmation() -> dict:
     """Get the currently active programmation for the stream.
 
@@ -546,7 +546,7 @@ async def get_active_programmation() -> dict:
     return await _api_get(f"/api/v1/streams/{cfg.stream_id}/programmations/active")
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def list_programmations() -> dict:
     """List all programmations for the stream."""
     cfg = _get_config()
@@ -700,7 +700,7 @@ async def list_characters() -> dict:
 # TOOLS — Category E: System Monitoring
 # ===================================================================
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def get_system_status() -> dict:
     """Get system health and workload information.
 
@@ -709,14 +709,14 @@ async def get_system_status() -> dict:
     return await _api_get("/api/v1/video-generation/health")
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def get_stream_config() -> dict:
     """Get the stream configuration details."""
     cfg = _get_config()
     return await _api_get(f"/api/v1/streams/{cfg.stream_id}")
 
 
-@mcp.tool()
+#@mcp.tool() # removed for now
 async def health_check() -> dict:
     """Global system health check."""
     return await _api_get("/health")
@@ -778,63 +778,6 @@ async def check_content_safety(text: str) -> dict:
 # ===================================================================
 # RESOURCES
 # ===================================================================
-
-@mcp.resource("virtual-streamer://chat/recent")
-async def chat_recent() -> str:
-    """Last 50 Twitch chat messages."""
-    messages = await _get_bridge().get_messages(limit=50)
-    return json.dumps(messages, ensure_ascii=False, indent=2)
-
-
-@mcp.resource("virtual-streamer://queue/status")
-async def queue_status_resource() -> str:
-    """Current video queue status."""
-    try:
-        status = await get_queue_status()
-        return json.dumps(status, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.resource("virtual-streamer://system/status")
-async def system_status_resource() -> str:
-    """System health and workload status."""
-    try:
-        status = await _api_get("/api/v1/video-generation/health")
-        return json.dumps(status, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.resource("virtual-streamer://stream/config")
-async def stream_config_resource() -> str:
-    """Current stream configuration and active programmation."""
-    cfg = _get_config()
-    try:
-        stream = await _api_get(f"/api/v1/streams/{cfg.stream_id}")
-        try:
-            prog = await _api_get(
-                f"/api/v1/streams/{cfg.stream_id}/programmations/active"
-            )
-        except Exception:
-            prog = None
-        return json.dumps(
-            {"stream": stream, "active_programmation": prog},
-            ensure_ascii=False,
-            indent=2,
-        )
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.resource("virtual-streamer://templates/list")
-async def templates_list_resource() -> str:
-    """Available story templates."""
-    try:
-        templates = await _api_get("/api/v1/story-templates")
-        return json.dumps(templates, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------

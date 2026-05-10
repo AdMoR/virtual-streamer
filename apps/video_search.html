@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Search — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-purple: #a371f7;
+            --accent-red:    #f85149;
+            --accent-orange: #f0883e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        header a { color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; }
+        header a:hover { color: var(--accent-cyan); }
+        header .sep { color: var(--border-color); }
+        header h1 {
+            font-size: 1.1rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent-red); margin-left: auto; flex-shrink: 0;
+            transition: background 0.3s;
+        }
+        .status-dot.ok { background: var(--accent-green); }
+        .status-label { font-size: 0.78rem; color: var(--text-secondary); }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* ── Sidebar ──────────────────────────────────────────────── */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 1.25rem;
+            gap: 1.1rem;
+        }
+
+        .section-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.35rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .field { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.8rem; color: var(--text-secondary); font-weight: 500; }
+
+        input[type=text], input[type=number], textarea {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            padding: 0.5rem 0.65rem;
+            width: 100%;
+            transition: border-color 0.15s;
+        }
+        input[type=text]:focus, input[type=number]:focus, textarea:focus {
+            outline: none; border-color: var(--accent-cyan);
+        }
+        textarea { resize: vertical; min-height: 60px; font-family: inherit; font-size: 0.88rem; }
+
+        select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.88rem;
+            padding: 0.5rem 0.65rem;
+            width: 100%;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        select:focus { outline: none; border-color: var(--accent-cyan); }
+        select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+
+        .btn {
+            padding: 0.6rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+            width: 100%;
+        }
+        .btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn:disabled:hover { border-color: var(--border-color); color: var(--text-primary); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border: none;
+            color: #fff;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .btn-primary:hover { opacity: 0.85; color: #fff; border-color: transparent; }
+
+        /* Tag chips */
+        .tag-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-top: 0.35rem;
+            min-height: 24px;
+        }
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2px 8px 2px 10px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.12s;
+            user-select: none;
+        }
+        .chip.selected {
+            background: rgba(88,166,255,0.12);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        .chip:hover { border-color: var(--accent-cyan); }
+        .chip .chip-x { font-size: 0.65rem; opacity: 0.6; }
+
+        /* ── Main ────────────────────────────────────────────────── */
+        .main {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            padding: 0.75rem 1.25rem;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+
+        .tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+        .tab-panel.active { display: flex; }
+
+        /* ── Search results ────────────────────────────────────────── */
+        .results-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+            padding: 4rem;
+            color: var(--text-secondary);
+        }
+        .empty-icon { font-size: 3rem; opacity: 0.25; }
+
+        .result-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: border-color 0.15s;
+        }
+        .result-card:hover { border-color: var(--accent-cyan); }
+        .result-card.playing { border-color: var(--accent-green); }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .result-rank {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+        .result-video-id {
+            font-weight: 600;
+            font-size: 0.92rem;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .similarity-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+        .similarity-bar {
+            width: 80px;
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .similarity-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+        }
+        .similarity-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--accent-cyan);
+            width: 40px;
+            text-align: right;
+        }
+
+        .result-body {
+            padding: 0.75rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .result-meta {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .meta-item { font-size: 0.78rem; color: var(--text-secondary); }
+        .meta-item span { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; }
+
+        .result-path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+
+        .result-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+        }
+        .tag-badge {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 1px 7px;
+            font-size: 0.72rem;
+            color: var(--accent-purple);
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0 1rem 0.75rem;
+        }
+        .result-actions .btn {
+            width: auto;
+            padding: 0.35rem 0.9rem;
+            font-size: 0.8rem;
+        }
+
+        /* Inline video player inside result card */
+        .inline-player {
+            display: none;
+            padding: 0 1rem 0.75rem;
+        }
+        .inline-player.visible { display: block; }
+        .inline-player video {
+            width: 100%;
+            max-height: 340px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #000;
+        }
+
+        /* ── Upsert tab ─────────────────────────────────────────── */
+        .upsert-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            max-width: 560px;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            background: rgba(88,166,255,0.04);
+        }
+        .drop-zone input[type=file] {
+            position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        }
+        .drop-icon { font-size: 1.75rem; margin-bottom: 0.35rem; }
+        .drop-filename {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--accent-green);
+            margin-top: 0.4rem;
+        }
+
+        .upsert-result {
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-green);
+            border-radius: 8px;
+            padding: 0.9rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-green);
+            display: none;
+        }
+        .upsert-result.visible { display: block; }
+
+        /* ── Manage tab ──────────────────────────────────────────── */
+        .manage-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            max-width: 520px;
+        }
+
+        .manage-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .manage-section h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .manage-section p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .btn-danger { border-color: var(--accent-red); color: var(--accent-red); background: none; }
+        .btn-danger:hover { background: rgba(248,81,73,0.08); border-color: var(--accent-red); color: var(--accent-red); }
+
+        /* ── Toast ─────────────────────────────────────────────────── */
+        #toast {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem; left: 50%;
+            transform: translateX(-50%);
+            padding: 0.65rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            z-index: 999;
+            max-width: 540px;
+            text-align: center;
+        }
+        #toast.error  { display: block; background: rgba(248,81,73,0.15); border: 1px solid var(--accent-red); color: var(--accent-red); }
+        #toast.success{ display: block; background: rgba(63,185,80,0.12); border: 1px solid var(--accent-green); color: var(--accent-green); }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="index.html">Apps</a>
+    <span class="sep">/</span>
+    <h1>Video Search</h1>
+    <span class="status-label" id="status-label">checking…</span>
+    <div class="status-dot" id="status-dot"></div>
+</header>
+
+<div class="layout">
+    <!-- ── Sidebar ─────────────────────────────────────────────── -->
+    <aside class="sidebar">
+
+        <div>
+            <div class="section-label">Connection</div>
+            <div class="field" style="margin-bottom:0.5rem;">
+                <label>Embedding server URL</label>
+                <input type="text" id="server-url" value="/embed">
+            </div>
+            <div class="field">
+                <label>API Base URL (for presigned URLs)</label>
+                <input type="text" id="api-base-url" value="/api/v1">
+            </div>
+        </div>
+
+        <div>
+            <div class="section-label">Search</div>
+            <div class="field" style="margin-bottom:0.6rem;">
+                <label>Collection</label>
+                <select id="collection-select" disabled>
+                    <option value="">Loading…</option>
+                </select>
+            </div>
+
+            <div class="field" style="margin-bottom:0.6rem;">
+                <label>Query</label>
+                <textarea id="query" rows="3" placeholder="person running in the street…" style="font-family:'Outfit',sans-serif;"></textarea>
+            </div>
+
+            <div class="row" style="margin-bottom:0.6rem;">
+                <div class="field">
+                    <label>Top K</label>
+                    <input type="number" id="top-k" value="10" min="1" max="100">
+                </div>
+                <div class="field">
+                    <label>Tag mode</label>
+                    <select id="tag-mode">
+                        <option value="all">ALL (AND)</option>
+                        <option value="any">ANY (OR)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="field" style="margin-bottom:0.6rem;">
+                <label>Prompt template</label>
+                <input type="text" id="prompt-template" value="a video of {}.">
+            </div>
+
+            <div class="field" style="margin-bottom:0.5rem;">
+                <label>Tag filter <span style="font-weight:400;font-size:0.72rem;">(click to toggle)</span></label>
+                <div class="tag-chips" id="tag-chips">
+                    <span style="font-size:0.75rem;color:var(--text-secondary);">Select a collection to load tags</span>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-search" disabled>Search</button>
+
+    </aside>
+
+    <!-- ── Main ────────────────────────────────────────────────── -->
+    <main class="main">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="results">Results</button>
+            <button class="tab-btn" data-tab="upsert">Upsert</button>
+            <button class="tab-btn" data-tab="manage">Manage</button>
+        </div>
+
+        <!-- Results tab -->
+        <div class="tab-panel active" id="tab-results">
+            <div class="results-area" id="results-area">
+                <div class="empty-state" id="results-empty">
+                    <div class="empty-icon">🔍</div>
+                    <div>Enter a query and click Search</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upsert tab -->
+        <div class="tab-panel" id="tab-upsert">
+            <div class="upsert-area">
+                <div>
+                    <div class="section-label">Upload video</div>
+                    <div class="drop-zone" id="upsert-drop">
+                        <input type="file" id="upsert-file" accept="video/*">
+                        <div class="drop-icon">🎞️</div>
+                        <div>Drop video or click to browse</div>
+                        <div class="drop-filename" id="upsert-filename"></div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Collection</label>
+                    <input type="text" id="upsert-collection" placeholder="my_collection">
+                </div>
+
+                <div class="field">
+                    <label>Tags (JSON array, optional)</label>
+                    <input type="text" id="upsert-tags" placeholder='[{"name":"person:john","start":0,"end":5}]'>
+                </div>
+
+                <button class="btn btn-primary" id="btn-upsert" disabled>Upload &amp; embed</button>
+
+                <div class="upsert-result" id="upsert-result"></div>
+            </div>
+        </div>
+
+        <!-- Manage tab -->
+        <div class="tab-panel" id="tab-manage">
+            <div class="manage-area">
+
+                <div class="manage-section">
+                    <h3>Delete video</h3>
+                    <p>Remove a video and all its segments from Qdrant and MinIO.</p>
+                    <div class="field">
+                        <label>Collection</label>
+                        <select id="manage-collection-del" disabled>
+                            <option value="">Loading…</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Video ID</label>
+                        <input type="text" id="delete-video-id" placeholder="my_video_filename">
+                    </div>
+                    <button class="btn btn-danger" id="btn-delete-video">Delete video</button>
+                </div>
+
+                <div class="manage-section">
+                    <h3>Purge collection</h3>
+                    <p>Delete all segments and files from a collection. Irreversible.</p>
+                    <div class="field">
+                        <label>Collection</label>
+                        <select id="manage-collection-purge" disabled>
+                            <option value="">Loading…</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-danger" id="btn-purge">Purge collection</button>
+                </div>
+
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+    // ── DOM ────────────────────────────────────────────────────────
+    const SERVER_URL   = document.getElementById('server-url');
+    const API_BASE_URL = document.getElementById('api-base-url');
+    const STATUS_DOT     = document.getElementById('status-dot');
+    const STATUS_LABEL   = document.getElementById('status-label');
+    const COLL_SELECT    = document.getElementById('collection-select');
+    const QUERY_INPUT    = document.getElementById('query');
+    const TOP_K          = document.getElementById('top-k');
+    const TAG_MODE       = document.getElementById('tag-mode');
+    const PROMPT_TMPL    = document.getElementById('prompt-template');
+    const TAG_CHIPS_EL   = document.getElementById('tag-chips');
+    const BTN_SEARCH     = document.getElementById('btn-search');
+    const RESULTS_AREA   = document.getElementById('results-area');
+    const RESULTS_EMPTY  = document.getElementById('results-empty');
+    const UPSERT_DROP    = document.getElementById('upsert-drop');
+    const UPSERT_FILE    = document.getElementById('upsert-file');
+    const UPSERT_FNAME   = document.getElementById('upsert-filename');
+    const UPSERT_COLL    = document.getElementById('upsert-collection');
+    const UPSERT_TAGS    = document.getElementById('upsert-tags');
+    const BTN_UPSERT     = document.getElementById('btn-upsert');
+    const UPSERT_RESULT  = document.getElementById('upsert-result');
+    const MGR_COLL_DEL   = document.getElementById('manage-collection-del');
+    const MGR_COLL_PURGE = document.getElementById('manage-collection-purge');
+    const DEL_VIDEO_ID   = document.getElementById('delete-video-id');
+    const BTN_DEL_VIDEO  = document.getElementById('btn-delete-video');
+    const BTN_PURGE      = document.getElementById('btn-purge');
+    const TOAST          = document.getElementById('toast');
+
+    // ── State ──────────────────────────────────────────────────────
+    let selectedTags = new Set();
+    let upsertVideoFile = null;
+    let toastTimer = null;
+    let availableTags = [];
+
+    // ── Helpers ────────────────────────────────────────────────────
+    function server() { return SERVER_URL.value.replace(/\/$/, ''); }
+
+    function toast(msg, type = 'error') {
+        TOAST.textContent = msg;
+        TOAST.className = type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { TOAST.className = ''; }, 7000);
+    }
+
+    async function apiFetch(path, opts = {}) {
+        const r = await fetch(`${server()}${path}`, opts);
+        if (!r.ok) {
+            const detail = (await r.json().catch(() => ({}))).detail || r.statusText;
+            throw new Error(detail);
+        }
+        return r.json();
+    }
+
+    // Ask the main API to generate a presigned URL (S3 V4, server-side).
+    // The URL comes back pointing to http://minio:9000/... — we rewrite the
+    // host to /minio so the nginx proxy forwards it with Host: minio:9000,
+    // which preserves the V4 signature.
+    async function presignMinioUrl(minioPath) {
+        if (!minioPath) return null;
+
+        // Parse  minio://bucket/key  →  bucket, key
+        let bucket, key;
+        if (minioPath.startsWith('minio://')) {
+            const rest = minioPath.slice('minio://'.length);
+            const slash = rest.indexOf('/');
+            bucket = rest.slice(0, slash);
+            key    = rest.slice(slash + 1);
+        } else {
+            key = minioPath.replace(/^\//, '');
+        }
+
+        const qs = new URLSearchParams({ key });
+        if (bucket) qs.set('bucket', bucket);
+
+        const apiBase = API_BASE_URL.value.replace(/\/$/, '');
+        const resp = await fetch(`${apiBase}/storage/presign?${qs}`);
+        if (!resp.ok) throw new Error(`presign failed: ${resp.statusText}`);
+        const { url } = await resp.json();
+
+        // Rewrite internal MinIO host → nginx proxy path
+        return url.replace(/^https?:\/\/[^/]+/, '/minio');
+    }
+
+    // ── Tabs ───────────────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+        });
+    });
+
+    // ── Health & collections ───────────────────────────────────────
+    async function checkHealth() {
+        try {
+            const h = await apiFetch('/health');
+            STATUS_DOT.className = 'status-dot ok';
+            STATUS_LABEL.textContent = `${h.model || 'ready'} · ${(h.collections || []).length} collections`;
+        } catch {
+            STATUS_DOT.className = 'status-dot';
+            STATUS_LABEL.textContent = 'server unreachable';
+        }
+    }
+
+    async function loadCollections() {
+        COLL_SELECT.disabled = true;
+        COLL_SELECT.innerHTML = '<option value="">Loading…</option>';
+        try {
+            const { collections } = await apiFetch('/collections');
+            const opts = collections.length
+                ? '<option value="">— pick a collection —</option>' + collections.map(c => `<option value="${c}">${c}</option>`).join('')
+                : '<option value="">No collections</option>';
+            COLL_SELECT.innerHTML = opts;
+            COLL_SELECT.disabled = collections.length === 0;
+
+            // Populate manage dropdowns
+            const manageOpts = '<option value="">— pick —</option>' + collections.map(c => `<option value="${c}">${c}</option>`).join('');
+            MGR_COLL_DEL.innerHTML = MGR_COLL_PURGE.innerHTML = manageOpts;
+            MGR_COLL_DEL.disabled = MGR_COLL_PURGE.disabled = collections.length === 0;
+        } catch (err) {
+            COLL_SELECT.innerHTML = '<option value="">Error loading</option>';
+            toast(`Failed to load collections: ${err.message}`);
+        }
+    }
+
+    COLL_SELECT.addEventListener('change', loadTags);
+    SERVER_URL.addEventListener('change', () => { checkHealth(); loadCollections(); });
+
+    async function loadTags() {
+        const coll = COLL_SELECT.value;
+        selectedTags.clear();
+        TAG_CHIPS_EL.innerHTML = '';
+        availableTags = [];
+        BTN_SEARCH.disabled = !coll;
+
+        if (!coll) {
+            TAG_CHIPS_EL.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">Select a collection to load tags</span>';
+            return;
+        }
+
+        TAG_CHIPS_EL.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading tags…</span>';
+        try {
+            const { tags } = await apiFetch(`/tags/${coll}`);
+            availableTags = tags;
+            renderTagChips(tags);
+        } catch (err) {
+            TAG_CHIPS_EL.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">No tags</span>';
+        }
+    }
+
+    function renderTagChips(tags) {
+        if (!tags.length) {
+            TAG_CHIPS_EL.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">No tags in collection</span>';
+            return;
+        }
+        TAG_CHIPS_EL.innerHTML = tags.map(t =>
+            `<span class="chip${selectedTags.has(t) ? ' selected' : ''}" data-tag="${t}">${t}</span>`
+        ).join('');
+
+        TAG_CHIPS_EL.querySelectorAll('.chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const tag = chip.dataset.tag;
+                if (selectedTags.has(tag)) {
+                    selectedTags.delete(tag);
+                    chip.classList.remove('selected');
+                } else {
+                    selectedTags.add(tag);
+                    chip.classList.add('selected');
+                }
+            });
+        });
+    }
+
+    // ── Search ─────────────────────────────────────────────────────
+    BTN_SEARCH.addEventListener('click', doSearch);
+    QUERY_INPUT.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doSearch();
+    });
+
+    async function doSearch() {
+        const query = QUERY_INPUT.value.trim();
+        const collection = COLL_SELECT.value;
+        if (!query) { toast('Enter a search query.'); return; }
+        if (!collection) { toast('Select a collection.'); return; }
+
+        BTN_SEARCH.disabled = true;
+        BTN_SEARCH.innerHTML = '<span class="spinner"></span>Searching…';
+        clearResults();
+
+        const payload = {
+            query,
+            collection,
+            top_k: parseInt(TOP_K.value) || 10,
+            prompt_template: PROMPT_TMPL.value || 'a video of {}.',
+        };
+        if (selectedTags.size > 0) {
+            payload.tags = [...selectedTags];
+            payload.tag_mode = TAG_MODE.value;
+        }
+
+        try {
+            const { results } = await apiFetch('/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            renderResults(results);
+        } catch (err) {
+            toast(`Search failed: ${err.message}`);
+            RESULTS_EMPTY.querySelector('div:last-child').textContent = `Error: ${err.message}`;
+            RESULTS_EMPTY.style.display = 'flex';
+        } finally {
+            BTN_SEARCH.disabled = false;
+            BTN_SEARCH.textContent = 'Search';
+        }
+    }
+
+    function clearResults() {
+        RESULTS_AREA.innerHTML = '';
+        RESULTS_EMPTY.style.display = 'none';
+        RESULTS_EMPTY.querySelector('div:last-child').textContent = 'Enter a query and click Search';
+        RESULTS_AREA.appendChild(RESULTS_EMPTY);
+    }
+
+    function renderResults(results) {
+        clearResults();
+        if (!results.length) {
+            RESULTS_EMPTY.querySelector('div:last-child').textContent = 'No results found.';
+            RESULTS_EMPTY.style.display = 'flex';
+            return;
+        }
+
+        results.forEach((r, i) => {
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            card.id = `card-${r.segment_id}`;
+            card.dataset.minioPath = r.path;
+            card.dataset.videoId   = r.video_id;
+
+            const simPct  = (r.similarity * 100).toFixed(1);
+            const tagHtml = r.tags.map(t => `<span class="tag-badge">${t.name}</span>`).join('');
+
+            card.innerHTML = `
+                <div class="result-header">
+                    <div class="result-rank">${i + 1}</div>
+                    <div class="result-video-id" title="${r.video_id}">${r.video_id}</div>
+                    <div class="similarity-bar-wrap">
+                        <div class="similarity-bar">
+                            <div class="similarity-fill" style="width:${simPct}%"></div>
+                        </div>
+                        <div class="similarity-label">${simPct}%</div>
+                    </div>
+                </div>
+                <div class="result-body">
+                    <div class="result-meta">
+                        <div class="meta-item">Duration <span>${r.duration.toFixed(2)}s</span></div>
+                        <div class="meta-item">Segment <span>#${r.segment_index}</span></div>
+                        <div class="meta-item">ID <span>${r.segment_id}</span></div>
+                    </div>
+                    <div class="result-path">${r.path}</div>
+                    ${tagHtml ? `<div class="result-tags">${tagHtml}</div>` : ''}
+                </div>
+                <div class="result-actions">
+                    <button class="btn" onclick="togglePlay('${r.segment_id}', this)">Play</button>
+                    <button class="btn" onclick="downloadVideo('${r.segment_id}')">Download</button>
+                </div>
+                <div class="inline-player" id="player-${r.segment_id}">
+                    <video controls playsinline>Your browser does not support video.</video>
+                </div>
+            `;
+
+            RESULTS_AREA.appendChild(card);
+        });
+    }
+
+    async function togglePlay(segmentId, btn) {
+        const playerEl = document.getElementById(`player-${segmentId}`);
+        const cardEl   = document.getElementById(`card-${segmentId}`);
+        const videoEl  = playerEl.querySelector('video');
+        const isVisible = playerEl.classList.contains('visible');
+
+        if (isVisible) {
+            videoEl.pause();
+            playerEl.classList.remove('visible');
+            cardEl.classList.remove('playing');
+            btn.textContent = 'Play';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        try {
+            const url = await presignMinioUrl(cardEl.dataset.minioPath);
+            videoEl.src = url;
+            playerEl.classList.add('visible');
+            cardEl.classList.add('playing');
+            videoEl.play().catch(() => {});
+            btn.textContent = 'Stop';
+        } catch (err) {
+            toast(`Failed to load video: ${err.message}`);
+            btn.textContent = 'Play';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function downloadVideo(segmentId) {
+        const cardEl = document.getElementById(`card-${segmentId}`);
+        try {
+            const url = await presignMinioUrl(cardEl.dataset.minioPath);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${cardEl.dataset.videoId}.mp4`;
+            a.click();
+        } catch (err) {
+            toast(`Failed to get download URL: ${err.message}`);
+        }
+    }
+
+    // ── Upsert ─────────────────────────────────────────────────────
+    UPSERT_FILE.addEventListener('change', e => {
+        if (e.target.files[0]) setUpsertFile(e.target.files[0]);
+    });
+    UPSERT_DROP.addEventListener('dragover', e => { e.preventDefault(); UPSERT_DROP.classList.add('drag-over'); });
+    UPSERT_DROP.addEventListener('dragleave', () => UPSERT_DROP.classList.remove('drag-over'));
+    UPSERT_DROP.addEventListener('drop', e => {
+        e.preventDefault(); UPSERT_DROP.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) setUpsertFile(e.dataTransfer.files[0]);
+    });
+
+    function setUpsertFile(file) {
+        upsertVideoFile = file;
+        UPSERT_FNAME.textContent = file.name;
+        BTN_UPSERT.disabled = false;
+        UPSERT_RESULT.classList.remove('visible');
+    }
+
+    BTN_UPSERT.addEventListener('click', async () => {
+        if (!upsertVideoFile) { toast('Select a video file first.'); return; }
+        const collection = UPSERT_COLL.value.trim();
+        if (!collection) { toast('Enter a collection name.'); return; }
+
+        BTN_UPSERT.disabled = true;
+        BTN_UPSERT.innerHTML = '<span class="spinner"></span>Uploading & embedding…';
+        UPSERT_RESULT.classList.remove('visible');
+
+        const fd = new FormData();
+        fd.append('file', upsertVideoFile, upsertVideoFile.name);
+        fd.append('collection', collection);
+        if (UPSERT_TAGS.value.trim()) fd.append('tags', UPSERT_TAGS.value.trim());
+
+        try {
+            const resp = await fetch(`${server()}/upsert`, { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const detail = (await resp.json().catch(() => ({}))).detail || resp.statusText;
+                throw new Error(detail);
+            }
+            const data = await resp.json();
+            UPSERT_RESULT.textContent =
+                `segment_id : ${data.segment_id}\nvideo_id   : ${data.video_id}\nminio_path : ${data.minio_path}`;
+            UPSERT_RESULT.classList.add('visible');
+            toast('Video uploaded and embedded.', 'success');
+            // Refresh collections/tags
+            loadCollections();
+        } catch (err) {
+            toast(`Upsert failed: ${err.message}`);
+        } finally {
+            BTN_UPSERT.disabled = false;
+            BTN_UPSERT.innerHTML = 'Upload &amp; embed';
+        }
+    });
+
+    // ── Manage ─────────────────────────────────────────────────────
+    BTN_DEL_VIDEO.addEventListener('click', async () => {
+        const coll = MGR_COLL_DEL.value;
+        const vid  = DEL_VIDEO_ID.value.trim();
+        if (!coll) { toast('Select a collection.'); return; }
+        if (!vid)  { toast('Enter a video ID.'); return; }
+        if (!confirm(`Delete video "${vid}" from "${coll}"?`)) return;
+
+        try {
+            const data = await apiFetch(`/videos/${coll}/${encodeURIComponent(vid)}`, { method: 'DELETE' });
+            toast(`Deleted ${data.deleted_segments} segments, ${data.deleted_files} files.`, 'success');
+            DEL_VIDEO_ID.value = '';
+        } catch (err) {
+            toast(`Delete failed: ${err.message}`);
+        }
+    });
+
+    BTN_PURGE.addEventListener('click', async () => {
+        const coll = MGR_COLL_PURGE.value;
+        if (!coll) { toast('Select a collection.'); return; }
+        if (!confirm(`Purge ALL data from collection "${coll}"? This cannot be undone.`)) return;
+
+        try {
+            const data = await apiFetch(`/collections/${coll}/purge`, { method: 'DELETE' });
+            toast(`Purged ${data.purged_segments} segments, ${data.deleted_files} files.`, 'success');
+        } catch (err) {
+            toast(`Purge failed: ${err.message}`);
+        }
+    });
+
+    // ── Init ───────────────────────────────────────────────────────
+    checkHealth();
+    loadCollections();
+    setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>

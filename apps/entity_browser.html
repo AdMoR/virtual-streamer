@@ -595,7 +595,7 @@ function renderList(items) {
 function cardHtml(item) {
     const id = itemId(item);
     const sel = id === selectedId ? ' selected' : '';
-    return `<div class="card${sel}" data-id="${esc(id)}" onclick="selectItem('${esc(id)}')">`
+    return `<div class="card${sel}" data-id="${esc(id)}" onclick="selectItem(this.dataset.id)">`
          + cardBody(item)
          + '</div>';
 }
@@ -924,18 +924,29 @@ function detailLocation(loc) {
       <div id="loc-img-preview" style="margin-bottom:0.75rem">
         ${hasImage ? '<div class="spinner" style="width:20px;height:20px;margin:0.5rem 0;border-width:2px"></div>' : '<div style="color:var(--text-secondary);font-size:0.8rem">No image yet.</div>'}
       </div>
-      <div class="form-group">
-        <label class="form-label">Prompt</label>
-        <textarea class="form-textarea" id="loc-img-prompt" rows="4" placeholder="Leave blank to use description…">${esc(loc.description||'')}</textarea>
+
+      <div style="margin-bottom:0.75rem">
+        <div class="detail-label" style="margin-bottom:0.4rem">Upload your own image</div>
+        <input class="form-file-input" type="file" id="loc-upload-input" accept="image/*">
+        <button class="btn-primary" id="loc-upload-btn" data-locid="${esc(loc.location_id)}" onclick="uploadLocationImage(this.dataset.locid)" style="margin-top:0.25rem">📤 Upload image</button>
+        <div id="loc-upload-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
       </div>
-      <div class="form-group">
-        <label class="form-label">SD Server URL</label>
-        <input class="form-input" type="text" id="loc-img-sd-url" value="http://gx10-cbc5:1234" placeholder="http://host:1234">
+
+      <div style="border-top:1px solid var(--border-color);padding-top:0.75rem">
+        <div class="detail-label" style="margin-bottom:0.5rem">Generate with AI</div>
+        <div class="form-group">
+          <label class="form-label">Prompt</label>
+          <textarea class="form-textarea" id="loc-img-prompt" rows="3" placeholder="Leave blank to use description…">${esc(loc.description||'')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SD Server URL</label>
+          <input class="form-input" type="text" id="loc-img-sd-url" value="http://gx10-cbc5:1234" placeholder="http://host:1234">
+        </div>
+        <button class="btn-primary" id="loc-img-btn" data-locid="${esc(loc.location_id)}" onclick="regenerateLocationImage(this.dataset.locid)">
+          ${hasImage ? '🔄 Regenerate image' : '🎨 Generate image'}
+        </button>
+        <div id="loc-img-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
       </div>
-      <button class="btn-primary" id="loc-img-btn" onclick="regenerateLocationImage('${esc(loc.location_id)}')">
-        ${hasImage ? '🔄 Regenerate image' : '🎨 Generate image'}
-      </button>
-      <div id="loc-img-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
     </div>
 
     <hr class="divider">
@@ -944,7 +955,7 @@ function detailLocation(loc) {
       Updated: ${esc(loc.updated_at||'—')}
     </div>
 
-    <button class="btn-delete" onclick="deleteLocation('${esc(loc.location_id)}')">🗑 Delete location</button>`;
+    <button class="btn-delete" data-locid="${esc(loc.location_id)}" onclick="deleteLocation(this.dataset.locid)">🗑 Delete location</button>`;
 }
 
 async function loadLocationImage(locationId) {
@@ -1001,6 +1012,49 @@ async function regenerateLocationImage(locationId) {
         btn.textContent = '🔄 Regenerate image';
     } catch(e) {
         preview.innerHTML = '<div style="color:var(--text-secondary);font-size:0.8rem">Generation failed.</div>';
+        msg.style.color = 'var(--accent-red)';
+        msg.textContent = '⚠ ' + e.message;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function uploadLocationImage(locationId) {
+    const input   = document.getElementById('loc-upload-input');
+    const btn     = document.getElementById('loc-upload-btn');
+    const msg     = document.getElementById('loc-upload-msg');
+    const preview = document.getElementById('loc-img-preview');
+
+    if (!input.files.length) {
+        msg.style.color = 'var(--accent-orange)';
+        msg.textContent = 'Select an image file first.';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('image_file', input.files[0]);
+
+    btn.disabled = true;
+    msg.style.color = 'var(--text-secondary)';
+    msg.textContent = 'Uploading…';
+    preview.innerHTML = '<div class="spinner"></div>';
+
+    try {
+        const r = await fetch(
+            apiUrl() + '/api/v1/location-generation/' + encodeURIComponent(locationId) + '/upload-image',
+            { method: 'POST', body: formData }
+        );
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        const data = await r.json();
+        preview.innerHTML = `<img src="data:image/png;base64,${data.image_data}" style="width:100%;border-radius:8px;border:1px solid var(--border-color)">`;
+        msg.style.color = 'var(--accent-green)';
+        msg.textContent = '✓ Image uploaded';
+        document.getElementById('loc-img-btn').textContent = '🔄 Regenerate image';
+    } catch(e) {
+        preview.innerHTML = '<div style="color:var(--text-secondary);font-size:0.8rem">Upload failed.</div>';
         msg.style.color = 'var(--accent-red)';
         msg.textContent = '⚠ ' + e.message;
     } finally {

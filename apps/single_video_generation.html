@@ -322,9 +322,21 @@
                 <label>Denoising strength</label>
                 <input type="number" id="denoising-strength" value="0.7" min="0.0" max="1.0" step="0.05">
             </div>
+            <!-- Transition frames — only useful when first-frame image is also set -->
+            <div id="transition-wrap" style="display:none; margin-top:0.75rem;">
+                <div class="field">
+                    <label>Transition frames <span style="font-weight:400;font-size:0.72rem;">(0=off · 8=minimal · 16=recommended · 24=strong)</span></label>
+                    <select id="transition-frames">
+                        <option value="0" selected>0 — disabled</option>
+                        <option value="8">8 — minimal (~0.3 s free)</option>
+                        <option value="16">16 — recommended (~0.7 s free)</option>
+                        <option value="24">24 — strong (~1 s free)</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
-        <!-- Image input -->
+        <!-- Image input (start frame) -->
         <div>
             <div class="section-label" style="margin-bottom:0.75rem;">First frame / conditioning image <span style="font-weight:400;text-transform:none;font-size:0.72rem;">(optional — can be combined with guiding video)</span></div>
             <div class="drop-zone" id="image-drop">
@@ -335,6 +347,20 @@
             <div class="drop-preview" id="image-preview">
                 <img id="image-thumb" src="" alt="">
                 <span class="drop-clear" id="image-clear">Remove</span>
+            </div>
+        </div>
+
+        <!-- End image input (last frame) -->
+        <div>
+            <div class="section-label" style="margin-bottom:0.75rem;">Last frame / end image <span style="font-weight:400;text-transform:none;font-size:0.72rem;">(optional — sets image_prompt_type to SE when combined with first frame)</span></div>
+            <div class="drop-zone" id="end-image-drop">
+                <input type="file" id="end-image-file" accept="image/*">
+                <div class="drop-icon">🏁</div>
+                <div>Drop end-frame image or click to browse</div>
+            </div>
+            <div class="drop-preview" id="end-image-preview">
+                <img id="end-image-thumb" src="" alt="">
+                <span class="drop-clear" id="end-image-clear">Remove</span>
             </div>
         </div>
 
@@ -539,13 +565,16 @@
     const BTN_DL       = document.getElementById('btn-download');
     const ERR_TOAST    = document.getElementById('error-toast');
 
-    const DENOISING_STR   = document.getElementById('denoising-strength');
+    const DENOISING_STR     = document.getElementById('denoising-strength');
+    const TRANSITION_FRAMES = document.getElementById('transition-frames');
+    const TRANSITION_WRAP   = document.getElementById('transition-wrap');
 
     // ── State ──────────────────────────────────────────────────────
-    let imageFile = null;
-    let audioFile = null;
-    let videoFile = null;
-    let pollTimer = null;
+    let imageFile    = null;
+    let endImageFile = null;
+    let audioFile    = null;
+    let videoFile    = null;
+    let pollTimer    = null;
 
     // ── Health check ───────────────────────────────────────────────
     async function checkHealth() {
@@ -572,12 +601,17 @@
     const videoClear    = document.getElementById('video-clear');
     const v2vSettings   = document.getElementById('v2v-settings');
 
+    function syncTransitionWrap() {
+        TRANSITION_WRAP.style.display = (videoFile && imageFile) ? 'block' : 'none';
+    }
+
     function loadSourceVideo(file) {
         if (!file.type.startsWith('video/')) return;
         videoFile = file;
         videoThumb.src = URL.createObjectURL(file);
         videoPreview.classList.add('visible');
         v2vSettings.style.display = 'block';
+        syncTransitionWrap();
     }
 
     function clearSourceVideo() {
@@ -585,6 +619,7 @@
         videoPreview.classList.remove('visible');
         v2vSettings.style.display = 'none';
         videoFileEl.value = '';
+        syncTransitionWrap();
     }
 
     videoFileEl.addEventListener('change', e => e.target.files[0] && loadSourceVideo(e.target.files[0]));
@@ -608,11 +643,13 @@
         imageFile = file;
         imageThumb.src = URL.createObjectURL(file);
         imagePreview.classList.add('visible');
+        syncTransitionWrap();
     }
 
     function clearImage() {
         imageFile = null; imageThumb.src = '';
         imagePreview.classList.remove('visible'); imageFileEl.value = '';
+        syncTransitionWrap();
     }
 
     imageFileEl.addEventListener('change', e => e.target.files[0] && loadImage(e.target.files[0]));
@@ -623,6 +660,34 @@
         e.dataTransfer.files[0] && loadImage(e.dataTransfer.files[0]);
     });
     imageClear.addEventListener('click', clearImage);
+
+    // ── End image drop zone ───────────────────────────────────────
+    const endImageDropEl  = document.getElementById('end-image-drop');
+    const endImageFileEl  = document.getElementById('end-image-file');
+    const endImagePreview = document.getElementById('end-image-preview');
+    const endImageThumb   = document.getElementById('end-image-thumb');
+    const endImageClear   = document.getElementById('end-image-clear');
+
+    function loadEndImage(file) {
+        if (!file.type.startsWith('image/')) return;
+        endImageFile = file;
+        endImageThumb.src = URL.createObjectURL(file);
+        endImagePreview.classList.add('visible');
+    }
+
+    function clearEndImage() {
+        endImageFile = null; endImageThumb.src = '';
+        endImagePreview.classList.remove('visible'); endImageFileEl.value = '';
+    }
+
+    endImageFileEl.addEventListener('change', e => e.target.files[0] && loadEndImage(e.target.files[0]));
+    endImageDropEl.addEventListener('dragover', e => { e.preventDefault(); endImageDropEl.classList.add('drag-over'); });
+    endImageDropEl.addEventListener('dragleave', () => endImageDropEl.classList.remove('drag-over'));
+    endImageDropEl.addEventListener('drop', e => {
+        e.preventDefault(); endImageDropEl.classList.remove('drag-over');
+        e.dataTransfer.files[0] && loadEndImage(e.dataTransfer.files[0]);
+    });
+    endImageClear.addEventListener('click', clearEndImage);
 
     // ── Audio drop zone ────────────────────────────────────────────
     const audioDropEl   = document.getElementById('audio-drop');
@@ -749,9 +814,11 @@
         fd.append('audio_scale',           AUDIO_SCALE.value);
         fd.append('audio_guidance',        AUDIO_GUID.value);
         fd.append('denoising_strength',    DENOISING_STR.value);
-        if (videoFile) fd.append('video', videoFile, videoFile.name);
-        if (imageFile) fd.append('image', imageFile, imageFile.name);
-        if (audioFile) fd.append('audio', audioFile, audioFile.name);
+        fd.append('transition_frames',     TRANSITION_FRAMES.value);
+        if (videoFile)    fd.append('video',     videoFile,    videoFile.name);
+        if (imageFile)    fd.append('image',     imageFile,    imageFile.name);
+        if (endImageFile) fd.append('end_image', endImageFile, endImageFile.name);
+        if (audioFile)    fd.append('audio',     audioFile,    audioFile.name);
 
         try {
             const resp = await fetch(`${apiBase}/video-generation/single-clip`, {

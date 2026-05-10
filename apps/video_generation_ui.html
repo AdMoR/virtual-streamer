@@ -612,6 +612,129 @@
             opacity: 0.5;
         }
 
+        /* ── 2-Phase LTX Script Workflow ──────────────────────────── */
+        .phase-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 18px;
+            font-size: 0.8rem;
+        }
+        .phase-step {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: var(--bg-input);
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .phase-step.active {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(88, 166, 255, 0.1);
+        }
+        .phase-step.done {
+            border-color: var(--success);
+            color: var(--success);
+            background: rgba(63, 185, 80, 0.08);
+        }
+        .phase-sep { color: var(--text-muted); opacity: 0.4; font-size: 0.7rem; }
+
+        .script-section-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-bright);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .loc-editor-card {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+        }
+        .loc-editor-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .loc-id-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--purple);
+            background: rgba(163, 113, 247, 0.1);
+            border: 1px solid rgba(163, 113, 247, 0.3);
+            border-radius: 4px;
+            padding: 1px 6px;
+        }
+
+        .scene-editor-card {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+        }
+        .scene-editor-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .scene-num-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: var(--accent);
+            color: #000;
+            padding: 2px 7px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .scene-editor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        @media (max-width: 900px) { .scene-editor-grid { grid-template-columns: 1fr; } }
+
+        .btn-danger {
+            background: rgba(248,81,73,0.1);
+            color: var(--error);
+            border: 1px solid var(--error);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            font-family: inherit;
+            margin-left: auto;
+            transition: background 0.15s;
+        }
+        .btn-danger:hover { background: rgba(248,81,73,0.25); }
+
+        .script-gen-loader {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+        .script-gen-loader.visible { display: flex; }
+
         /* Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
@@ -952,25 +1075,86 @@
                                 </button>
                             </div>
 
-                            <!-- LTX Video Input -->
+                            <!-- LTX Video Input — 2-phase workflow -->
                             <div id="input-ltx" class="input-section" style="display: none;">
-                                <div class="form-group">
-                                    <label>Story Template <span style="color: var(--error);">*</span></label>
-                                    <select id="ltxTemplateSelect">
-                                        <option value="">Select a template...</option>
-                                    </select>
+
+                                <!-- Phase indicator -->
+                                <div class="phase-indicator">
+                                    <div class="phase-step active" id="pi-step1">1 · Generate Script</div>
+                                    <span class="phase-sep">›</span>
+                                    <div class="phase-step" id="pi-step2">2 · Edit Script</div>
+                                    <span class="phase-sep">›</span>
+                                    <div class="phase-step" id="pi-step3">3 · Generate Video</div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Title (optional)</label>
-                                    <input type="text" id="ltxTitleInput" placeholder="e.g., 'Fred découvre ComfyUI'">
+
+                                <!-- ── Phase 1: Inputs ───────────────────────── -->
+                                <div id="ltx-phase1">
+                                    <div class="form-group">
+                                        <label>Story Template <span style="color: var(--error);">*</span></label>
+                                        <select id="ltxTemplateSelect">
+                                            <option value="">Select a template...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Title</label>
+                                        <input type="text" id="ltxTitleInput" placeholder="e.g., 'Fred découvre ComfyUI'">
+                                    </div>
+
+                                    <div class="script-gen-loader" id="script-gen-loader">
+                                        <div class="spinner"></div>
+                                        <span id="script-gen-label">Generating script…</span>
+                                    </div>
+
+                                    <div style="display:flex;gap:10px;" id="phase1-buttons">
+                                        <button class="btn btn-primary" style="flex:1;" onclick="generateScript()">
+                                            📝 Generate &amp; Edit Script
+                                        </button>
+                                        <button class="btn btn-secondary" onclick="submitLtxJob()" title="Skip editing — generate video directly">
+                                            ⚡ Direct
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Story Text (optional, overrides template)</label>
-                                    <textarea id="ltxStoryText" placeholder="Or paste your story text directly..." rows="6"></textarea>
+
+                                <!-- ── Phase 2: Script editor ───────────────── -->
+                                <div id="ltx-phase2" style="display:none;">
+
+                                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                                        <button class="btn btn-secondary btn-sm" onclick="backToPhase1()">← Back</button>
+                                        <span style="font-size:0.82rem;color:var(--text-muted);">
+                                            Edit the script, then generate
+                                        </span>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Story Title</label>
+                                        <input type="text" id="script-title">
+                                    </div>
+
+                                    <!-- Locations -->
+                                    <div class="script-section" style="margin-bottom:20px;">
+                                        <div class="script-section-title">
+                                            📍 Locations
+                                            <button class="btn btn-secondary btn-sm" onclick="addLocation()">+ Add</button>
+                                        </div>
+                                        <div id="locations-editor"></div>
+                                    </div>
+
+                                    <!-- Scenes -->
+                                    <div class="script-section" style="margin-bottom:20px;">
+                                        <div class="script-section-title">
+                                            🎬 Scenes
+                                            <button class="btn btn-secondary btn-sm" onclick="addScene()">+ Add</button>
+                                        </div>
+                                        <div id="scenes-editor"></div>
+                                    </div>
+
+                                    <button class="btn btn-primary btn-block" onclick="submitLtxFromScript()">
+                                        🚀 Generate Video from Script
+                                    </button>
                                 </div>
-                                <button class="btn btn-primary btn-block" onclick="submitLtxJob()">
-                                    🎬 Generate LTX Video
-                                </button>
+
+                                <!-- hidden story text kept for submitLtxJob() Direct path -->
+                                <input type="hidden" id="ltxStoryText" value="">
                             </div>
 
                             <!-- Result Area -->
@@ -1797,6 +1981,345 @@
             if (!p) return;
             document.getElementById('ltxSteps').value = p.steps;
             document.getElementById('ltxFps').value   = p.fps;
+        }
+
+        // =============================================================================
+        // 2-Phase LTX Script Workflow
+        // =============================================================================
+
+        state.currentScript = { title: '', locations: [], scenes: [] };
+
+        function setPhaseIndicator(active) {
+            [1, 2, 3].forEach(n => {
+                const el = document.getElementById(`pi-step${n}`);
+                if (!el) return;
+                el.classList.remove('active', 'done');
+                if (n < active) el.classList.add('done');
+                else if (n === active) el.classList.add('active');
+            });
+        }
+
+        async function generateScript() {
+            const templateId = document.getElementById('ltxTemplateSelect').value;
+            const title = document.getElementById('ltxTitleInput').value.trim();
+            if (!templateId) { showToast('Please select a story template', 'error'); return; }
+            if (!title) { showToast('Please enter a title', 'error'); return; }
+
+            const loader = document.getElementById('script-gen-loader');
+            const btns   = document.getElementById('phase1-buttons');
+            loader.classList.add('visible');
+            btns.style.display = 'none';
+            document.getElementById('script-gen-label').textContent = 'Generating script…';
+
+            const baseUrl = getApiUrl().replace('/api/v1', '');
+            try {
+                const resp = await fetch(`${baseUrl}/api/v1/story-pipeline/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title }),
+                });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                    throw new Error(err.detail || `HTTP ${resp.status}`);
+                }
+                const data = await resp.json();
+                renderScriptEditor(data);
+                setPhaseIndicator(2);
+                showToast('Script generated — edit and generate!', 'success');
+            } catch (err) {
+                showToast(`Script generation failed: ${err.message}`, 'error');
+            } finally {
+                loader.classList.remove('visible');
+                btns.style.display = 'flex';
+            }
+        }
+
+        function backToPhase1() {
+            document.getElementById('ltx-phase1').style.display = '';
+            document.getElementById('ltx-phase2').style.display = 'none';
+            setPhaseIndicator(1);
+        }
+
+        function renderScriptEditor(data) {
+            const locs   = data.recurrent_locations?.locations || [];
+            const scenes = data.detailed_scenes?.scenes || [];
+            const title  = data.detailed_scenes?.title || data.title || '';
+
+            state.currentScript = { title, locations: locs, scenes };
+
+            document.getElementById('script-title').value = title;
+            renderAllLocations();
+            renderAllScenes();
+
+            document.getElementById('ltx-phase1').style.display = 'none';
+            document.getElementById('ltx-phase2').style.display = '';
+        }
+
+        // ── Locations ─────────────────────────────────────────────────────
+        function renderAllLocations() {
+            const c = document.getElementById('locations-editor');
+            c.innerHTML = '';
+            state.currentScript.locations.forEach((loc, i) => c.appendChild(buildLocationCard(loc, i)));
+        }
+
+        function buildLocationCard(loc, idx) {
+            const card = document.createElement('div');
+            card.className = 'loc-editor-card';
+            card.dataset.idx = idx;
+            card.dataset.original = JSON.stringify(loc);
+
+            const fp = loc.flux_prompt || {};
+            // Flatten the flux_prompt to a human-readable text for editing
+            const fpText = [fp.scene, fp.lighting, fp.mood, fp.background]
+                .filter(Boolean).join('. ');
+
+            card.innerHTML = `
+                <div class="loc-editor-header">
+                    <span class="loc-id-badge loc-id-field"
+                          contenteditable="true"
+                          title="location_id (slug)"
+                          style="outline:none;min-width:60px;">${escHtml(loc.location_id)}</span>
+                    <button class="btn-danger" onclick="removeLocation(${idx})">✕ Remove</button>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label style="font-size:0.78rem;">Name</label>
+                    <input class="loc-name-input" type="text" value="${escHtml(loc.name)}">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:0.78rem;">Environment description (Flux prompt)</label>
+                    <textarea class="loc-scene-input" rows="2">${escHtml(fpText)}</textarea>
+                </div>
+            `;
+            return card;
+        }
+
+        function addLocation() {
+            const blank = {
+                location_id: `location-${state.currentScript.locations.length + 1}`,
+                name: 'New Location',
+                flux_prompt: { scene: '', subjects: [], lighting: '', camera: { angle: 'eye level', distance: 'wide shot' } }
+            };
+            state.currentScript.locations.push(blank);
+            renderAllLocations();
+            renderAllScenes(); // update location dropdowns
+        }
+
+        function removeLocation(idx) {
+            state.currentScript.locations.splice(idx, 1);
+            renderAllLocations();
+            renderAllScenes();
+        }
+
+        // ── Scenes ────────────────────────────────────────────────────────
+        function renderAllScenes() {
+            const c = document.getElementById('scenes-editor');
+            c.innerHTML = '';
+            state.currentScript.scenes.forEach((scene, i) => c.appendChild(buildSceneCard(scene, i)));
+        }
+
+        function buildSceneCard(scene, idx) {
+            const card = document.createElement('div');
+            card.className = 'scene-editor-card';
+            card.dataset.idx = idx;
+            card.dataset.original = JSON.stringify(scene);
+
+            const locOptions = state.currentScript.locations.map(loc =>
+                `<option value="${escHtml(loc.location_id)}" ${scene.location === loc.location_id ? 'selected' : ''}>${escHtml(loc.name)}</option>`
+            ).join('');
+
+            const charStr = (scene.character_on_screen || []).join(', ');
+
+            // SD scene text: take the .scene field from scene_visual_description
+            const sdText = scene.scene_visual_description?.scene || '';
+
+            const speakerOpts = state.characters.map(ch =>
+                `<option value="${escHtml(ch.name)}" ${scene.speaker_id === ch.name ? 'selected' : ''}>${escHtml(ch.name)}</option>`
+            ).join('');
+
+            card.innerHTML = `
+                <div class="scene-editor-header">
+                    <span class="scene-num-badge">#${idx + 1}</span>
+                    ${scene.location ? `<span style="font-size:0.75rem;color:var(--purple);">📍 ${escHtml(scene.location)}</span>` : ''}
+                    ${(scene.character_on_screen || []).map(c =>
+                        `<span style="font-size:0.72rem;color:var(--success);background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.3);border-radius:10px;padding:1px 6px;">${escHtml(c)}</span>`
+                    ).join('')}
+                    <button class="btn-danger" onclick="removeScene(${idx})">✕</button>
+                </div>
+
+                <div class="form-group">
+                    <label style="font-size:0.78rem;">LTX Prompt <span style="color:var(--accent);font-weight:400;">(video motion &amp; content)</span></label>
+                    <textarea class="scene-ltx-input" rows="3">${escHtml(scene.ltx_prompt || '')}</textarea>
+                </div>
+
+                <div class="scene-editor-grid">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;">Location</label>
+                        <select class="scene-loc-select">
+                            <option value="">— none —</option>
+                            ${locOptions}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;">Characters on screen</label>
+                        <input class="scene-chars-input" type="text" value="${escHtml(charStr)}" placeholder="fred, jamy">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;">Speaker</label>
+                        <input class="scene-speaker-input" type="text" list="scene-speaker-list-${idx}" value="${escHtml(scene.speaker_id || '')}" placeholder="character_id">
+                        <datalist id="scene-speaker-list-${idx}">
+                            ${state.characters.map(ch => `<option value="${escHtml(ch.name)}">`).join('')}
+                        </datalist>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;">Spoken line</label>
+                        <textarea class="scene-line-input" rows="2">${escHtml(scene.spoken_line || '')}</textarea>
+                    </div>
+                </div>
+
+                <details style="margin-top:10px;">
+                    <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);">
+                        SD conditioning image description
+                    </summary>
+                    <div class="form-group" style="margin-top:6px;margin-bottom:0;">
+                        <textarea class="scene-sd-text" rows="2" style="font-size:0.8rem;">${escHtml(sdText)}</textarea>
+                    </div>
+                </details>
+            `;
+            return card;
+        }
+
+        function addScene() {
+            const blank = {
+                ltx_prompt: '',
+                location: null,
+                character_on_screen: [],
+                scene_visual_description: { scene: '', subjects: [], lighting: 'natural', camera: { angle: 'eye level', distance: 'medium shot' } },
+                speaker_id: null,
+                spoken_line: null,
+            };
+            state.currentScript.scenes.push(blank);
+            renderAllScenes();
+        }
+
+        function removeScene(idx) {
+            state.currentScript.scenes.splice(idx, 1);
+            renderAllScenes();
+        }
+
+        // ── Collect edited values and submit ──────────────────────────────
+        function collectLocations() {
+            return Array.from(document.querySelectorAll('#locations-editor .loc-editor-card')).map(card => {
+                const original = JSON.parse(card.dataset.original);
+                const idEl = card.querySelector('.loc-id-field');
+                const newId = (idEl.textContent || idEl.value || '').trim();
+                const newName = card.querySelector('.loc-name-input').value.trim();
+                const newScene = card.querySelector('.loc-scene-input').value.trim();
+                return {
+                    ...original,
+                    location_id: newId || original.location_id,
+                    name: newName || original.name,
+                    flux_prompt: { ...original.flux_prompt, scene: newScene }
+                };
+            });
+        }
+
+        function collectScenes() {
+            return Array.from(document.querySelectorAll('#scenes-editor .scene-editor-card')).map(card => {
+                const original = JSON.parse(card.dataset.original);
+                const newScene = card.querySelector('.scene-sd-text').value.trim();
+                const chars = card.querySelector('.scene-chars-input').value.trim();
+                return {
+                    ...original,
+                    ltx_prompt: card.querySelector('.scene-ltx-input').value.trim() || original.ltx_prompt,
+                    location: card.querySelector('.scene-loc-select').value || null,
+                    character_on_screen: chars ? chars.split(',').map(s => s.trim()).filter(Boolean) : original.character_on_screen,
+                    speaker_id: card.querySelector('.scene-speaker-input').value.trim() || null,
+                    spoken_line: card.querySelector('.scene-line-input').value.trim() || null,
+                    scene_visual_description: newScene
+                        ? { ...original.scene_visual_description, scene: newScene }
+                        : original.scene_visual_description,
+                };
+            });
+        }
+
+        function escHtml(s) {
+            if (s == null) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function submitLtxFromScript() {
+            const templateId = document.getElementById('ltxTemplateSelect').value;
+            if (!templateId) { showToast('Please select a story template', 'error'); return; }
+
+            const locations = collectLocations();
+            const scenes    = collectScenes();
+
+            const requestData = {
+                story_title: document.getElementById('script-title').value.trim() || 'story',
+                story_template_id: templateId,
+                scenes,
+                locations,
+                ltx_server_url:           document.getElementById('ltxServerUrl').value || undefined,
+                video_width:              parseInt(document.getElementById('ltxWidth').value) || undefined,
+                video_height:             parseInt(document.getElementById('ltxHeight').value) || undefined,
+                video_duration_seconds:   parseFloat(document.getElementById('ltxDuration').value) || undefined,
+                video_fps:                parseInt(document.getElementById('ltxFps').value) || undefined,
+                video_steps:              parseInt(document.getElementById('ltxSteps').value) || undefined,
+                video_cfg_scale:          parseFloat(document.getElementById('ltxCfgScale').value) || undefined,
+                video_seed:               parseInt(document.getElementById('ltxSeed').value),
+                style_suffix:             document.getElementById('ltxStyleSuffix').value || undefined,
+                enable_audio:             document.getElementById('ltxEnableAudio').checked,
+                tts_host:                 document.getElementById('ltxTtsHost').value || undefined,
+                tts_port:                 parseInt(document.getElementById('ltxTtsPort').value) || undefined,
+                adapt_duration_to_audio:  document.getElementById('ltxAdaptDuration').checked,
+                output_dir:               document.getElementById('outputDir').value || undefined,
+            };
+            Object.keys(requestData).forEach(k => requestData[k] === undefined && delete requestData[k]);
+
+            setPhaseIndicator(3);
+
+            const resultDiv = document.getElementById('submitResult');
+            resultDiv.innerHTML = `
+                <div class="result-panel">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div class="spinner"></div>
+                        <span>Submitting LTX job from script…</span>
+                    </div>
+                </div>`;
+
+            const result = await apiCall('POST', '/video-generation/generate-ltx-from-script', requestData);
+
+            if (result.ok && result.data.job_id) {
+                const jobId = result.data.job_id;
+                state.currentJobId = jobId;
+                resultDiv.innerHTML = `
+                    <div class="result-panel success">
+                        <div class="result-header">
+                            <span style="font-size:1.5rem;">✅</span>
+                            <h4>Job Submitted!</h4>
+                        </div>
+                        <p>Job ID: <code style="background:var(--bg-dark);padding:4px 8px;border-radius:4px;">${jobId}</code></p>
+                        <button class="btn btn-secondary" style="margin-top:16px;" onclick="monitorJob('${jobId}')">
+                            📊 Monitor Job
+                        </button>
+                    </div>`;
+                showToast('LTX-from-script job submitted!', 'success');
+            } else {
+                setPhaseIndicator(2);
+                resultDiv.innerHTML = `
+                    <div class="result-panel error">
+                        <div class="result-header">
+                            <span style="font-size:1.5rem;">❌</span>
+                            <h4>Submission Failed</h4>
+                        </div>
+                        <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
+                    </div>`;
+                showToast('Submission failed', 'error');
+            }
         }
 
         // =============================================================================

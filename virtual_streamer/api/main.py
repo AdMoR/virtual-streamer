@@ -22,11 +22,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from virtual_streamer.api.low_level.characters import router as characters_router
 from virtual_streamer.api.low_level.clips import router as clips_router
 from virtual_streamer.api.low_level.story_templates import router as story_templates_router
+from virtual_streamer.api.low_level.stories import router as stories_router
 from virtual_streamer.api.low_level.streams import router as streams_router
 from virtual_streamer.api.low_level.programmations import router as programmations_router
 from virtual_streamer.api.low_level.playlist import router as playlist_router
 from virtual_streamer.api.low_level.articles import router as articles_router
 from virtual_streamer.api.low_level.db_browser import router as db_browser_router
+from virtual_streamer.api.low_level.storage import router as storage_router
 from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
 from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
@@ -41,6 +43,9 @@ from virtual_streamer.api.high_level.story_template_generation import (
 from virtual_streamer.api.low_level.locations import router as locations_router
 from virtual_streamer.api.high_level.location_generation import (
     router as location_generation_router,
+)
+from virtual_streamer.api.high_level.story_pipeline import (
+    router as story_pipeline_router,
 )
 
 # Import ADK app factory and mounting utilities
@@ -128,6 +133,7 @@ app.add_middleware(
 app.include_router(characters_router, prefix="/api/v1")
 app.include_router(clips_router, prefix="/api/v1")
 app.include_router(story_templates_router, prefix="/api/v1")
+app.include_router(stories_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(articles_router, prefix="/api/v1")
 # Low-level: Streaming infrastructure
@@ -136,6 +142,7 @@ app.include_router(programmations_router, prefix="/api/v1")
 app.include_router(playlist_router, prefix="/api/v1")
 # Low-level: Database browser (admin/debug)
 app.include_router(db_browser_router, prefix="/api/v1")
+app.include_router(storage_router, prefix="/api/v1")
 
 # Medium-level: Core services
 app.include_router(tts_router, prefix="/api/v1")
@@ -147,6 +154,7 @@ app.include_router(video_generation_router, prefix="/api/v1")
 app.include_router(jesus_agents_router, prefix="/api/v1")
 app.include_router(story_template_generation_router, prefix="/api/v1")
 app.include_router(location_generation_router, prefix="/api/v1")
+app.include_router(story_pipeline_router, prefix="/api/v1")
 
 # Legacy: Backward compatibility
 app.include_router(legacy_qa_router)  # No prefix for backward compatibility

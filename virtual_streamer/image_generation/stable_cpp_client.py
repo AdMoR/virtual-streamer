@@ -131,8 +131,8 @@ class ImageEditParams(BaseModel):
         default=None,
         description="Additional sd.cpp-specific params (e.g. denoising_strength)",
     )
-    width: int = 1280,
-    height: int = 720,
+    width: int = 1440,
+    height: int = 1080,
 
 
 # =============================================================================

@@ -17,7 +17,7 @@ import shutil
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
@@ -453,6 +453,65 @@ async def regenerate_location_image(
     )
 
     logger.info(f"Regenerated identity image for '{location_id}'")
+
+    return LocationRegenerateImageResponse(image_data=image_b64, location=location)
+
+
+# =============================================================================
+# Upload a custom location image
+# =============================================================================
+
+
+@router.post("/{location_id}/upload-image", response_model=LocationRegenerateImageResponse)
+async def upload_location_image(
+    location_id: str,
+    image_file: UploadFile = File(..., description="Image file (PNG, JPEG, or WebP)"),
+):
+    """
+    Upload a custom image for a location, replacing any existing image.
+
+    Stores the file in MinIO at ``locations/{location_id}/identity.png`` and
+    updates the database record, then returns the image as base64 alongside the
+    updated Location.
+    """
+    repo = get_entity_repository()
+
+    location_data = await repo.get_location(location_id)
+    if location_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Location '{location_id}' not found",
+        )
+
+    content = await image_file.read()
+
+    fname = (image_file.filename or "").lower()
+    if fname.endswith(".jpg") or fname.endswith(".jpeg"):
+        content_type = "image/jpeg"
+    elif fname.endswith(".webp"):
+        content_type = "image/webp"
+    else:
+        content_type = "image/png"
+
+    minio_key = f"locations/{location_id}/identity.png"
+    storage = get_storage_client()
+    await storage.put_object(minio_key, content, content_type=content_type)
+
+    location_data = await repo.update_location_image(location_id, minio_key)
+
+    image_b64 = base64.b64encode(content).decode()
+
+    location = Location(
+        location_id=location_data["location_id"],
+        name=location_data["name"],
+        description=location_data["description"],
+        story_template_id=location_data["story_template_id"],
+        image_path=location_data.get("image_path"),
+        created_at=location_data["created_at"],
+        updated_at=location_data["updated_at"],
+    )
+
+    logger.info(f"Uploaded custom identity image for '{location_id}'")
 
     return LocationRegenerateImageResponse(image_data=image_b64, location=location)
 

@@ -22,42 +22,38 @@ logger = logging.getLogger(__name__)
 
 FORMATTER_PROMPT = """You are a structured data extractor.
 
-You will receive the raw text of a story generated in the style of the French educational TV show "C'est pas Sorcier".
+You will receive the raw text of a story .
 Your sole task is to extract and reformat this story into the required structured output — do NOT rewrite or alter the content.
 
-Extract the following fields:
+## Extract the following fields:
 - **title**: The refined story title.
 - **story_plan**: The overall creative plan and reasoning described in the story (the thinking section).
 - **dialog**: The list of dialogue lines. For each line extract:
-  - **character_id**: The character identifier (e.g. "fred", "jamy"). Use lowercase.
+  - **character_id**: The optional character identifier (e.g. "fred", "jamy"). Use lowercase.
   - **text**: The spoken dialogue text (what the character says out loud).
-  - **scene_description**: Extract as a structured JSON object matching the FluxPrompt schema below.
-    If the raw story already contains a JSON block for scene_description, parse and use it directly.
-    If it is written as plain text, infer the FluxPrompt fields from the description.
-    Required schema:
-    {{
-      "scene": "Overall environment and context",
-      "subjects": [{{"description": "...", "pose": "...", "position": "...", "color_palette": [...]}}],
-      "style": "Cinematic/artistic style (optional)",
-      "color_palette": ["scene-level dominant colors (optional)"],
-      "lighting": "Lighting description",
-      "mood": "Emotional tone (optional)",
-      "background": "Background details (optional)",
-      "composition": "Framing rule (optional)",
-      "camera": {{
-        "angle": "Camera angle",
-        "distance": "Shot distance",
-        "focus": "Focus description (optional)",
-        "lens-mm": 35,
-        "f-number": "f/2.8",
-        "ISO": 400
-      }}
-    }}
-    Infer reasonable defaults for missing camera fields (angle: "eye level", distance: "medium shot").
+  - **scene_description**: Describe the action, characters and scene appearance
   - **location_id**: The location identifier for this scene (e.g. "ski-resort", "medieval-castle").
-    Use the location_id values present in the story text. If only a location name is present (not an ID),
-    convert it to a slug: lowercase, spaces replaced by hyphens (e.g. "Ski Resort" → "ski-resort").
-    If no location information is present, leave this field null.
+    You MAY re-use the location_id values present in the story text, but only if it fits the story. Please consider the story_template instruction for how to select or create a new location. 
+- **locations**
+
+
+
+## What Works Well for the scene description 
+Strength	            Description
+Cinematic compositions	Wide, medium, and close-up shots with thoughtful lighting, shallow depth of field, and natural motion
+Emotive human moments	Strong single-subject emotional expressions, subtle gestures, and facial nuance
+Atmosphere & setting	Fog, mist, golden-hour light, rain, reflections, ambient textures
+Clear camera language	Explicit instructions like “slow dolly in” or “handheld tracking”
+Stylized aesthetics	    Painterly, noir, analog film, fashion editorial, pixelated animation
+Lighting & mood control	Backlighting, color palettes, rim light, flickering lamps
+
+
+Example of scene_description : 
+EXT. SMALL TOWN STREET – MORNING – LIVE NEWS BROADCAST The shot opens on a news reporter standing in front of a row of cordoned-off cars, 
+yellow caution tape fluttering behind him. The light is warm, early sun reflecting off the camera lens. The faint hum of chatter and distant drilling fills the air.
+ The reporter, composed but visibly excited, looks directly into the camera, microphone in hand. Reporter (live): 
+ “Thank you, Sylvia. And yes — this is a sentence I never thought I’d say on live television — but this morning, here in the quiet town of New Castle, Vermont… black gold has been found!” He gestures slightly toward the field behind him. Reporter (grinning): “If my cameraman can pan over, you’ll see what all the excitement’s about.” The camera pans right, slowly revealing a construction site surrounded by workers in hard hats. A beat of silence — then, with a sudden roar, a geyser of oil erupts from the ground, blasting upward in a violent plume. Workers cheer and scramble, the black stream glistening in the morning light. The camera shakes slightly, trying to stay focused through the chaos. Reporter (off-screen, shouting over the noise): “There it is, folks — the moment New Castle will never forget!” The camera catches the sunlight gleaming off the oil mist before pulling back, revealing the entire scene — the small-town skyline silhouetted against the wild fountain of oil.
+
 
 Raw story:
 {raw_story}"""

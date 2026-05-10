@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LTX Benchmark — Virtual Streamer</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:    #0d1117;
+            --bg-secondary:  #161b22;
+            --bg-tertiary:   #21262d;
+            --border-color:  #30363d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --accent-cyan:   #58a6ff;
+            --accent-green:  #3fb950;
+            --accent-purple: #a371f7;
+            --accent-red:    #f85149;
+            --accent-orange: #f0883e;
+            --accent-yellow: #e3b341;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.65rem 1.25rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        header a { color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; }
+        header a:hover { color: var(--accent-cyan); }
+        header .sep { color: var(--border-color); }
+        header h1 {
+            font-size: 1rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-orange), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-red); transition: background 0.3s; }
+        .status-dot.ok { background: var(--accent-green); }
+        .status-label { font-size: 0.75rem; color: var(--text-secondary); }
+        .url-input {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 5px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem; padding: 0.3rem 0.5rem; width: 210px;
+        }
+        .url-input:focus { outline: none; border-color: var(--accent-cyan); color: var(--text-primary); }
+
+        .app { display: grid; grid-template-columns: 330px 1fr; flex: 1; min-height: 0; }
+
+        /* ── Sidebar ─────────────────────────────────────────────────────── */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column;
+            overflow-y: auto;
+        }
+        .panel { padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color); }
+
+        .section-label {
+            font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--text-secondary);
+            margin-bottom: 0.6rem;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0.55rem; }
+        .field:last-child { margin-bottom: 0; }
+        label { font-size: 0.78rem; color: var(--text-secondary); }
+
+        input[type=text], input[type=number], textarea, select {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 5px; color: var(--text-primary); font-family: inherit;
+            font-size: 0.85rem; padding: 0.42rem 0.6rem; width: 100%;
+            transition: border-color 0.15s;
+        }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-cyan); }
+        textarea { resize: vertical; }
+        .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; }
+
+        .btn {
+            padding: 0.33rem 0.65rem;
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 5px; color: var(--text-primary); font-family: inherit;
+            font-size: 0.8rem; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+            display: inline-block; white-space: nowrap;
+        }
+        .btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .btn-run {
+            padding: 0.62rem; background: linear-gradient(135deg, var(--accent-orange), var(--accent-purple));
+            border: none; border-radius: 7px; color: #fff; font-family: inherit;
+            font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; width: 100%;
+        }
+        .btn-run:hover { opacity: 0.85; }
+        .btn-run:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-danger { color: var(--accent-red); border-color: var(--accent-red); }
+        .btn-danger:hover { background: rgba(248,81,73,0.1); }
+        .btn-sm { padding: 0.2rem 0.42rem; font-size: 0.72rem; }
+
+        .info-text { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.4rem; }
+        .info-text.warn { color: var(--accent-yellow); }
+
+        /* Case list */
+        .case-list { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.6rem; }
+        .case-card {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 6px; padding: 0.5rem 0.65rem;
+            display: flex; align-items: flex-start; gap: 0.45rem; cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .case-card:hover { border-color: var(--accent-cyan); }
+        .case-thumb { width: 34px; height: 34px; object-fit: cover; border-radius: 3px; border: 1px solid var(--border-color); flex-shrink: 0; }
+        .case-thumb-empty { width: 34px; height: 34px; background: var(--bg-primary); border-radius: 3px; border: 1px dashed var(--border-color); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; }
+        .case-info { flex: 1; min-width: 0; }
+        .case-name { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .case-prompt { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .case-badges { display: flex; gap: 0.22rem; margin-top: 0.18rem; }
+        .badge { font-size: 0.62rem; padding: 0.08rem 0.3rem; border-radius: 3px; background: var(--bg-primary); border: 1px solid var(--border-color); }
+        .badge.has-img { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .badge.has-vid { border-color: var(--accent-purple); color: var(--accent-purple); }
+        .case-del { color: var(--text-secondary); font-size: 0.8rem; cursor: pointer; flex-shrink: 0; padding: 0 2px; }
+        .case-del:hover { color: var(--accent-red); }
+
+        .checkbox-row {
+            display: flex; align-items: center; gap: 0.4rem;
+            font-size: 0.82rem; cursor: pointer; margin-bottom: 0.4rem;
+        }
+        .checkbox-row input[type=checkbox] { width: auto; cursor: pointer; }
+
+        .sidebar-footer { padding: 0.85rem 1rem; margin-top: auto; }
+
+        /* ── Results area ─────────────────────────────────────────────────── */
+        .results-area { display: flex; flex-direction: column; overflow: hidden; }
+
+        .results-toolbar {
+            padding: 0.6rem 1rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; gap: 1rem; flex-shrink: 0;
+        }
+        .results-summary { font-size: 0.82rem; color: var(--text-secondary); flex: 1; }
+        .results-summary strong { color: var(--text-primary); }
+
+        .progress-bar-bg { width: 200px; height: 3px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
+        .progress-bar-fg {
+            height: 100%; border-radius: 2px;
+            background: linear-gradient(90deg, var(--accent-orange), var(--accent-purple));
+            transition: width 0.4s;
+        }
+
+        .results-scroll { flex: 1; overflow-y: auto; }
+
+        /* Placeholder */
+        .results-placeholder {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; color: var(--text-secondary); gap: 0.75rem;
+        }
+        .results-placeholder .icon { font-size: 3rem; opacity: 0.3; }
+        .results-placeholder p { font-size: 0.9rem; }
+
+        /* ── Per-case sections ────────────────────────────────────────────── */
+        .case-section { border-bottom: 2px solid var(--border-color); }
+
+        .case-header {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.65rem 1rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky; top: 0; z-index: 2;
+        }
+        .case-header-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color); flex-shrink: 0; }
+        .case-header-thumb-empty { width: 44px; height: 44px; background: var(--bg-tertiary); border-radius: 4px; border: 1px dashed var(--border-color); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+        .case-header-info { flex: 1; min-width: 0; }
+        .case-header-name { font-size: 0.9rem; font-weight: 600; }
+        .case-header-prompt { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .case-header-badges { display: flex; gap: 0.3rem; margin-top: 0.15rem; }
+
+        /* ── Card grid ────────────────────────────────────────────────────── */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: 0.6rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-primary);
+        }
+
+        .result-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 7px;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        .card-label {
+            padding: 0.38rem 0.5rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex; flex-direction: column; gap: 1px;
+        }
+        .col-tag {
+            font-size: 0.6rem; padding: 0.08rem 0.3rem; border-radius: 2px;
+            display: inline-block; align-self: flex-start; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .col-tag.base     { background: rgba(88,166,255,0.15); color: var(--accent-cyan); }
+        .col-tag.ablation-vid { background: rgba(163,113,247,0.15); color: var(--accent-purple); }
+        .col-tag.ablation-img { background: rgba(227,179,65,0.15); color: var(--accent-yellow); }
+        .col-params { font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; color: var(--text-primary); }
+
+        .card-body { padding: 0.4rem; flex: 1; }
+        .card-body video {
+            width: 100%; display: block;
+            border-radius: 4px; border: 1px solid var(--border-color);
+        }
+
+        /* Shared state placeholders inside card-body */
+        .cell-idle, .cell-spinner, .cell-error, .cell-na {
+            width: 100%; aspect-ratio: 16/9;
+            border-radius: 5px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.72rem;
+        }
+        .cell-idle { background: var(--bg-tertiary); border: 1px dashed var(--border-color); color: var(--text-secondary); }
+        .cell-spinner { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); flex-direction: column; gap: 0.4rem; }
+        .cell-error {
+            background: rgba(248,81,73,0.05); border: 1px solid var(--accent-red);
+            color: var(--accent-red); padding: 0.5rem; word-break: break-word;
+            white-space: normal; text-align: center;
+        }
+        .cell-na { background: var(--bg-tertiary); border: 1px dashed var(--border-color); color: var(--border-color); }
+
+        .spin-ring {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border-color); border-top-color: var(--accent-orange);
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .cell-meta { font-size: 0.63rem; color: var(--text-secondary); margin-top: 0.28rem; font-family: 'JetBrains Mono', monospace; }
+        .cell-dl { font-size: 0.68rem; color: var(--accent-cyan); text-decoration: underline; margin-top: 0.18rem; display: inline-block; }
+
+        /* Video lazy-load overlay */
+        .video-wrap { position: relative; }
+        .video-overlay {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.55); border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: #fff; font-size: 1.4rem;
+            transition: background 0.15s;
+        }
+        .video-overlay:hover { background: rgba(0,0,0,0.35); }
+        .video-overlay.hidden { display: none; }
+
+        /* ── Modal ────────────────────────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+        .modal-box {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 1.2rem; width: 500px; max-width: 95vw;
+            max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem;
+        }
+        .modal-box h3 { font-size: 1rem; font-weight: 600; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.2rem; }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color); border-radius: 7px;
+            padding: 0.85rem; text-align: center; color: var(--text-secondary);
+            font-size: 0.82rem; cursor: pointer; transition: all 0.2s; position: relative;
+        }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(88,166,255,0.04); }
+        .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+        .drop-icon { font-size: 1.1rem; margin-bottom: 0.15rem; }
+        .drop-preview { margin-top: 0.45rem; display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+        .drop-preview img, .drop-preview video { max-width: 100%; max-height: 90px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .drop-clear { font-size: 0.72rem; color: var(--accent-red); cursor: pointer; text-decoration: underline; }
+
+        #toast {
+            position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+            background: rgba(248,81,73,0.15); border: 1px solid var(--accent-red);
+            color: var(--accent-red); padding: 0.62rem 1.1rem; border-radius: 7px;
+            font-size: 0.82rem; z-index: 999; max-width: 480px; text-align: center; display: none;
+        }
+        #toast.visible { display: block; }
+        #toast.success { background: rgba(63,185,80,0.15); border-color: var(--accent-green); color: var(--accent-green); }
+    </style>
+</head>
+<body>
+
+<!-- ── Case Editor Modal ─────────────────────────────────────────────────── -->
+<div id="case-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+        <h3 id="modal-title">Add Case</h3>
+        <div class="field">
+            <label>Case name</label>
+            <input type="text" id="modal-name" placeholder="e.g. Beach sunset">
+        </div>
+        <div class="field">
+            <label>Prompt</label>
+            <textarea id="modal-prompt" rows="4" placeholder="Describe the video content…"></textarea>
+        </div>
+        <div>
+            <div class="section-label" style="margin-bottom:0.35rem">First frame image <span style="font-weight:400;text-transform:none;font-size:0.7rem">(optional)</span></div>
+            <div class="drop-zone" id="modal-image-drop">
+                <input type="file" id="modal-image-file" accept="image/*">
+                <div class="drop-icon">🖼️</div>
+                <div>Drop image or click to browse</div>
+            </div>
+            <div class="drop-preview" id="modal-image-preview" style="display:none">
+                <img id="modal-image-thumb" src="" alt="">
+                <span class="drop-clear" id="modal-image-clear">Remove</span>
+            </div>
+        </div>
+        <div>
+            <div class="section-label" style="margin-bottom:0.35rem">Last frame / end image <span style="font-weight:400;text-transform:none;font-size:0.7rem">(optional — SE conditioning when combined with first frame)</span></div>
+            <div class="drop-zone" id="modal-end-image-drop">
+                <input type="file" id="modal-end-image-file" accept="image/*">
+                <div class="drop-icon">🏁</div>
+                <div>Drop end-frame image or click to browse</div>
+            </div>
+            <div class="drop-preview" id="modal-end-image-preview" style="display:none">
+                <img id="modal-end-image-thumb" src="" alt="">
+                <span class="drop-clear" id="modal-end-image-clear">Remove</span>
+            </div>
+        </div>
+        <div>
+            <div class="section-label" style="margin-bottom:0.35rem">Guiding video <span style="font-weight:400;text-transform:none;font-size:0.7rem">(optional)</span></div>
+            <div class="drop-zone" id="modal-video-drop">
+                <input type="file" id="modal-video-file" accept="video/*">
+                <div class="drop-icon">🎞️</div>
+                <div>Drop video or click to browse</div>
+            </div>
+            <div class="drop-preview" id="modal-video-preview" style="display:none">
+                <video id="modal-video-thumb" src="" muted playsinline controls></video>
+                <span class="drop-clear" id="modal-video-clear">Remove</span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="modal-cancel">Cancel</button>
+            <button class="btn" id="modal-save" style="border-color:var(--accent-cyan);color:var(--accent-cyan)">Save Case</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<header>
+    <a href="index.html">Apps</a>
+    <span class="sep">/</span>
+    <h1>LTX Benchmark</h1>
+    <div class="header-right">
+        <input class="url-input" id="wangp-url" type="text" value="http://gx10-cbc5:8081/" placeholder="WanGP URL">
+        <input class="url-input" id="api-base-url" type="text" value="http://localhost:8000/api/v1" placeholder="API Base URL">
+        <span class="status-label" id="status-label">checking…</span>
+        <div class="status-dot" id="status-dot"></div>
+    </div>
+</header>
+
+<div class="app">
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+
+        <div class="panel">
+            <div class="section-label">
+                Dataset
+                <div style="display:flex;gap:0.3rem">
+                    <button class="btn btn-sm" id="btn-save-dataset">Save JSON</button>
+                    <label class="btn btn-sm" for="load-file-input" style="cursor:pointer">Load JSON</label>
+                    <input type="file" id="load-file-input" accept=".json" style="display:none">
+                </div>
+            </div>
+            <div class="case-list" id="case-list">
+                <div style="font-size:0.78rem;color:var(--text-secondary)">No cases yet. Add one below.</div>
+            </div>
+            <button class="btn" id="btn-add-case" style="width:100%">+ Add Case</button>
+        </div>
+
+        <div class="panel">
+            <div class="section-label">Grid Search + Ablations</div>
+            <div class="field">
+                <label>Denoising strength (comma-separated values)</label>
+                <input type="text" id="grid-denoising" value="0.5, 0.7, 0.9">
+            </div>
+            <div class="field">
+                <label>CFG scale</label>
+                <input type="text" id="grid-cfg" value="2.0, 3.0">
+            </div>
+            <div class="field">
+                <label>Flow shift</label>
+                <input type="text" id="grid-flow" value="2.0, 3.0">
+            </div>
+            <div class="section-label" style="margin-top:0.55rem;margin-bottom:0.35rem">Run each combo also with…</div>
+            <label class="checkbox-row">
+                <input type="checkbox" id="abl-no-video" checked>
+                No guiding video
+            </label>
+            <label class="checkbox-row" style="margin-bottom:0">
+                <input type="checkbox" id="abl-no-image" checked>
+                No first-frame image
+            </label>
+            <div id="combo-count" class="info-text" style="margin-top:0.5rem">0 cards per case</div>
+        </div>
+
+        <div class="panel">
+            <div class="section-label">Fixed Parameters</div>
+            <div class="row2">
+                <div class="field">
+                    <label>Resolution</label>
+                    <select id="fix-resolution">
+                        <option value="1280x720" selected>1280×720</option>
+                        <option value="854x480">854×480</option>
+                        <option value="640x360">640×360</option>
+                        <option value="1920x1080">1920×1080</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Duration (s)</label>
+                    <input type="number" id="fix-duration" value="4" min="1" max="30" step="0.5">
+                </div>
+            </div>
+            <div class="row3">
+                <div class="field">
+                    <label>Steps</label>
+                    <input type="number" id="fix-steps" value="8" min="1" max="50">
+                </div>
+                <div class="field">
+                    <label>FPS</label>
+                    <select id="fix-fps">
+                        <option value="16">16</option>
+                        <option value="24" selected>24</option>
+                        <option value="30">30</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Seed</label>
+                    <input type="number" id="fix-seed" value="-1">
+                </div>
+            </div>
+            <div class="field">
+                <label>Model</label>
+                <select id="fix-model">
+                    <option value="ltx2_22B_distilled" selected>ltx2_22B_distilled</option>
+                    <option value="ltx2_22B">ltx2_22B</option>
+                    <option value="ltx2_distilled">ltx2_distilled</option>
+                    <option value="ltx2_13B_distilled">ltx2_13B_distilled</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Negative prompt</label>
+                <textarea id="fix-negative" rows="2">worst quality, inconsistent motion, blurry, jittery, distorted</textarea>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="btn-run" id="btn-run" disabled>Run Benchmark</button>
+            <div id="run-info" class="info-text" style="text-align:center;margin-top:0.35rem"></div>
+        </div>
+
+    </aside>
+
+    <!-- ── Results area ──────────────────────────────────────────────────── -->
+    <main class="results-area">
+        <div class="results-toolbar">
+            <div class="results-summary" id="results-summary">Add cases and configure the grid to run a benchmark.</div>
+            <div class="progress-bar-bg" id="progress-wrap" style="display:none">
+                <div class="progress-bar-fg" id="progress-bar" style="width:0%"></div>
+            </div>
+            <button class="btn btn-sm btn-danger" id="btn-clear-results" style="display:none">Clear</button>
+        </div>
+
+        <div class="results-scroll" id="results-scroll">
+            <div class="results-placeholder" id="results-placeholder">
+                <div class="icon">📊</div>
+                <p>Add at least one case and click <strong>Run Benchmark</strong></p>
+            </div>
+            <div id="results-content" style="display:none"></div>
+        </div>
+    </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+
+let dataset          = { version: 1, cases: [] };
+let polls            = new Map();   // jobId → timerId
+let columns          = [];
+let editingCaseId    = null;
+let modalImageB64    = null;
+let modalVideoB64    = null;
+let modalEndImageB64 = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+function parseFloatList(str) {
+    return str.split(',').map(s => parseFloat(s.trim())).filter(v => !isNaN(v));
+}
+
+function cartesian(...arrays) {
+    return arrays.reduce((acc, arr) =>
+        acc.flatMap(combo => arr.map(val => [...combo, val])), [[]]
+    );
+}
+
+// Safe: handles raw base64 strings or full data URLs; returns null on any failure.
+function dataUrlToBlob(dataUrl) {
+    if (!dataUrl) return null;
+    try {
+        let b64, mime;
+        if (dataUrl.startsWith('data:')) {
+            const comma = dataUrl.indexOf(',');
+            if (comma === -1) return null;
+            const header = dataUrl.slice(0, comma);
+            b64  = dataUrl.slice(comma + 1);
+            const m = header.match(/:(.*?);/);
+            mime = m ? m[1] : 'application/octet-stream';
+        } else {
+            // Raw base64 without data-URL prefix
+            b64  = dataUrl;
+            mime = 'application/octet-stream';
+        }
+        const bin = atob(b64.trim());
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return new Blob([arr], { type: mime });
+    } catch (e) {
+        console.warn('dataUrlToBlob failed:', e);
+        return null;
+    }
+}
+
+function fileToB64(file) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload  = e => resolve(e.target.result);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+    });
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type = 'error') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'visible' + (type === 'success' ? ' success' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('visible'), 5000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lazy video loading via IntersectionObserver
+// ─────────────────────────────────────────────────────────────────────────────
+
+const videoObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+        const v = entry.target;
+        if (entry.isIntersecting) {
+            const src = v.dataset.lazySrc;
+            if (src && !v.src) {
+                v.src = src;
+                // Hide the play overlay once loaded
+                const overlay = v.parentElement?.querySelector('.video-overlay');
+                if (overlay) overlay.classList.add('hidden');
+            }
+        } else {
+            if (!v.paused) v.pause();
+        }
+    }
+}, { root: document.getElementById('results-scroll'), rootMargin: '100px' });
+
+function observeNewVideos() {
+    document.querySelectorAll('video[data-lazy-src]:not([data-observed])').forEach(v => {
+        v.dataset.observed = '1';
+        videoObserver.observe(v);
+    });
+}
+
+// Allow clicking the overlay to force-load immediately
+function forceLoadVideo(overlay) {
+    const wrap = overlay.parentElement;
+    const v = wrap?.querySelector('video');
+    if (v && v.dataset.lazySrc) {
+        v.src = v.dataset.lazySrc;
+        overlay.classList.add('hidden');
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health check
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function checkHealth() {
+    try {
+        const r = await fetch(`${document.getElementById('api-base-url').value.replace(/\/$/, '')}/video-generation/health`);
+        if (!r.ok) throw new Error();
+        const d = await r.json();
+        document.getElementById('status-dot').className   = 'status-dot ok';
+        document.getElementById('status-label').textContent = `ready · ${d.active_jobs} active`;
+    } catch {
+        document.getElementById('status-dot').className   = 'status-dot';
+        document.getElementById('status-label').textContent = 'API unreachable';
+    }
+}
+checkHealth();
+setInterval(checkHealth, 20000);
+document.getElementById('api-base-url').addEventListener('change', checkHealth);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Column generation — ablations are variants of every grid combo
+// ─────────────────────────────────────────────────────────────────────────────
+
+function generateColumns() {
+    const ds      = parseFloatList(document.getElementById('grid-denoising').value);
+    const cfg     = parseFloatList(document.getElementById('grid-cfg').value);
+    const fs      = parseFloatList(document.getElementById('grid-flow').value);
+    const noVideo = document.getElementById('abl-no-video').checked;
+    const noImage = document.getElementById('abl-no-image').checked;
+    const cols    = [];
+
+    for (const [d, c, f] of cartesian(ds, cfg, fs)) {
+        const params = { denoising: d, cfg: c, flow: f };
+        const baseId = `d${d}_c${c}_f${f}`;
+        const paramStr = `DS=${d} CFG=${c} FS=${f}`;
+
+        cols.push({ id: `${baseId}_base`,    type: 'base',         params, ablation: null,       paramStr });
+        if (noVideo) cols.push({ id: `${baseId}_novideo`, type: 'ablation-vid', params, ablation: 'no_video', paramStr });
+        if (noImage) cols.push({ id: `${baseId}_noimage`, type: 'ablation-img', params, ablation: 'no_image', paramStr });
+    }
+    return cols;
+}
+
+const COMBO_INPUTS = ['grid-denoising','grid-cfg','grid-flow','abl-no-video','abl-no-image'];
+
+function updateComboCount() {
+    const ds      = parseFloatList(document.getElementById('grid-denoising').value);
+    const cfg     = parseFloatList(document.getElementById('grid-cfg').value);
+    const fs      = parseFloatList(document.getElementById('grid-flow').value);
+    const noVid   = document.getElementById('abl-no-video').checked;
+    const noImg   = document.getElementById('abl-no-image').checked;
+    const gridN   = ds.length * cfg.length * fs.length;
+    const varN    = 1 + (noVid ? 1 : 0) + (noImg ? 1 : 0);
+    const perCase = gridN * varN;
+    const el      = document.getElementById('combo-count');
+    el.textContent = `${gridN} combo${gridN!==1?'s':''} × ${varN} variant${varN!==1?'s':''} = ${perCase} card${perCase!==1?'s':''}/case`;
+    el.className   = 'info-text' + (perCase > 18 ? ' warn' : '');
+    if (perCase > 18) el.textContent += ' — consider fewer values';
+    updateRunInfo();
+}
+
+COMBO_INPUTS.forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', updateComboCount);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run info
+// ─────────────────────────────────────────────────────────────────────────────
+
+function updateRunInfo() {
+    const nCases = dataset.cases.length;
+    const nCols  = generateColumns().length;
+    const total  = nCases * nCols;
+    const infoEl = document.getElementById('run-info');
+    const btnEl  = document.getElementById('btn-run');
+    if (nCases === 0 || nCols === 0) {
+        infoEl.textContent = 'Need at least 1 case and 1 grid value';
+        btnEl.disabled = true;
+    } else {
+        infoEl.textContent = `${total} job${total!==1?'s':''} (${nCases} case${nCases!==1?'s':''} × ${nCols} card${nCols!==1?'s':''})`;
+        btnEl.disabled = false;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Case list
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderCaseList() {
+    const el = document.getElementById('case-list');
+    if (dataset.cases.length === 0) {
+        el.innerHTML = '<div style="font-size:0.78rem;color:var(--text-secondary)">No cases yet. Add one below.</div>';
+        updateRunInfo();
+        return;
+    }
+    el.innerHTML = dataset.cases.map(c => {
+        const hasImg    = !!c.image_b64, hasEndImg = !!c.end_image_b64, hasVid = !!c.video_b64;
+        const thumb  = hasImg
+            ? `<img class="case-thumb" src="${c.image_b64}" alt="">`
+            : `<div class="case-thumb-empty">🎬</div>`;
+        return `
+        <div class="case-card" onclick="openModal('${c.id}')">
+            ${thumb}
+            <div class="case-info">
+                <div class="case-name">${escHtml(c.name||'Unnamed')}</div>
+                <div class="case-prompt">${escHtml(c.prompt||'')}</div>
+                <div class="case-badges">
+                    ${hasImg    ? '<span class="badge has-img">img</span>' : ''}
+                    ${hasEndImg ? '<span class="badge has-img">end</span>' : ''}
+                    ${hasVid    ? '<span class="badge has-vid">vid</span>' : ''}
+                </div>
+            </div>
+            <span class="case-del" title="Delete" onclick="event.stopPropagation();deleteCase('${c.id}')">✕</span>
+        </div>`;
+    }).join('');
+    updateRunInfo();
+}
+
+function deleteCase(id) {
+    if (!confirm('Delete this case?')) return;
+    dataset.cases = dataset.cases.filter(c => c.id !== id);
+    renderCaseList();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
+function openModal(caseId) {
+    editingCaseId = caseId || null;
+    modalImageB64 = null; modalVideoB64 = null; modalEndImageB64 = null;
+    document.getElementById('case-modal').style.display = 'flex';
+
+    if (caseId) {
+        const c = dataset.cases.find(x => x.id === caseId);
+        document.getElementById('modal-title').textContent = 'Edit Case';
+        document.getElementById('modal-name').value   = c.name   || '';
+        document.getElementById('modal-prompt').value = c.prompt || '';
+        if (c.image_b64)     { modalImageB64    = c.image_b64;     showImgPreview(c.image_b64);     } else clearModalImg();
+        if (c.end_image_b64) { modalEndImageB64 = c.end_image_b64; showEndImgPreview(c.end_image_b64); } else clearModalEndImg();
+        if (c.video_b64)     { modalVideoB64    = c.video_b64;     showVidPreview(c.video_b64);     } else clearModalVid();
+    } else {
+        document.getElementById('modal-title').textContent = 'Add Case';
+        document.getElementById('modal-name').value   = '';
+        document.getElementById('modal-prompt').value = '';
+        clearModalImg(); clearModalEndImg(); clearModalVid();
+    }
+}
+
+function closeModal() {
+    document.getElementById('case-modal').style.display = 'none';
+    document.getElementById('modal-image-file').value     = '';
+    document.getElementById('modal-end-image-file').value = '';
+    document.getElementById('modal-video-file').value     = '';
+}
+
+function showImgPreview(src) {
+    document.getElementById('modal-image-thumb').src = src;
+    document.getElementById('modal-image-preview').style.display = 'flex';
+}
+function clearModalImg() {
+    modalImageB64 = null;
+    document.getElementById('modal-image-thumb').src = '';
+    document.getElementById('modal-image-preview').style.display = 'none';
+    document.getElementById('modal-image-file').value = '';
+}
+function showEndImgPreview(src) {
+    document.getElementById('modal-end-image-thumb').src = src;
+    document.getElementById('modal-end-image-preview').style.display = 'flex';
+}
+function clearModalEndImg() {
+    modalEndImageB64 = null;
+    document.getElementById('modal-end-image-thumb').src = '';
+    document.getElementById('modal-end-image-preview').style.display = 'none';
+    document.getElementById('modal-end-image-file').value = '';
+}
+function showVidPreview(src) {
+    document.getElementById('modal-video-thumb').src = src;
+    document.getElementById('modal-video-preview').style.display = 'flex';
+}
+function clearModalVid() {
+    modalVideoB64 = null;
+    document.getElementById('modal-video-thumb').src = '';
+    document.getElementById('modal-video-preview').style.display = 'none';
+    document.getElementById('modal-video-file').value = '';
+}
+
+document.getElementById('modal-image-file').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    modalImageB64 = await fileToB64(f); showImgPreview(modalImageB64);
+});
+document.getElementById('modal-end-image-file').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    modalEndImageB64 = await fileToB64(f); showEndImgPreview(modalEndImageB64);
+});
+document.getElementById('modal-video-file').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    modalVideoB64 = await fileToB64(f); showVidPreview(modalVideoB64);
+});
+document.getElementById('modal-image-clear').addEventListener('click', clearModalImg);
+document.getElementById('modal-end-image-clear').addEventListener('click', clearModalEndImg);
+document.getElementById('modal-video-clear').addEventListener('click', clearModalVid);
+
+['modal-image-drop','modal-end-image-drop','modal-video-drop'].forEach(id => {
+    const zone = document.getElementById(id);
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', async e => {
+        e.preventDefault(); zone.classList.remove('drag-over');
+        const f = e.dataTransfer.files[0]; if (!f) return;
+        if (id === 'modal-image-drop' && f.type.startsWith('image/')) {
+            modalImageB64 = await fileToB64(f); showImgPreview(modalImageB64);
+        } else if (id === 'modal-end-image-drop' && f.type.startsWith('image/')) {
+            modalEndImageB64 = await fileToB64(f); showEndImgPreview(modalEndImageB64);
+        } else if (id === 'modal-video-drop' && f.type.startsWith('video/')) {
+            modalVideoB64 = await fileToB64(f); showVidPreview(modalVideoB64);
+        }
+    });
+});
+
+document.getElementById('modal-cancel').addEventListener('click', closeModal);
+document.getElementById('case-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('case-modal')) closeModal();
+});
+document.getElementById('modal-save').addEventListener('click', () => {
+    const name   = document.getElementById('modal-name').value.trim();
+    const prompt = document.getElementById('modal-prompt').value.trim();
+    if (!prompt) { showToast('Prompt is required.'); return; }
+    if (editingCaseId) {
+        const c = dataset.cases.find(x => x.id === editingCaseId);
+        c.name = name || c.name; c.prompt = prompt;
+        c.image_b64     = modalImageB64;
+        c.end_image_b64 = modalEndImageB64;
+        c.video_b64     = modalVideoB64;
+    } else {
+        dataset.cases.push({ id: uuid(), name: name || `Case ${dataset.cases.length+1}`, prompt, image_b64: modalImageB64, end_image_b64: modalEndImageB64, video_b64: modalVideoB64 });
+    }
+    renderCaseList(); closeModal();
+});
+document.getElementById('btn-add-case').addEventListener('click', () => openModal(null));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save / Load dataset
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-save-dataset').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(dataset, null, 2)], { type: 'application/json' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'ltx_benchmark_dataset.json' });
+    a.click();
+    showToast('Dataset saved.', 'success');
+});
+
+document.getElementById('load-file-input').addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => {
+        try {
+            const data = JSON.parse(ev.target.result);
+            if (!Array.isArray(data.cases)) throw new Error('Invalid format');
+            dataset = data;
+            renderCaseList();
+            showToast(`Loaded ${dataset.cases.length} case(s).`, 'success');
+        } catch (err) { showToast(`Load failed: ${err.message}`); }
+        e.target.value = '';
+    };
+    r.readAsText(file);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Results rendering — per-case sections with card grids
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TYPE_LABEL = { base: 'base', 'ablation-vid': 'no video', 'ablation-img': 'no image' };
+
+function renderResults(cols) {
+    const content = document.getElementById('results-content');
+
+    content.innerHTML = dataset.cases.map(c => {
+        const hasImg = !!c.image_b64, hasEndImg = !!c.end_image_b64, hasVid = !!c.video_b64;
+        const thumb  = hasImg
+            ? `<img class="case-header-thumb" src="${c.image_b64}" alt="">`
+            : `<div class="case-header-thumb-empty">🎬</div>`;
+        const cards  = cols.map(col => {
+            const cellId = makeCellId(c.id, col.id);
+            return `
+            <div class="result-card">
+                <div class="card-label">
+                    <span class="col-tag ${col.type}">${escHtml(TYPE_LABEL[col.type]||col.type)}</span>
+                    <span class="col-params">${escHtml(col.paramStr)}</span>
+                </div>
+                <div class="card-body" id="${cellId}">${idleCell()}</div>
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="case-section">
+            <div class="case-header">
+                ${thumb}
+                <div class="case-header-info">
+                    <div class="case-header-name">${escHtml(c.name||'Unnamed')}</div>
+                    <div class="case-header-prompt">${escHtml((c.prompt||'').slice(0,120))}${c.prompt&&c.prompt.length>120?'…':''}</div>
+                    <div class="case-header-badges">
+                        ${hasImg    ? '<span class="badge has-img">image</span>' : ''}
+                        ${hasEndImg ? '<span class="badge has-img">end</span>'   : ''}
+                        ${hasVid    ? '<span class="badge has-vid">video</span>' : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="cards-grid">${cards}</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('results-placeholder').style.display  = 'none';
+    content.style.display = '';
+}
+
+function makeCellId(caseId, colId) {
+    return 'cell__' + (caseId + '__' + colId).replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function idleCell()   { return `<div class="cell-idle">idle</div>`; }
+function naCell()     { return `<div class="cell-na">N/A</div>`; }
+function pendCell()   { return `<div class="cell-spinner"><div class="spin-ring"></div><span>queued</span></div>`; }
+function runCell(s)   { return `<div class="cell-spinner"><div class="spin-ring"></div><span>${s}s</span></div>`; }
+function errCell(msg) { return `<div class="cell-error">✕ ${escHtml(msg||'failed')}</div>`; }
+function doneCell(d)  {
+    const meta = `${d.width}×${d.height} · ${(d.duration||0).toFixed(1)}s · ${d.fps}fps`;
+    return `
+    <div class="video-wrap">
+        <video data-lazy-src="${d.blobUrl}" controls muted playsinline preload="none"></video>
+        <div class="video-overlay" onclick="forceLoadVideo(this)">▶</div>
+    </div>
+    <div class="cell-meta">${meta}</div>
+    <a class="cell-dl" href="${d.blobUrl}" download="bench_${escHtml(d.colId||'')}.mp4">↓ download</a>`;
+}
+
+function setCell(caseId, colId, html) {
+    const el = document.getElementById(makeCellId(caseId, colId));
+    if (el) { el.innerHTML = html; observeNewVideos(); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Job submission & polling
+// ─────────────────────────────────────────────────────────────────────────────
+
+let runStats = { total: 0, done: 0, failed: 0 };
+
+function updateProgress() {
+    const { total, done, failed } = runStats;
+    const pct = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+    document.getElementById('progress-bar').style.width = `${pct}%`;
+    document.getElementById('results-summary').innerHTML =
+        `<strong>${done}</strong> done · <strong>${failed}</strong> failed · <strong>${total - done - failed}</strong> pending — ${pct}%`;
+}
+
+async function submitJob(caseObj, col) {
+    const apiBase  = document.getElementById('api-base-url').value.replace(/\/$/, '');
+    const wangpUrl = document.getElementById('wangp-url').value.trim();
+    const hasImage    = !!caseObj.image_b64;
+    const hasEndImage = !!caseObj.end_image_b64;
+    const hasVideo    = !!caseObj.video_b64;
+    const useImage = col.ablation !== 'no_image';
+    const useVideo = col.ablation !== 'no_video';
+
+    // Ablation removes an input the case doesn't have → N/A
+    if (col.ablation === 'no_video' && !hasVideo) {
+        setCell(caseObj.id, col.id, naCell()); runStats.done++; updateProgress(); return;
+    }
+    if (col.ablation === 'no_image' && !hasImage) {
+        setCell(caseObj.id, col.id, naCell()); runStats.done++; updateProgress(); return;
+    }
+
+    setCell(caseObj.id, col.id, pendCell());
+
+    try {
+        const p  = col.params;
+        const fd = new FormData();
+        fd.append('prompt',             caseObj.prompt || '');
+        fd.append('negative_prompt',    document.getElementById('fix-negative').value.trim());
+        fd.append('wangp_url',          wangpUrl);
+        fd.append('model_type',         document.getElementById('fix-model').value);
+        fd.append('resolution',         document.getElementById('fix-resolution').value);
+        fd.append('duration_seconds',   document.getElementById('fix-duration').value || '4');
+        fd.append('fps',                document.getElementById('fix-fps').value || '24');
+        fd.append('steps',              document.getElementById('fix-steps').value || '8');
+        fd.append('seed',               document.getElementById('fix-seed').value || '-1');
+        fd.append('guidance_scale',     String(p.cfg));
+        fd.append('flow_shift',         String(p.flow));
+        fd.append('denoising_strength', String(p.denoising));
+
+        if (useImage && caseObj.image_b64) {
+            const blob = dataUrlToBlob(caseObj.image_b64);
+            if (!blob) throw new Error('Failed to decode image from dataset');
+            fd.append('image', blob, 'image.' + (blob.type.split('/')[1] || 'png'));
+        }
+        if (caseObj.end_image_b64) {
+            const blob = dataUrlToBlob(caseObj.end_image_b64);
+            if (!blob) throw new Error('Failed to decode end image from dataset');
+            fd.append('end_image', blob, 'end_image.' + (blob.type.split('/')[1] || 'png'));
+        }
+        if (useVideo && caseObj.video_b64) {
+            const blob = dataUrlToBlob(caseObj.video_b64);
+            if (!blob) throw new Error('Failed to decode video from dataset');
+            fd.append('video', blob, 'video.' + (blob.type.split('/')[1] || 'mp4'));
+        }
+
+        const resp = await fetch(`${apiBase}/video-generation/single-clip`, { method: 'POST', body: fd });
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({}));
+            // FastAPI 422 returns {detail: [{loc, msg, type}, ...]} — format it legibly
+            const detail = Array.isArray(body.detail)
+                ? body.detail.map(e => `${(e.loc||[]).slice(1).join('.')}: ${e.msg}`).join(' | ')
+                : (body.detail ? String(body.detail) : resp.statusText);
+            throw new Error(`HTTP ${resp.status} — ${detail}`);
+        }
+        const { job_id } = await resp.json();
+        startPolling(job_id, caseObj.id, col.id);
+    } catch (err) {
+        setCell(caseObj.id, col.id, errCell(err.message));
+        runStats.failed++; updateProgress();
+    }
+}
+
+function startPolling(jobId, caseId, colId) {
+    const apiBase = document.getElementById('api-base-url').value.replace(/\/$/, '');
+    let elapsed = 0;
+
+    const tid = setInterval(async () => {
+        elapsed += 3;
+        setCell(caseId, colId, runCell(elapsed));
+
+        try {
+            const r = await fetch(`${apiBase}/video-generation/jobs/${jobId}`);
+            if (!r.ok) throw new Error(`poll ${r.status}`);
+            const job = await r.json();
+
+            if (job.status === 'completed') {
+                clearInterval(tid); polls.delete(jobId);
+                const res     = job.result;
+                const blobUrl = URL.createObjectURL(dataUrlToBlob('data:video/mp4;base64,' + res.video_b64));
+                setCell(caseId, colId, doneCell({ blobUrl, width: res.width, height: res.height, duration: res.duration_seconds, fps: res.fps, colId }));
+                runStats.done++; updateProgress();
+
+            } else if (job.status === 'failed') {
+                clearInterval(tid); polls.delete(jobId);
+                setCell(caseId, colId, errCell(job.error || 'Job failed'));
+                runStats.failed++; updateProgress();
+            }
+        } catch (err) {
+            clearInterval(tid); polls.delete(jobId);
+            setCell(caseId, colId, errCell(err.message));
+            runStats.failed++; updateProgress();
+        }
+    }, 3000);
+
+    polls.set(jobId, tid);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-run').addEventListener('click', async () => {
+    if (dataset.cases.length === 0) { showToast('No cases in dataset.'); return; }
+
+    columns = generateColumns();
+    if (columns.length === 0) { showToast('No grid combinations configured.'); return; }
+
+    polls.forEach(tid => clearInterval(tid)); polls.clear();
+
+    renderResults(columns);
+    document.getElementById('progress-wrap').style.display = 'block';
+    document.getElementById('btn-clear-results').style.display = '';
+
+    runStats = { total: dataset.cases.length * columns.length, done: 0, failed: 0 };
+    updateProgress();
+    document.getElementById('btn-run').disabled = true;
+
+    for (const caseObj of dataset.cases) {
+        for (const col of columns) {
+            await submitJob(caseObj, col);
+            await new Promise(r => setTimeout(r, 120));
+        }
+    }
+
+    document.getElementById('btn-run').disabled = false;
+});
+
+document.getElementById('btn-clear-results').addEventListener('click', () => {
+    polls.forEach(tid => clearInterval(tid)); polls.clear();
+    const content = document.getElementById('results-content');
+    content.innerHTML = ''; content.style.display = 'none';
+    document.getElementById('results-placeholder').style.display = '';
+    document.getElementById('results-summary').textContent = 'Add cases and configure the grid to run a benchmark.';
+    document.getElementById('progress-wrap').style.display = 'none';
+    document.getElementById('btn-clear-results').style.display = 'none';
+    document.getElementById('btn-run').disabled = false;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+
+updateComboCount();
+renderCaseList();
+</script>
+</body>
+</html>

@@ -160,6 +160,10 @@ class VideoGenerationParams(BaseModel):
         default=None,
         description="Local path to the start image (JPEG/PNG). Required for i2v.",
     )
+    end_image_path: Optional[str] = Field(
+        default=None,
+        description="Local path to the end/last-frame image (JPEG/PNG). Enables end-frame conditioning.",
+    )
     audio_path: Optional[str] = Field(
         default=None,
         description=(
@@ -396,6 +400,7 @@ class WanGPLTXClient(LTXClientInterface):
         image_file_id: Optional[str],
         audio_file_id: Optional[str],
         video_file_id: Optional[str] = None,
+        end_image_file_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         settings: Dict[str, Any] = {
             "model_type":           params.model_type,
@@ -420,11 +425,20 @@ class WanGPLTXClient(LTXClientInterface):
                 settings["activated_loras"] = [lora]
                 settings["loras_multipliers"] = "1"
 
-        if image_file_id is not None:
-            settings["image_start"] = f"file:{image_file_id}"
-            settings["image_prompt_type"] = "S"
+        if image_file_id is not None or end_image_file_id is not None:
+            if image_file_id is not None:
+                settings["image_start"] = f"file:{image_file_id}"
+            if end_image_file_id is not None:
+                settings["image_end"] = f"file:{end_image_file_id}"
+            if image_file_id and end_image_file_id:
+                settings["image_prompt_type"] = "SE"
+            elif image_file_id:
+                settings["image_prompt_type"] = "S"
+            else:
+                settings["image_prompt_type"] = "E"
             if (
                 video_file_id is not None
+                and image_file_id is not None
                 and params.transition_frames > 0
                 and params.model_type != "ltxv_13B"
             ):
@@ -540,12 +554,18 @@ class WanGPLTXClient(LTXClientInterface):
         """Execute the full REST generation pipeline synchronously. Returns local paths."""
         base = self.config.server_url.rstrip("/")
 
-        if params.video_path and params.image_path:
+        if params.video_path and params.image_path and params.end_image_path:
+            mode_label = "v2v+image_start+image_end"
+        elif params.video_path and params.image_path:
             mode_label = "v2v+image_start"
         elif params.video_path:
             mode_label = "v2v"
+        elif params.image_path and params.end_image_path:
+            mode_label = "i2v+image_end (SE)"
         elif params.image_path:
             mode_label = "audio-conditioned i2v" if params.audio_path else "i2v"
+        elif params.end_image_path:
+            mode_label = "i2v end-frame only (E)"
         else:
             mode_label = "t2v"
 
@@ -555,21 +575,26 @@ class WanGPLTXClient(LTXClientInterface):
         image_file_id: Optional[str] = None
         audio_file_id: Optional[str] = None
         video_file_id: Optional[str] = None
+        end_image_file_id: Optional[str] = None
 
         if params.video_path:
             print(f"[2a] Uploading source video ({mode_label})")
             video_file_id = self._upload_file(params.video_path)
 
         if params.image_path:
-            print(f"[2b] Uploading start image")
+            print("[2b] Uploading start image")
             image_file_id = self._upload_file(params.image_path)
 
         if params.audio_path:
             print("[2c] Uploading audio guide")
             audio_file_id = self._upload_file(params.audio_path)
 
+        if params.end_image_path:
+            print("[2d] Uploading end image")
+            end_image_file_id = self._upload_file(params.end_image_path)
+
         print(f"[3] Submitting job  model={params.model_type}  mode={mode_label}")
-        settings = self._build_settings(params, image_file_id, audio_file_id, video_file_id)
+        settings = self._build_settings(params, image_file_id, audio_file_id, video_file_id, end_image_file_id)
         job_id, _ = self._submit_job(settings)
 
         print("[4] Polling job status …")
@@ -659,6 +684,7 @@ async def generate_video(
     server_url: str = "http://localhost:8082",
     audio_path: Optional[str] = None,
     video_path: Optional[str] = None,
+    end_image_path: Optional[str] = None,
     **kwargs,
 ) -> VideoGenerationResult:
     """
@@ -669,16 +695,17 @@ async def generate_video(
         - Image-to-video: ``image_path`` (+ optional ``audio_path``).
         - Video-to-video: ``video_path``.
         - V2V with pinned first frame: ``video_path`` + ``image_path``.
+        - Start+end frame: ``image_path`` + ``end_image_path``.
 
     Args:
         prompt: Text prompt describing the video content.
-        image_path: Local path to the start image. Used alone for i2v, or with video_path to pin the first frame.
+        image_path: Local path to the start image.
         output_dir: Directory to save the output video.
         server_url: URL of the remote WanGP REST server.
         audio_path: Optional conditioning audio file. Enables audio-driven i2v.
         video_path: Local path to the source video (v2v). Can be combined with image_path.
-        **kwargs: Additional :class:`VideoGenerationParams` fields
-                  (e.g. ``denoising_strength``, ``video_prompt_type``).
+        end_image_path: Local path to the end/last-frame image. Enables end-frame conditioning.
+        **kwargs: Additional :class:`VideoGenerationParams` fields.
 
     Returns:
         :class:`VideoGenerationResult`
@@ -689,6 +716,7 @@ async def generate_video(
         image_path=image_path,
         audio_path=audio_path,
         video_path=video_path,
+        end_image_path=end_image_path,
         **kwargs,
     )
     async with WanGPLTXClient(config) as client:
