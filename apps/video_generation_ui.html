@@ -1614,7 +1614,7 @@
                 </div>
             `;
 
-            const result = await apiCall('POST', '/video-generation/submit', requestData);
+            const result = await apiCall('POST', '/video-generation/generate', requestData);
             
             if (result.ok && result.data.job_id) {
                 const jobId = result.data.job_id;
@@ -1659,7 +1659,6 @@
 
             const requestData = {
                 story_template_id: templateId,
-                ltx_server_url: document.getElementById('ltxServerUrl').value || undefined,
                 video_width: parseInt(document.getElementById('ltxWidth').value) || undefined,
                 video_height: parseInt(document.getElementById('ltxHeight').value) || undefined,
                 video_duration_seconds: parseFloat(document.getElementById('ltxDuration').value) || undefined,
@@ -1696,7 +1695,7 @@
                 </div>
             `;
 
-            const result = await apiCall('POST', '/video-generation/generate-ltx', requestData);
+            const result = await apiCall('POST', '/video-generation/generate', requestData);
 
             if (result.ok && result.data.job_id) {
                 const jobId = result.data.job_id;
@@ -2263,7 +2262,6 @@
                 story_template_id: templateId,
                 scenes,
                 locations,
-                ltx_server_url:           document.getElementById('ltxServerUrl').value || undefined,
                 video_width:              parseInt(document.getElementById('ltxWidth').value) || undefined,
                 video_height:             parseInt(document.getElementById('ltxHeight').value) || undefined,
                 video_duration_seconds:   parseFloat(document.getElementById('ltxDuration').value) || undefined,
@@ -2291,7 +2289,7 @@
                     </div>
                 </div>`;
 
-            const result = await apiCall('POST', '/video-generation/generate-ltx-from-script', requestData);
+            const result = await apiCall('POST', '/video-generation/generate-from-script', requestData);
 
             if (result.ok && result.data.job_id) {
                 const jobId = result.data.job_id;

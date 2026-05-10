@@ -56,7 +56,7 @@ async def create_video(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{effective_api_url}/api/v1/video-generation/submit",
+                f"{effective_api_url}/api/v1/video-generation/generate",
                 json={
                     "title": title,
                     "story_template_id": story_template_id,

@@ -35,6 +35,10 @@ from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
 from virtual_streamer.api.high_level.video_generation import (
     router as video_generation_router,
 )
+from virtual_streamer.api.high_level.broadcast_generation import (
+    router as broadcast_generation_router,
+)
+from virtual_streamer.api.low_level.jobs import router as jobs_router
 from virtual_streamer.api.high_level.legacy_qa import router as legacy_qa_router
 from virtual_streamer.api.high_level.jesus_agents import router as jesus_agents_router
 from virtual_streamer.api.high_level.story_template_generation import (
@@ -143,6 +147,7 @@ app.include_router(playlist_router, prefix="/api/v1")
 # Low-level: Database browser (admin/debug)
 app.include_router(db_browser_router, prefix="/api/v1")
 app.include_router(storage_router, prefix="/api/v1")
+app.include_router(jobs_router, prefix="/api/v1")
 
 # Medium-level: Core services
 app.include_router(tts_router, prefix="/api/v1")
@@ -151,6 +156,7 @@ app.include_router(wav2lip_router, prefix="/api/v1")
 
 # High-level: Applications
 app.include_router(video_generation_router, prefix="/api/v1")
+app.include_router(broadcast_generation_router, prefix="/api/v1")
 app.include_router(jesus_agents_router, prefix="/api/v1")
 app.include_router(story_template_generation_router, prefix="/api/v1")
 app.include_router(location_generation_router, prefix="/api/v1")

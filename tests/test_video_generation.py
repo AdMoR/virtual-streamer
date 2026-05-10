@@ -491,6 +491,75 @@ class TestIntegration:
 
 
 # ============================================================================
+# Subtitle Step Tests
+# ============================================================================
+
+
+class TestApplySubtitles:
+    """Tests for the _apply_subtitles helper in video_generation."""
+
+    def _make_mock_segment(self, index: int, video_path: str, audio_path: Optional[str]):
+        """Build a minimal SegmentResult-like mock."""
+        seg = MagicMock()
+        seg.index = index
+        seg.video_path = video_path
+        seg.audio_path = audio_path
+        return seg
+
+    def test_subtitles_applied_when_audio_present(self, tmp_path):
+        """transcribe_to_srt and add_subtitle_from_srt are called for segments with audio."""
+        import os
+
+        # Create dummy video and audio files so os.path.exists passes
+        video_file = tmp_path / "seg_000.mp4"
+        audio_file = tmp_path / "seg_000.wav"
+        video_file.write_bytes(b"FAKE_VIDEO")
+        audio_file.write_bytes(b"FAKE_AUDIO")
+
+        mock_result = MagicMock()
+        mock_result.segments = [
+            self._make_mock_segment(0, str(video_file), str(audio_file)),
+        ]
+        mock_result.final_video_path = str(video_file)
+
+        with (
+            patch("virtual_streamer.api.high_level.video_generation.add_subtitle_from_srt") as mock_sub,
+            patch("virtual_streamer.utils.transcription.transcribe_to_srt") as mock_srt,
+            patch("virtual_streamer.api.high_level.video_generation.concatenate_videos") as mock_concat,
+        ):
+            mock_concat.return_value = str(tmp_path / "final_with_subtitles.mp4")
+
+            from virtual_streamer.api.high_level.video_generation import _apply_subtitles
+
+            _apply_subtitles(mock_result, str(tmp_path), fontsize=14)
+
+            mock_sub.assert_called_once()
+            mock_concat.assert_called_once()
+
+    def test_subtitles_skipped_when_no_audio(self, tmp_path):
+        """Segments without audio are passed through unchanged."""
+        video_file = tmp_path / "seg_000.mp4"
+        video_file.write_bytes(b"FAKE_VIDEO")
+
+        mock_result = MagicMock()
+        mock_result.segments = [
+            self._make_mock_segment(0, str(video_file), None),
+        ]
+
+        with (
+            patch("virtual_streamer.api.high_level.video_generation.add_subtitle_from_srt") as mock_sub,
+            patch("virtual_streamer.api.high_level.video_generation.concatenate_videos") as mock_concat,
+        ):
+            mock_concat.return_value = str(tmp_path / "final_with_subtitles.mp4")
+
+            from virtual_streamer.api.high_level.video_generation import _apply_subtitles
+
+            _apply_subtitles(mock_result, str(tmp_path), fontsize=14)
+
+            mock_sub.assert_not_called()
+
+
+# ============================================================================
 # Pytest Configuration
 # ============================================================================
 

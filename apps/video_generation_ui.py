@@ -35,7 +35,7 @@ def submit_job(request_data: Dict[str, Any]) -> Optional[str]:
     """Submit a video generation job."""
     try:
         response = requests.post(
-            f"{API_BASE_URL}/video-generation/submit", json=request_data, timeout=10
+            f"{API_BASE_URL}/video-generation/generate", json=request_data, timeout=10
         )
         response.raise_for_status()
         result = response.json()

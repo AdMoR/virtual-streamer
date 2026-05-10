@@ -212,7 +212,7 @@ class TestGenerateSegmentFromInput:
             audio_path=fake_audio_file,
         )
         params = client.generate_video.call_args.kwargs["params"]
-        assert params.frames == _frames_from_duration(5.5, sample_video_params.fps)
+        assert params.frames == _frames_from_duration(5.5 + 0.5, sample_video_params.fps)
 
     async def test_missing_audio_file_falls_back_to_configured_duration(self, fake_video_file, sample_scene_input, sample_video_params, tmp_path):
         client = _make_segment_client(fake_video_file)
@@ -250,56 +250,61 @@ class TestGenerateSegmentFromInput:
 
 class TestGenerateSceneImageFromInput:
 
-    async def test_no_refs_uses_txt2image(self, mock_sd_client, tmp_path):
+    async def test_no_refs_uses_txt2image(self, mock_sd_client, tmp_path, sample_video_params):
         scene = SceneInput(scene_index=0, ltx_prompt="A dark forest scene", raw_scene_data={})
         result = await generate_scene_image_from_input(
             scene_input=scene, location=None, character_dicts=[], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         mock_sd_client.txt2image.assert_called_once()
         mock_sd_client.image_edit.assert_not_called()
         assert result is not None
 
-    async def test_no_refs_people_excluded_from_negative_prompt(self, mock_sd_client, tmp_path):
+    async def test_no_refs_people_excluded_from_negative_prompt(self, mock_sd_client, tmp_path, sample_video_params):
         scene = SceneInput(scene_index=0, ltx_prompt="Empty space station", raw_scene_data={})
         await generate_scene_image_from_input(
             scene_input=scene, location=None, character_dicts=[], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         params = mock_sd_client.txt2image.call_args[0][0]
         assert "people" in params.negative_prompt
 
-    async def test_location_with_image_path_uses_image_edit(self, mock_sd_client, mock_storage_client, tmp_path):
+    async def test_location_with_image_path_uses_image_edit(self, mock_sd_client, mock_storage_client, tmp_path, sample_video_params):
         scene = SceneInput(scene_index=0, ltx_prompt="A lab scene", raw_scene_data={})
         location = {"location_id": "loc-1", "image_path": "minio/locations/lab.png"}
         result = await generate_scene_image_from_input(
             scene_input=scene, location=location, character_dicts=[], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         mock_storage_client.download_file.assert_called_once()
         mock_sd_client.image_edit.assert_called_once()
         mock_sd_client.txt2image.assert_not_called()
         assert result is not None
 
-    async def test_character_with_identity_images_uses_image_edit(self, mock_sd_client, mock_storage_client, tmp_path):
+    async def test_character_with_identity_images_uses_image_edit(self, mock_sd_client, mock_storage_client, tmp_path, sample_video_params):
         scene = SceneInput(scene_index=0, ltx_prompt="A lab scene", raw_scene_data={})
         char = {"character_id": "fred", "identity_images": ["minio/chars/fred.png"]}
         result = await generate_scene_image_from_input(
             scene_input=scene, location=None, character_dicts=[char], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         mock_storage_client.download_file.assert_called_once()
         mock_sd_client.image_edit.assert_called_once()
         mock_sd_client.txt2image.assert_not_called()
         assert result is not None
 
-    async def test_location_and_character_both_with_images_downloads_both(self, mock_sd_client, mock_storage_client, tmp_path):
+    async def test_location_and_character_both_with_images_downloads_both(self, mock_sd_client, mock_storage_client, tmp_path, sample_video_params):
         scene = SceneInput(scene_index=0, ltx_prompt="A lab scene", raw_scene_data={})
         location = {"location_id": "loc-1", "image_path": "minio/locations/lab.png"}
         char = {"character_id": "fred", "identity_images": ["minio/chars/fred.png"]}
         await generate_scene_image_from_input(
             scene_input=scene, location=location, character_dicts=[char], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         assert mock_storage_client.download_file.call_count == 2
         mock_sd_client.image_edit.assert_called_once()
 
-    async def test_no_scene_visual_description_uses_ltx_prompt(self, mock_sd_client, tmp_path):
+    async def test_no_scene_visual_description_uses_ltx_prompt(self, mock_sd_client, tmp_path, sample_video_params):
         scene = SceneInput(
             scene_index=0,
             ltx_prompt="my specific prompt",
@@ -308,11 +313,12 @@ class TestGenerateSceneImageFromInput:
         )
         await generate_scene_image_from_input(
             scene_input=scene, location=None, character_dicts=[], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         params = mock_sd_client.txt2image.call_args[0][0]
         assert params.prompt == "my specific prompt"
 
-    async def test_scene_visual_description_overrides_ltx_prompt(self, mock_sd_client, tmp_path):
+    async def test_scene_visual_description_overrides_ltx_prompt(self, mock_sd_client, tmp_path, sample_video_params):
         scene = SceneInput(
             scene_index=0,
             ltx_prompt="this should NOT be used",
@@ -326,22 +332,24 @@ class TestGenerateSceneImageFromInput:
         )
         await generate_scene_image_from_input(
             scene_input=scene, location=None, character_dicts=[], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         params = mock_sd_client.txt2image.call_args[0][0]
         assert params.prompt != "this should NOT be used"
         assert "futuristic laboratory" in params.prompt
 
-    async def test_download_failure_falls_back_to_txt2image(self, mock_sd_client, mock_storage_client, tmp_path):
+    async def test_download_failure_falls_back_to_txt2image(self, mock_sd_client, mock_storage_client, tmp_path, sample_video_params):
         mock_storage_client.download_file.side_effect = RuntimeError("MinIO unavailable")
         scene = SceneInput(scene_index=0, ltx_prompt="A lab scene", raw_scene_data={})
         location = {"location_id": "loc-1", "image_path": "minio/locations/lab.png"}
         await generate_scene_image_from_input(
             scene_input=scene, location=location, character_dicts=[], output_dir=str(tmp_path),
+            video_params=sample_video_params,
         )
         mock_sd_client.txt2image.assert_called_once()
         mock_sd_client.image_edit.assert_not_called()
 
-    async def test_sd_exception_returns_none(self, tmp_path):
+    async def test_sd_exception_returns_none(self, tmp_path, sample_video_params):
         with patch(
             "virtual_streamer.video_generation.story_to_video.StableDiffusionCppClient",
             side_effect=RuntimeError("SD server down"),
@@ -349,6 +357,7 @@ class TestGenerateSceneImageFromInput:
             scene = SceneInput(scene_index=0, ltx_prompt="A lab scene", raw_scene_data={})
             result = await generate_scene_image_from_input(
                 scene_input=scene, location=None, character_dicts=[], output_dir=str(tmp_path),
+                video_params=sample_video_params,
             )
         assert result is None
 

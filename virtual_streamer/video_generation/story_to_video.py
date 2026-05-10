@@ -450,7 +450,7 @@ async def generate_segment_from_input(
                 from virtual_streamer.utils.utils import get_length
                 audio_dur = get_length(audio_path)
                 if audio_dur > 0:
-                    duration = audio_dur
+                    duration = audio_dur + 0.5
                     logger.info(f"[scene {i}] Duration adapted to audio: {duration:.2f}s")
                 else:
                     logger.warning(f"[scene {i}] get_length returned {audio_dur} — using configured duration")
@@ -508,6 +508,7 @@ async def generate_scene_image_from_input(
     location: Optional[dict],
     character_dicts: List[dict],
     output_dir: str,
+    video_params: VideoGenerationParams,
     sd_server_url: str = "http://gx10-cbc5:1234",
 ) -> Optional[str]:
     """
@@ -557,8 +558,8 @@ async def generate_scene_image_from_input(
                             prompt=prompt,
                             negative_prompt=negative_prompt,
                             image_paths=local_refs,
-                            width=1920,
-                            height=1080,
+                            width=video_params.width,
+                            height=video_params.height,
                             extra_args={"denoising_strength": 0.1},
                         ),
                         output_dir=output_dir,
@@ -570,8 +571,8 @@ async def generate_scene_image_from_input(
                 Txt2ImageParams(
                     prompt=prompt,
                     negative_prompt=negative_prompt + ", people, persons, characters",
-                    width=1920,
-                    height=1080,
+                    width=video_params.width,
+                    height=video_params.height,
                 ),
                 output_dir=output_dir,
             )
@@ -750,6 +751,7 @@ async def story_input_to_video(
                     character_dicts=char_dicts,
                     output_dir=image_dir,
                     sd_server_url=_sd_url,
+                    video_params=video_params,
                 )
 
                 # ── Upload conditioning image & persist artifact ────────────
@@ -1242,14 +1244,14 @@ async def title_to_video(
     1. StoryGeneratorAgent generates a StoryOutput from *title*.
     2. story_to_video generates and concatenates all segments.
     """
-    from virtual_streamer.api.high_level.video_generation import run_story_generator
+    from virtual_streamer.api.high_level.video_generation import run_story_pipeline
 
     logger.info(f"title_to_video: generating story for {title!r}")
 
     if progress_callback:
         progress_callback(0, 1, "Generating story…")
 
-    story_output = await run_story_generator(
+    story_output = await run_story_pipeline(
         title=title,
         story_template_id=story_template_id,
     )

@@ -193,12 +193,10 @@ async def create_video(title: str, story_template_id: str) -> dict:
     """
     cfg = _get_config()
     return await _api_post(
-        "/api/v1/video-generation/submit",
+        "/api/v1/video-generation/generate",
         {
             "title": title,
-            "stream_id": cfg.stream_id,
             "story_template_id": story_template_id,
-            "metadata": {"source": "mcp_server"},
         },
     )
 
@@ -226,7 +224,6 @@ async def create_video_ltx(
     story_template_id: str,
     title: str | None = None,
     story_text: str | None = None,
-    ltx_server_url: str = "http://gx10-cbc5:8082",
     video_width: int = 1280,
     video_height: int = 720,
     video_duration_seconds: float = 5.0,
@@ -240,14 +237,12 @@ async def create_video_ltx(
         story_template_id: Required. Story template defining characters and prompt.
         title: Video title/topic (used to generate the story). Mutually exclusive with story_text.
         story_text: Pre-written story text. Mutually exclusive with title.
-        ltx_server_url: URL of the WanGP server running LTX-2.
         video_width: Output video width in pixels (default 1280).
         video_height: Output video height in pixels (default 720).
         video_duration_seconds: Duration per video segment in seconds (default 5.0).
     """
     body: dict = {
         "story_template_id": story_template_id,
-        "ltx_server_url": ltx_server_url,
         "video_width": video_width,
         "video_height": video_height,
         "video_duration_seconds": video_duration_seconds,
@@ -256,7 +251,7 @@ async def create_video_ltx(
         body["title"] = title
     if story_text is not None:
         body["story_text"] = story_text
-    return await _api_post("/api/v1/video-generation/generate-ltx", body, timeout=7200.0)
+    return await _api_post("/api/v1/video-generation/generate", body, timeout=7200.0)
 
 
 @mcp.tool()

@@ -5,11 +5,12 @@
 name: location_writer
 
 model:
-  provider: anthropic
-  model: claude-sonnet-4-6
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
   parameters:
-    temperature: 0.5
-
+    temperature: 0.3
+    max_output_tokens: 4096
+    api_base: http://100.114.182.89:8081
 metadata:
   version: "1.0.0"
   description: "Generates a detailed diffusion-model description for a scene location"

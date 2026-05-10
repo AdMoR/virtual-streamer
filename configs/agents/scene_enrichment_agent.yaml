@@ -1,10 +1,12 @@
 name: scene_enrichment_agent
 
 model:
-  provider: anthropic
-  model: anthropic/claude-haiku-4-5-20251001
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
   parameters:
-    max_output_tokens: 2048
+    temperature: 0.3
+    max_output_tokens: 4096
+    api_base: http://100.114.182.89:8081
 
 metadata:
   version: "1.0.0"
