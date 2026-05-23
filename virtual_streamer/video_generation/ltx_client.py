@@ -46,8 +46,8 @@ from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_NEGATIVE_PROMPT = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
-_DEFAULTS = {
-    "model_type":      "ltx2_22B_distilled",
+_DEFAULTS_FAST = {
+    "model_type":      "ltx2_22B_distilled_1_1",
     "resolution":      "1280x720",
     "frames":          97,
     "steps":           8,
@@ -60,7 +60,7 @@ _DEFAULTS = {
     "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
 }
 
-_DEFAULTS_QUALITY = {
+_DEFAULTS = {
     "model_type":      "ltx2_22B",
     "resolution":      "1280x720",
     "frames":          97,
@@ -76,14 +76,14 @@ _DEFAULTS_QUALITY = {
 
 
 _DEFAULTS_HIGH_QUALITY = {
-    "model_type":      "ltx2_22B",
+    "model_type":      "ltx2_22B_pure_dev",
     "resolution":      "1280x720",
     "frames":          97,
-    "steps":           30,
+    "steps":           50,
     "guidance_scale":  3.0,
     "flow_shift":      3.0,
     "seed":            -1,
-    "fps":             "50",
+    "fps":             "30",
     "audio_scale":     1.0,
     "audio_guidance":  4.5,
     "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
@@ -99,8 +99,8 @@ _DEFAULT_V2V_LORA = "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
 
 # Named presets exposed to callers (API, UI, etc.)
 VIDEO_PRESETS: dict[str, dict] = {
-    "fast":         _DEFAULTS,
-    "quality":      _DEFAULTS_QUALITY,
+    "fast":         _DEFAULTS_FAST,
+    "quality":      _DEFAULTS,
     "high_quality": _DEFAULTS_HIGH_QUALITY,
 }
 
@@ -211,6 +211,16 @@ class VideoGenerationParams(BaseModel):
         ),
     )
 
+    # --- Optional LoRA override ---
+    lora_name: Optional[str] = Field(
+        default=None,
+        description="LoRA filename to activate (e.g. 'my-style.safetensors'). Merged with any V2V LoRAs.",
+    )
+    lora_multiplier: float = Field(
+        default=1.0,
+        description="Strength/weight for the user-supplied LoRA.",
+    )
+
     # --- Generation settings ---
     model_type: str = Field(default=_DEFAULTS["model_type"])
     resolution: str = Field(
@@ -250,6 +260,10 @@ class VideoGenerationParams(BaseModel):
     enable_audio: bool = Field(
         default=False,
         description="Informational flag. Actual audio conditioning uses audio_path.",
+    )
+    identity_preservation: bool = Field(
+        default=False,
+        description="Enable ID-LoRA talking-heads mode. Sets audio_prompt_type to 'A1OF' and audio_guidance_scale to 7.0. Requires a non-distilled DEV checkpoint (ltx2_22B or ltx2_19B).",
     )
 
     @model_validator(mode="after")
@@ -425,6 +439,15 @@ class WanGPLTXClient(LTXClientInterface):
                 settings["activated_loras"] = [lora]
                 settings["loras_multipliers"] = "1"
 
+        if params.lora_name:
+            existing: list = settings.get("activated_loras", [])
+            existing_mults: str = settings.get("loras_multipliers", "")
+            existing.append(params.lora_name)
+            mults = [existing_mults] if existing_mults else []
+            mults.append(str(params.lora_multiplier))
+            settings["activated_loras"] = existing
+            settings["loras_multipliers"] = ";".join(mults)
+
         if image_file_id is not None or end_image_file_id is not None:
             if image_file_id is not None:
                 settings["image_start"] = f"file:{image_file_id}"
@@ -446,8 +469,12 @@ class WanGPLTXClient(LTXClientInterface):
 
         if audio_file_id is not None:
             settings["audio_guide"] = f"file:{audio_file_id}"
-            settings["audio_prompt_type"] = "A"
-            settings["audio_guidance_scale"] = params.audio_guidance
+            if params.identity_preservation:
+                settings["audio_prompt_type"] = "A1OF"
+                settings["audio_guidance_scale"] = 7.0
+            else:
+                settings["audio_prompt_type"] = "A"
+                settings["audio_guidance_scale"] = params.audio_guidance
             settings["audio_scale"] = params.audio_scale
 
         return settings

@@ -28,11 +28,7 @@
             --gradient-end: #a371f7;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'DM Sans', -apple-system, sans-serif;
@@ -42,730 +38,279 @@
             line-height: 1.6;
         }
 
-        /* Ambient background */
         body::before {
             content: '';
             position: fixed;
             inset: 0;
-            background: 
+            background:
                 radial-gradient(circle at 15% 15%, rgba(88, 166, 255, 0.08) 0%, transparent 40%),
                 radial-gradient(circle at 85% 85%, rgba(163, 113, 247, 0.06) 0%, transparent 40%);
             pointer-events: none;
             z-index: -1;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 32px;
-        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px; }
 
-        /* Header */
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
+        .header { text-align: center; margin-bottom: 40px; }
         .header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
+            font-size: 2.5rem; font-weight: 700;
             background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 8px;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 8px;
         }
+        .header p { color: var(--text-muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
 
-        .header p {
-            color: var(--text-muted);
-            font-size: 1.1rem;
-            max-width: 600px;
-            margin: 0 auto;
-        }
+        .main-layout { display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
+        @media (max-width: 1024px) { .main-layout { grid-template-columns: 1fr; } }
 
-        /* Layout */
-        .main-layout {
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 24px;
-        }
-
-        @media (max-width: 1024px) {
-            .main-layout {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Cards */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
         .card-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 10px;
         }
+        .card-header h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-bright); }
+        .card-body { padding: 20px; }
 
-        .card-header h3 {
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-bright);
-        }
-
-        .card-body {
-            padding: 20px;
-        }
-
-        /* Forms */
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group:last-child {
-            margin-bottom: 0;
-        }
+        .form-group { margin-bottom: 16px; }
+        .form-group:last-child { margin-bottom: 0; }
 
         label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 8px;
+            display: block; font-size: 0.85rem; font-weight: 500;
+            color: var(--text-muted); margin-bottom: 6px;
         }
 
         input, select, textarea {
-            width: 100%;
-            padding: 10px 14px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-family: inherit;
-            font-size: 0.9rem;
-            transition: all 0.2s;
+            width: 100%; padding: 10px 14px;
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-family: inherit;
+            font-size: 0.9rem; transition: all 0.2s;
         }
-
         input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--border-focus);
+            outline: none; border-color: var(--border-focus);
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
         }
-
         textarea {
-            min-height: 120px;
-            resize: vertical;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
+            min-height: 120px; resize: vertical;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
         }
 
-        /* Collapsible sections */
-        .collapsible {
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            margin-bottom: 16px;
-            overflow: hidden;
+        .section-divider {
+            border: none; border-top: 1px solid var(--border);
+            margin: 16px 0;
+        }
+        .section-label {
+            font-size: 0.78rem; font-weight: 700; color: var(--accent);
+            text-transform: uppercase; letter-spacing: 0.06em;
+            margin-bottom: 12px; margin-top: 4px;
         }
 
-        .collapsible-header {
-            padding: 12px 16px;
-            background: var(--bg-input);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: background 0.2s;
-        }
-
-        .collapsible-header:hover {
-            background: var(--bg-hover);
-        }
-
-        .collapsible-header::after {
-            content: '▼';
-            font-size: 0.7rem;
-            transition: transform 0.2s;
-        }
-
-        .collapsible.open .collapsible-header::after {
-            transform: rotate(180deg);
-        }
-
-        .collapsible-content {
-            display: none;
-            padding: 16px;
-            border-top: 1px solid var(--border);
-        }
-
-        .collapsible.open .collapsible-content {
-            display: block;
-        }
-
-        /* Buttons */
         .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-family: inherit;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 12px 24px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
         }
-
         .btn-primary {
             background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
             color: white;
         }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(88, 166, 255, 0.3);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .btn-secondary {
-            background: var(--bg-input);
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--accent);
-            background: var(--bg-hover);
-        }
-
-        .btn-sm {
-            padding: 8px 16px;
-            font-size: 0.85rem;
-        }
-
-        .btn-block {
-            width: 100%;
-        }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 24px;
-        }
-
-        .tab {
-            padding: 14px 24px;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-family: inherit;
-            font-size: 0.95rem;
-            font-weight: 500;
-            cursor: pointer;
-            position: relative;
-            transition: color 0.2s;
-        }
-
-        .tab:hover {
-            color: var(--text);
-        }
-
-        .tab.active {
-            color: var(--accent);
-        }
-
-        .tab.active::after {
-            content: '';
-            position: absolute;
-            bottom: -1px;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--accent);
-        }
-
-        .tab-panel {
-            display: none;
-        }
-
-        .tab-panel.active {
-            display: block;
-        }
-
-        /* Status badges */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-pending { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
-        .status-running { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
-        .status-completed { background: rgba(63, 185, 80, 0.15); color: var(--success); }
-        .status-failed { background: rgba(248, 81, 73, 0.15); color: var(--error); }
-
-        /* Job list */
-        .job-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .job-card {
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .job-card:hover {
-            border-color: var(--accent);
-            transform: translateX(4px);
-        }
-
-        .job-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 8px;
-        }
-
-        .job-title {
-            font-weight: 600;
-            color: var(--text-bright);
-            font-size: 0.95rem;
-        }
-
-        .job-meta {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        /* Progress bar */
-        .progress-container {
-            margin: 20px 0;
-        }
-
-        .progress-bar {
-            height: 8px;
-            background: var(--bg-input);
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-
-        .progress-text {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        /* Video display */
-        .video-container {
-            background: #000;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 20px 0;
-        }
-
-        .video-container video {
-            width: 100%;
-            display: block;
-        }
-
-        .video-placeholder {
-            padding: 60px;
-            text-align: center;
-            color: var(--text-muted);
-        }
-
-        /* Result display */
-        .result-panel {
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-
-        .result-panel.success {
-            border-color: var(--success);
-        }
-
-        .result-panel.error {
-            border-color: var(--error);
-        }
-
-        .result-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 16px;
-        }
-
-        .result-header h4 {
-            color: var(--text-bright);
-        }
-
-        /* Code/JSON display */
-        .code-block {
-            background: var(--bg-dark);
-            border-radius: 8px;
-            padding: 16px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        /* Radio group */
-        .radio-group {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .radio-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 16px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .radio-option:hover {
-            border-color: var(--accent);
-        }
-
-        .radio-option.selected {
-            border-color: var(--accent);
-            background: rgba(88, 166, 255, 0.1);
-        }
-
-        .radio-option input {
-            width: auto;
-        }
-
-        /* Grid */
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-
-        @media (max-width: 600px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Toast */
-        .toast-container {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 1000;
-        }
-
-        .toast {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 14px 20px;
-            margin-top: 10px;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-            animation: slideIn 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .toast.success { border-left: 3px solid var(--success); }
-        .toast.error { border-left: 3px solid var(--error); }
-        .toast.info { border-left: 3px solid var(--accent); }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        /* Loading spinner */
-        .spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Info boxes */
-        .info-box {
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-        }
-
-        .info-box.tip {
-            background: rgba(88, 166, 255, 0.1);
-            border: 1px solid rgba(88, 166, 255, 0.3);
-        }
-
-        /* Download button */
-        .download-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: var(--success);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-        }
-
-        .download-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(63, 185, 80, 0.3);
-        }
-
-        /* Metric */
-        .metrics {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .metric {
-            background: var(--bg-input);
-            border-radius: 8px;
-            padding: 12px;
-            text-align: center;
-        }
-
-        .metric-value {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: var(--accent);
-        }
-
-        .metric-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            margin-top: 4px;
-        }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-muted);
-        }
-
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-
-        /* ── 2-Phase LTX Script Workflow ──────────────────────────── */
-        .phase-indicator {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 18px;
-            font-size: 0.8rem;
-        }
-        .phase-step {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            padding: 4px 10px;
-            border-radius: 14px;
-            border: 1px solid var(--border);
-            background: var(--bg-input);
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-        .phase-step.active {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: rgba(88, 166, 255, 0.1);
-        }
-        .phase-step.done {
-            border-color: var(--success);
-            color: var(--success);
-            background: rgba(63, 185, 80, 0.08);
-        }
-        .phase-sep { color: var(--text-muted); opacity: 0.4; font-size: 0.7rem; }
-
-        .script-section-title {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-bright);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .loc-editor-card {
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px 14px;
-            margin-bottom: 10px;
-        }
-        .loc-editor-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        .loc-id-badge {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.72rem;
-            color: var(--purple);
-            background: rgba(163, 113, 247, 0.1);
-            border: 1px solid rgba(163, 113, 247, 0.3);
-            border-radius: 4px;
-            padding: 1px 6px;
-        }
-
-        .scene-editor-card {
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-left: 3px solid var(--accent);
-            border-radius: 0 8px 8px 0;
-            padding: 12px 14px;
-            margin-bottom: 10px;
-        }
-        .scene-editor-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 10px;
-            flex-wrap: wrap;
-        }
-        .scene-num-badge {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.72rem;
-            font-weight: 700;
-            background: var(--accent);
-            color: #000;
-            padding: 2px 7px;
-            border-radius: 4px;
-            flex-shrink: 0;
-        }
-        .scene-editor-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 8px;
-        }
-        @media (max-width: 900px) { .scene-editor-grid { grid-template-columns: 1fr; } }
-
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(88, 166, 255, 0.3); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-secondary { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent); background: var(--bg-hover); }
+        .btn-sm { padding: 8px 16px; font-size: 0.85rem; }
+        .btn-block { width: 100%; }
         .btn-danger {
-            background: rgba(248,81,73,0.1);
-            color: var(--error);
-            border: 1px solid var(--error);
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 0.78rem;
-            cursor: pointer;
-            font-family: inherit;
-            margin-left: auto;
-            transition: background 0.15s;
+            background: rgba(248,81,73,0.1); color: var(--error);
+            border: 1px solid var(--error); padding: 4px 10px;
+            border-radius: 6px; font-size: 0.78rem; cursor: pointer;
+            font-family: inherit; margin-left: auto; transition: background 0.15s;
         }
         .btn-danger:hover { background: rgba(248,81,73,0.25); }
 
-        .script-gen-loader {
-            display: none;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 0;
-            color: var(--text-muted);
-            font-size: 0.88rem;
+        .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+        .tab {
+            padding: 14px 24px; background: none; border: none;
+            color: var(--text-muted); font-family: inherit; font-size: 0.95rem;
+            font-weight: 500; cursor: pointer; position: relative; transition: color 0.2s;
         }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--accent); }
+        .tab.active::after {
+            content: ''; position: absolute; bottom: -1px; left: 0; right: 0;
+            height: 2px; background: var(--accent);
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 12px; border-radius: 20px; font-size: 0.8rem;
+            font-weight: 600; text-transform: uppercase;
+        }
+        .status-pending  { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
+        .status-running  { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+        .status-completed{ background: rgba(63, 185, 80, 0.15);  color: var(--success); }
+        .status-failed   { background: rgba(248, 81, 73, 0.15);  color: var(--error); }
+
+        .job-list { display: flex; flex-direction: column; gap: 12px; }
+        .job-card {
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 10px; padding: 16px; cursor: pointer; transition: all 0.2s;
+        }
+        .job-card:hover { border-color: var(--accent); transform: translateX(4px); }
+        .job-card-header {
+            display: flex; justify-content: space-between;
+            align-items: flex-start; margin-bottom: 6px;
+        }
+        .job-title { font-weight: 600; color: var(--text-bright); font-size: 0.95rem; }
+        .job-meta { font-size: 0.8rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+        .progress-container { margin: 20px 0; }
+        .progress-bar { height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
+            border-radius: 4px; transition: width 0.3s;
+        }
+        .progress-text {
+            display: flex; justify-content: space-between;
+            margin-top: 8px; font-size: 0.85rem; color: var(--text-muted);
+        }
+
+        .video-container { background: #000; border-radius: 10px; overflow: hidden; margin: 20px 0; }
+        .video-container video { width: 100%; display: block; }
+
+        .result-panel {
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 10px; padding: 20px; margin-top: 20px;
+        }
+        .result-panel.success { border-color: var(--success); }
+        .result-panel.error   { border-color: var(--error); }
+        .result-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+        .result-header h4 { color: var(--text-bright); }
+
+        .code-block {
+            background: var(--bg-dark); border-radius: 8px; padding: 16px;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+            overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+        }
+
+        .radio-group { display: flex; gap: 12px; flex-wrap: wrap; }
+        .radio-option {
+            display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 8px; cursor: pointer; transition: all 0.2s;
+        }
+        .radio-option:hover  { border-color: var(--accent); }
+        .radio-option.selected { border-color: var(--accent); background: rgba(88, 166, 255, 0.1); }
+        .radio-option input  { width: auto; }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+
+        .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 1000; }
+        .toast {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 14px 20px; margin-top: 10px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            animation: slideIn 0.3s ease; display: flex; align-items: center; gap: 10px;
+        }
+        .toast.success { border-left: 3px solid var(--success); }
+        .toast.error   { border-left: 3px solid var(--error); }
+        .toast.info    { border-left: 3px solid var(--accent); }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+        .spinner {
+            width: 20px; height: 20px; border: 2px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .info-box { padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+        .info-box.tip { background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); }
+
+        .download-link {
+            display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+            background: var(--success); color: white; text-decoration: none;
+            border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: all 0.2s;
+        }
+        .download-link:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(63, 185, 80, 0.3); }
+
+        .metrics {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .metric { background: var(--bg-input); border-radius: 8px; padding: 12px; text-align: center; }
+        .metric-value { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+        .metric-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.5; }
+
+        /* 2-Phase workflow */
+        .phase-indicator { display: flex; align-items: center; gap: 6px; margin-bottom: 18px; font-size: 0.8rem; }
+        .phase-step {
+            display: flex; align-items: center; gap: 5px; padding: 4px 10px;
+            border-radius: 14px; border: 1px solid var(--border);
+            background: var(--bg-input); color: var(--text-muted); white-space: nowrap;
+        }
+        .phase-step.active { border-color: var(--accent); color: var(--accent); background: rgba(88, 166, 255, 0.1); }
+        .phase-step.done   { border-color: var(--success); color: var(--success); background: rgba(63, 185, 80, 0.08); }
+        .phase-sep { color: var(--text-muted); opacity: 0.4; font-size: 0.7rem; }
+
+        .script-section-title {
+            font-size: 0.9rem; font-weight: 600; color: var(--text-bright);
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+        }
+
+        .loc-editor-card {
+            background: var(--bg-dark); border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;
+        }
+        .loc-editor-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .loc-id-badge {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--purple);
+            background: rgba(163, 113, 247, 0.1); border: 1px solid rgba(163, 113, 247, 0.3);
+            border-radius: 4px; padding: 1px 6px;
+        }
+
+        .scene-editor-card {
+            background: var(--bg-dark); border: 1px solid var(--border);
+            border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+            padding: 12px 14px; margin-bottom: 10px;
+        }
+        .scene-editor-header {
+            display: flex; align-items: center; gap: 6px;
+            margin-bottom: 10px; flex-wrap: wrap;
+        }
+        .scene-num-badge {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 700;
+            background: var(--accent); color: #000; padding: 2px 7px; border-radius: 4px; flex-shrink: 0;
+        }
+        .scene-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+        @media (max-width: 900px) { .scene-editor-grid { grid-template-columns: 1fr; } }
+
+        .script-gen-loader { display: none; align-items: center; gap: 10px; padding: 12px 0; color: var(--text-muted); font-size: 0.88rem; }
         .script-gen-loader.visible { display: flex; }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--bg-dark);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--bg-hover);
-        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <header class="header">
             <h1>🎬 Video Generation</h1>
-            <p>Generate videos from stories using AI. Provide a title, paste your own story, or use a template.</p>
+            <p>Generate videos from stories using AI.</p>
         </header>
 
-        <!-- Main Layout -->
         <div class="main-layout">
-            <!-- Sidebar - Configuration -->
+            <!-- Sidebar -->
             <aside>
                 <div class="card">
                     <div class="card-header">
@@ -778,203 +323,134 @@
                             <input type="text" id="apiBaseUrl" value="http://localhost:8000/api/v1">
                         </div>
 
+                        <hr class="section-divider">
+                        <div class="section-label">🎬 LTX Video Settings</div>
+
                         <div class="form-group">
-                            <label>Character Voice</label>
-                            <select id="characterSelect">
-                                <option value="">None (default voice)</option>
+                            <label>Quality Preset</label>
+                            <select id="ltxQualityPreset" onchange="applyLtxPreset(this.value)">
+                                <option value="">— custom —</option>
+                                <option value="fast" selected>Fast (distilled · 8 steps · 24 fps)</option>
+                                <option value="quality">Quality (22B · 30 steps · 24 fps)</option>
+                                <option value="high_quality">High Quality (pure_dev · 50 steps · 50 fps)</option>
                             </select>
                         </div>
 
-                        <!-- LLM Settings -->
-                        <div class="collapsible">
-                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
-                                🤖 LLM Settings
+                        <div class="form-group">
+                            <label>Model</label>
+                            <select id="ltxModelType">
+                                <option value="ltx2_22B">ltx2_22B</option>
+                                <option value="ltx2_22B_pure_dev">ltx2_22B_pure_dev</option>
+                                <option value="ltx2_22B_distilled" selected>ltx2_22B_distilled</option>
+                                <option value="ltx2_22B_distilled_1_1">ltx2_22B_distilled_1_1</option>
+                            </select>
+                        </div>
+
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>Width</label>
+                                <input type="number" id="ltxWidth" value="1280" step="64">
                             </div>
-                            <div class="collapsible-content">
-                                <div class="form-group">
-                                    <label>Provider</label>
-                                    <select id="llmProvider">
-                                        <option value="anthropic">Anthropic</option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="litellm">LiteLLM</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Model</label>
-                                    <input type="text" id="llmModel" value="claude-sonnet-4-5-20250929">
-                                </div>
+                            <div class="form-group">
+                                <label>Height</label>
+                                <input type="number" id="ltxHeight" value="720" step="64">
                             </div>
                         </div>
 
-                        <!-- TTS Settings -->
-                        <div class="collapsible">
-                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
-                                🎤 TTS Settings
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>Duration (s)</label>
+                                <input type="number" id="ltxDuration" value="5.0" step="0.5" min="1">
                             </div>
-                            <div class="collapsible-content">
-                                <div class="form-group">
-                                    <label>Provider</label>
-                                    <select id="ttsProvider">
-                                        <option value="fish">Fish</option>
-                                        <option value="solero">Solero</option>
-                                        <option value="coqui">Coqui</option>
-                                    </select>
-                                </div>
-                                <div class="grid-2">
-                                    <div class="form-group">
-                                        <label>Host</label>
-                                        <input type="text" id="ttsHost" value="127.0.0.1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Port</label>
-                                        <input type="number" id="ttsPort" value="8003">
-                                    </div>
-                                </div>
+                            <div class="form-group">
+                                <label>FPS</label>
+                                <input type="number" id="ltxFps" value="24" min="8" max="60">
                             </div>
                         </div>
 
-                        <!-- STT Settings -->
-                        <div class="collapsible">
-                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
-                                🎧 STT Settings
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>Steps</label>
+                                <input type="number" id="ltxSteps" value="8" min="1" max="100">
                             </div>
-                            <div class="collapsible-content">
-                                <div class="form-group">
-                                    <label>Provider</label>
-                                    <select id="sttProvider">
-                                        <option value="whisper">Whisper</option>
-                                        <option value="faster-whisper">Faster Whisper</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Model</label>
-                                    <select id="sttModel">
-                                        <option value="tiny">Tiny</option>
-                                        <option value="base" selected>Base</option>
-                                        <option value="small">Small</option>
-                                        <option value="medium">Medium</option>
-                                        <option value="large">Large</option>
-                                    </select>
-                                </div>
+                            <div class="form-group">
+                                <label>CFG Scale</label>
+                                <input type="number" id="ltxCfgScale" value="4.0" step="0.5" min="1">
                             </div>
                         </div>
 
-                        <!-- LTX Settings -->
-                        <div class="collapsible">
-                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
-                                🎬 LTX Video Settings
+                        <div class="form-group">
+                            <label>Seed (-1 = random)</label>
+                            <input type="number" id="ltxSeed" value="-1">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Style Suffix</label>
+                            <input type="text" id="ltxStyleSuffix" value="Cinematic quality, smooth motion, natural lighting.">
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="ltxEnableAudio" style="width:auto;" checked>
+                                Enable Audio (TTS)
+                            </label>
+                        </div>
+
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>TTS Host</label>
+                                <input type="text" id="ltxTtsHost" value="tts">
                             </div>
-                            <div class="collapsible-content">
-                                <div class="form-group">
-                                    <label>Quality preset</label>
-                                    <select id="ltxQualityPreset" onchange="applyLtxPreset(this.value)">
-                                        <option value="">— custom —</option>
-                                        <option value="fast" selected>Fast  (distilled · 8 steps · 24 fps)</option>
-                                        <option value="quality">Quality  (22B · 30 steps · 24 fps)</option>
-                                        <option value="high_quality">High Quality  (22B · 30 steps · 50 fps)</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>WanGP Server URL</label>
-                                    <input type="text" id="ltxServerUrl" value="http://gx10-cbc5:8082">
-                                </div>
-                                <div class="grid-2">
-                                    <div class="form-group">
-                                        <label>Width</label>
-                                        <input type="number" id="ltxWidth" value="1280" step="64">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Height</label>
-                                        <input type="number" id="ltxHeight" value="720" step="64">
-                                    </div>
-                                </div>
-                                <div class="grid-2">
-                                    <div class="form-group">
-                                        <label>Duration (s)</label>
-                                        <input type="number" id="ltxDuration" value="5.0" step="0.5" min="1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>FPS</label>
-                                        <input type="number" id="ltxFps" value="24" min="8" max="60">
-                                    </div>
-                                </div>
-                                <div class="grid-2">
-                                    <div class="form-group">
-                                        <label>Steps</label>
-                                        <input type="number" id="ltxSteps" value="8" min="1" max="100">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>CFG Scale</label>
-                                        <input type="number" id="ltxCfgScale" value="4.0" step="0.5" min="1">
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label>Seed (-1 = random)</label>
-                                    <input type="number" id="ltxSeed" value="-1">
-                                </div>
-                                <div class="form-group">
-                                    <label>Style Suffix</label>
-                                    <input type="text" id="ltxStyleSuffix" value="Cinematic quality, smooth motion, natural lighting.">
-                                </div>
-                                <div class="form-group">
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="ltxEnableAudio" style="width: auto;" checked>
-                                        Enable Audio (TTS + audio conditioning)
-                                    </label>
-                                </div>
-                                <div class="grid-2">
-                                    <div class="form-group">
-                                        <label>TTS Host</label>
-                                        <input type="text" id="ltxTtsHost" value="tts">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>TTS Port</label>
-                                        <input type="number" id="ltxTtsPort" value="8003">
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="ltxAdaptDuration" style="width: auto;" checked>
-                                        Adapt clip duration to TTS length
-                                    </label>
-                                </div>
+                            <div class="form-group">
+                                <label>TTS Port</label>
+                                <input type="number" id="ltxTtsPort" value="8003">
                             </div>
                         </div>
 
-                        <!-- Advanced Settings -->
-                        <div class="collapsible">
-                            <div class="collapsible-header" onclick="toggleCollapsible(this.parentElement)">
-                                ⚡ Advanced
-                            </div>
-                            <div class="collapsible-content">
-                                <div class="form-group">
-                                    <label>Max Parallel LLM Calls</label>
-                                    <input type="range" id="maxParallelCalls" min="1" max="20" value="5" oninput="document.getElementById('parallelCallsValue').textContent = this.value">
-                                    <div style="text-align: center; margin-top: 4px; color: var(--text-muted);">
-                                        <span id="parallelCallsValue">5</span>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label>Output Directory</label>
-                                    <input type="text" id="outputDir" value="./output">
-                                </div>
-                                <div class="form-group">
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="verbose" style="width: auto;">
-                                        Verbose Output
-                                    </label>
-                                </div>
-                                <div class="form-group">
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="enableBlueprintDump" style="width: auto;">
-                                        Enable Blueprint Dump
-                                    </label>
-                                </div>
-                            </div>
+                        <div class="form-group">
+                            <label style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="ltxAdaptDuration" style="width:auto;" checked>
+                                Adapt duration to audio
+                            </label>
                         </div>
 
-                        <button class="btn btn-secondary btn-block" style="margin-top: 16px;" onclick="loadCharacters()">
-                            🔄 Refresh Characters
+                        <div class="form-group">
+                            <label style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="ltxEnableSubtitles" style="width:auto;" checked>
+                                Enable Subtitles
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Subtitle Font Size</label>
+                            <input type="number" id="ltxSubtitleFontsize" value="14" min="8" max="48">
+                        </div>
+
+                        <hr class="section-divider">
+                        <div class="section-label">🤖 LLM</div>
+
+                        <div class="form-group">
+                            <label>Provider</label>
+                            <select id="ltxLlmProvider">
+                                <option value="anthropic">Anthropic</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="litellm">LiteLLM</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <input type="text" id="ltxLlmModel" value="claude-sonnet-4-5-20250929">
+                        </div>
+
+                        <hr class="section-divider">
+
+                        <div class="form-group">
+                            <label>Output Directory</label>
+                            <input type="text" id="ltxOutputDir" value="./output">
+                        </div>
+
+                        <button class="btn btn-secondary btn-block" style="margin-top:8px;" onclick="loadTemplates()">
+                            🔄 Refresh Templates
                         </button>
                     </div>
                 </div>
@@ -984,74 +460,64 @@
             <main>
                 <div class="card">
                     <div class="card-body">
-                        <!-- Tabs -->
                         <div class="tabs">
-                            <button class="tab active" data-tab="create" onclick="switchTab('create')">
-                                📝 Create New Video
-                            </button>
-                            <button class="tab" data-tab="status" onclick="switchTab('status')">
-                                📊 Job Status
-                            </button>
-                            <button class="tab" data-tab="recent" onclick="switchTab('recent')">
-                                📋 Recent Jobs
-                            </button>
-                            <button class="tab" data-tab="templates" onclick="switchTab('templates')">
-                                📄 Templates
-                            </button>
+                            <button class="tab active" data-tab="create" onclick="switchTab('create')">📝 Create</button>
+                            <button class="tab" data-tab="status" onclick="switchTab('status')">📊 Job Status</button>
+                            <button class="tab" data-tab="recent" onclick="switchTab('recent')">📋 Recent Jobs</button>
+                            <button class="tab" data-tab="templates" onclick="switchTab('templates')">📄 Templates</button>
                         </div>
 
                         <!-- Create Tab -->
                         <div class="tab-panel active" id="tab-create">
-                            <div class="info-box tip">
-                                <strong>💡 Tip:</strong> Choose an input method below. You can generate a story from a title, use a pre-defined template, or paste your own story text.
-                            </div>
-
-                            <!-- Input Method Selection -->
                             <div class="form-group">
                                 <label>Input Method</label>
                                 <div class="radio-group">
-                                    <label class="radio-option selected" onclick="selectInputMethod('title')">
-                                        <input type="radio" name="inputMethod" value="title" checked>
-                                        Title (Generate Story)
+                                    <label class="radio-option" onclick="selectInputMethod('title')">
+                                        <input type="radio" name="inputMethod" value="title">
+                                        Title
                                     </label>
                                     <label class="radio-option" onclick="selectInputMethod('template')">
                                         <input type="radio" name="inputMethod" value="template">
-                                        From Story Template
+                                        Template
                                     </label>
                                     <label class="radio-option" onclick="selectInputMethod('text')">
                                         <input type="radio" name="inputMethod" value="text">
-                                        Paste Story Text
+                                        Story Text
                                     </label>
-                                    <label class="radio-option" onclick="selectInputMethod('ltx')">
-                                        <input type="radio" name="inputMethod" value="ltx">
-                                        🎬 LTX Video
+                                    <label class="radio-option selected" onclick="selectInputMethod('ltx')">
+                                        <input type="radio" name="inputMethod" value="ltx" checked>
+                                        🎬 LTX Script
                                     </label>
                                 </div>
                             </div>
 
                             <!-- Title Input -->
-                            <div id="input-title" class="input-section">
+                            <div id="input-title" class="input-section" style="display:none;">
+                                <div class="form-group">
+                                    <label>Story Template <span style="color:var(--error);">*</span></label>
+                                    <select id="titleTemplateSelect">
+                                        <option value="">Select a template...</option>
+                                    </select>
+                                </div>
                                 <div class="form-group">
                                     <label>Video Title</label>
                                     <input type="text" id="titleInput" placeholder="e.g., 'Fred se lance dans l'IA'">
                                 </div>
-                                <button class="btn btn-primary btn-block" onclick="submitJob('title')">
-                                    🚀 Generate Video
-                                </button>
+                                <button class="btn btn-primary btn-block" onclick="submitJob('title')">🚀 Generate Video</button>
                             </div>
 
                             <!-- Template Input -->
-                            <div id="input-template" class="input-section" style="display: none;">
+                            <div id="input-template" class="input-section" style="display:none;">
                                 <div class="form-group">
                                     <label>Story Template</label>
                                     <select id="templateSelect">
                                         <option value="">Select a template...</option>
                                     </select>
                                 </div>
-                                <div id="templateDetails" style="display: none; margin-bottom: 16px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                        <span style="font-size: 0.8rem; color: var(--text-muted);">Template preview</span>
-                                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;" onclick="editSelectedTemplate()">✏️ Edit Template</button>
+                                <div id="templateDetails" style="display:none; margin-bottom:16px;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                        <span style="font-size:0.8rem;color:var(--text-muted);">Template preview</span>
+                                        <button class="btn btn-secondary" style="padding:4px 12px;font-size:0.8rem;" onclick="editSelectedTemplate()">✏️ Edit</button>
                                     </div>
                                     <div class="code-block" id="templatePreview"></div>
                                 </div>
@@ -1059,26 +525,26 @@
                                     <label>Scenario Title</label>
                                     <input type="text" id="templateTitle" placeholder="e.g., 'Fred découvre les NFT'">
                                 </div>
-                                <button class="btn btn-primary btn-block" onclick="submitJob('template')">
-                                    🚀 Generate Video
-                                </button>
+                                <button class="btn btn-primary btn-block" onclick="submitJob('template')">🚀 Generate Video</button>
                             </div>
 
                             <!-- Story Text Input -->
-                            <div id="input-text" class="input-section" style="display: none;">
+                            <div id="input-text" class="input-section" style="display:none;">
+                                <div class="form-group">
+                                    <label>Story Template <span style="color:var(--error);">*</span></label>
+                                    <select id="textTemplateSelect">
+                                        <option value="">Select a template...</option>
+                                    </select>
+                                </div>
                                 <div class="form-group">
                                     <label>Story Text</label>
                                     <textarea id="storyTextInput" placeholder="Paste your story here..." rows="10"></textarea>
                                 </div>
-                                <button class="btn btn-primary btn-block" onclick="submitJob('text')">
-                                    🚀 Generate Video
-                                </button>
+                                <button class="btn btn-primary btn-block" onclick="submitJob('text')">🚀 Generate Video</button>
                             </div>
 
                             <!-- LTX Video Input — 2-phase workflow -->
-                            <div id="input-ltx" class="input-section" style="display: none;">
-
-                                <!-- Phase indicator -->
+                            <div id="input-ltx" class="input-section">
                                 <div class="phase-indicator">
                                     <div class="phase-step active" id="pi-step1">1 · Generate Script</div>
                                     <span class="phase-sep">›</span>
@@ -1087,10 +553,10 @@
                                     <div class="phase-step" id="pi-step3">3 · Generate Video</div>
                                 </div>
 
-                                <!-- ── Phase 1: Inputs ───────────────────────── -->
+                                <!-- Phase 1 -->
                                 <div id="ltx-phase1">
                                     <div class="form-group">
-                                        <label>Story Template <span style="color: var(--error);">*</span></label>
+                                        <label>Story Template <span style="color:var(--error);">*</span></label>
                                         <select id="ltxTemplateSelect">
                                             <option value="">Select a template...</option>
                                         </select>
@@ -1115,14 +581,11 @@
                                     </div>
                                 </div>
 
-                                <!-- ── Phase 2: Script editor ───────────────── -->
+                                <!-- Phase 2 -->
                                 <div id="ltx-phase2" style="display:none;">
-
                                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
                                         <button class="btn btn-secondary btn-sm" onclick="backToPhase1()">← Back</button>
-                                        <span style="font-size:0.82rem;color:var(--text-muted);">
-                                            Edit the script, then generate
-                                        </span>
+                                        <span style="font-size:0.82rem;color:var(--text-muted);">Edit the script, then generate</span>
                                     </div>
 
                                     <div class="form-group">
@@ -1130,7 +593,6 @@
                                         <input type="text" id="script-title">
                                     </div>
 
-                                    <!-- Locations -->
                                     <div class="script-section" style="margin-bottom:20px;">
                                         <div class="script-section-title">
                                             📍 Locations
@@ -1139,7 +601,6 @@
                                         <div id="locations-editor"></div>
                                     </div>
 
-                                    <!-- Scenes -->
                                     <div class="script-section" style="margin-bottom:20px;">
                                         <div class="script-section-title">
                                             🎬 Scenes
@@ -1153,11 +614,9 @@
                                     </button>
                                 </div>
 
-                                <!-- hidden story text kept for submitLtxJob() Direct path -->
                                 <input type="hidden" id="ltxStoryText" value="">
                             </div>
 
-                            <!-- Result Area -->
                             <div id="submitResult"></div>
                         </div>
 
@@ -1165,29 +624,24 @@
                         <div class="tab-panel" id="tab-status">
                             <div class="form-group">
                                 <label>Job ID</label>
-                                <div style="display: flex; gap: 10px;">
+                                <div style="display:flex;gap:10px;">
                                     <input type="text" id="jobIdInput" placeholder="Enter job ID to monitor">
-                                    <button class="btn btn-secondary" onclick="checkJobStatus()">
-                                        🔍 Check
-                                    </button>
+                                    <button class="btn btn-secondary" onclick="checkJobStatus()">🔍 Check</button>
                                 </div>
                             </div>
-
                             <div class="form-group">
-                                <label style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="checkbox" id="autoRefresh" style="width: auto;" checked>
-                                    Auto-refresh (every 5 seconds)
+                                <label style="display:flex;align-items:center;gap:8px;">
+                                    <input type="checkbox" id="autoRefresh" style="width:auto;" checked>
+                                    Auto-refresh every 5 s
                                 </label>
                             </div>
-
-                            <!-- Status Result -->
                             <div id="statusResult"></div>
                         </div>
 
                         <!-- Recent Jobs Tab -->
                         <div class="tab-panel" id="tab-recent">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                <div class="form-group" style="margin: 0; flex: 1; max-width: 200px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                                <div class="form-group" style="margin:0;flex:1;max-width:200px;">
                                     <label>Show last</label>
                                     <select id="recentJobsLimit" onchange="loadRecentJobs()">
                                         <option value="10">10 jobs</option>
@@ -1195,32 +649,29 @@
                                         <option value="50">50 jobs</option>
                                     </select>
                                 </div>
-                                <button class="btn btn-secondary" onclick="loadRecentJobs()">
-                                    🔄 Refresh
-                                </button>
+                                <button class="btn btn-secondary" onclick="loadRecentJobs()">🔄 Refresh</button>
                             </div>
-
                             <div id="recentJobsList" class="job-list">
                                 <div class="empty-state">
                                     <div class="empty-state-icon">📋</div>
-                                    <p>Click refresh to load recent jobs</p>
+                                    <p>Click Refresh to load recent jobs</p>
                                 </div>
                             </div>
                         </div>
+
                         <!-- Templates Tab -->
                         <div class="tab-panel" id="tab-templates">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                <h3 style="color: var(--text-bright); margin: 0;">Story Templates</h3>
-                                <div style="display: flex; gap: 10px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                                <h3 style="color:var(--text-bright);margin:0;">Story Templates</h3>
+                                <div style="display:flex;gap:10px;">
                                     <button class="btn btn-secondary" onclick="loadTemplates()">🔄 Refresh</button>
                                     <button class="btn btn-primary" onclick="openTemplateEditor(null)">➕ New Template</button>
                                 </div>
                             </div>
 
-                            <!-- Inline editor (hidden until Edit / New is clicked) -->
-                            <div id="templateEditor" style="display: none; margin-bottom: 24px;">
-                                <div style="background: var(--bg-input); border: 1px solid var(--border-focus); border-radius: 8px; padding: 20px;">
-                                    <h4 id="templateEditorTitle" style="color: var(--text-bright); margin-bottom: 16px;"></h4>
+                            <div id="templateEditor" style="display:none;margin-bottom:24px;">
+                                <div style="background:var(--bg-input);border:1px solid var(--border-focus);border-radius:8px;padding:20px;">
+                                    <h4 id="templateEditorTitle" style="color:var(--text-bright);margin-bottom:16px;"></h4>
                                     <input type="hidden" id="editTemplateId">
                                     <div class="form-group">
                                         <label>Name</label>
@@ -1237,22 +688,21 @@
                                         </div>
                                     </div>
                                     <div class="form-group">
-                                        <label>Character IDs <span style="color: var(--text-muted); font-weight: normal;">(comma-separated)</span></label>
+                                        <label>Character IDs <span style="color:var(--text-muted);font-weight:normal;">(comma-separated)</span></label>
                                         <input type="text" id="editTemplateCharacters" placeholder="e.g. fred, jamy">
                                     </div>
                                     <div class="form-group">
                                         <label>Prompt</label>
                                         <textarea id="editTemplatePrompt" rows="12" placeholder="Story generation prompt..."></textarea>
                                     </div>
-                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                    <div style="display:flex;gap:10px;align-items:center;">
                                         <button class="btn btn-primary" onclick="saveTemplate()">💾 Save</button>
                                         <button class="btn btn-secondary" onclick="closeTemplateEditor()">Cancel</button>
-                                        <button id="deleteTemplateBtn" class="btn" style="margin-left: auto; background: rgba(248,81,73,0.12); color: var(--error); border: 1px solid var(--error);" onclick="deleteTemplate()">🗑️ Delete</button>
+                                        <button id="deleteTemplateBtn" class="btn" style="margin-left:auto;background:rgba(248,81,73,0.12);color:var(--error);border:1px solid var(--error);" onclick="deleteTemplate()">🗑️ Delete</button>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Template list -->
                             <div id="templatesList">
                                 <div class="empty-state">
                                     <div class="empty-state-icon">📄</div>
@@ -1266,22 +716,22 @@
         </div>
     </div>
 
-    <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
         // =============================================================================
         // State
         // =============================================================================
-        let state = {
+        const state = {
             currentJobId: null,
             autoRefreshInterval: null,
+            templates: [],
             characters: [],
-            templates: []
+            currentScript: { title: '', locations: [], scenes: [] },
         };
 
         // =============================================================================
-        // API
+        // API helpers
         // =============================================================================
         function getApiUrl() {
             return document.getElementById('apiBaseUrl').value.replace(/\/$/, '');
@@ -1289,14 +739,8 @@
 
         async function apiCall(method, endpoint, data = null) {
             const url = `${getApiUrl()}${endpoint}`;
-            const options = {
-                method,
-                headers: { 'Content-Type': 'application/json' }
-            };
-            if (data) {
-                options.body = JSON.stringify(data);
-            }
-
+            const options = { method, headers: { 'Content-Type': 'application/json' } };
+            if (data) options.body = JSON.stringify(data);
             try {
                 const response = await fetch(url, options);
                 const responseData = await response.json();
@@ -1306,7 +750,6 @@
             }
         }
 
-        // FormData variant — used for PUT/POST endpoints that declare Form(...) params
         async function formApiCall(method, endpoint, formData = null) {
             const url = `${getApiUrl()}${endpoint}`;
             const options = { method };
@@ -1321,37 +764,47 @@
         }
 
         // =============================================================================
-        // Characters & Templates
+        // Sidebar: LTX settings → VideoGenerationRequest fields
         // =============================================================================
-        async function loadCharacters() {
-            const result = await apiCall('GET', '/characters');
-            const select = document.getElementById('characterSelect');
-            
-            if (result.ok && Array.isArray(result.data)) {
-                state.characters = result.data;
-                select.innerHTML = '<option value="">None (default voice)</option>';
-                result.data.forEach(char => {
-                    const option = document.createElement('option');
-                    option.value = char.name;
-                    option.textContent = char.name;
-                    select.appendChild(option);
-                });
-                showToast('Characters loaded', 'success');
-            } else {
-                showToast('Failed to load characters', 'error');
-            }
+        function getLtxParams() {
+            return {
+                model_type:              document.getElementById('ltxModelType').value                || 'ltx2_22B_distilled',
+                video_width:             parseInt(document.getElementById('ltxWidth').value)          || 1280,
+                video_height:            parseInt(document.getElementById('ltxHeight').value)         || 720,
+                video_duration_seconds:  parseFloat(document.getElementById('ltxDuration').value)     || 5.0,
+                video_fps:               parseInt(document.getElementById('ltxFps').value)            || 24,
+                video_steps:             parseInt(document.getElementById('ltxSteps').value)          || 8,
+                video_cfg_scale:         parseFloat(document.getElementById('ltxCfgScale').value)     || 4.0,
+                video_seed:              parseInt(document.getElementById('ltxSeed').value),
+                style_suffix:            document.getElementById('ltxStyleSuffix').value              || undefined,
+                enable_audio:            document.getElementById('ltxEnableAudio').checked,
+                tts_host:                document.getElementById('ltxTtsHost').value                  || undefined,
+                tts_port:                parseInt(document.getElementById('ltxTtsPort').value)         || 8003,
+                adapt_duration_to_audio: document.getElementById('ltxAdaptDuration').checked,
+                enable_subtitles:        document.getElementById('ltxEnableSubtitles').checked,
+                subtitle_fontsize:       parseInt(document.getElementById('ltxSubtitleFontsize').value) || 14,
+                llm_provider:            document.getElementById('ltxLlmProvider').value              || undefined,
+                llm_model:               document.getElementById('ltxLlmModel').value                 || undefined,
+                output_dir:              document.getElementById('ltxOutputDir').value                || undefined,
+            };
         }
 
+        // =============================================================================
+        // Templates & characters
+        // =============================================================================
         async function loadTemplates() {
             const result = await apiCall('GET', '/story-templates');
             const selects = [
+                document.getElementById('titleTemplateSelect'),
                 document.getElementById('templateSelect'),
+                document.getElementById('textTemplateSelect'),
                 document.getElementById('ltxTemplateSelect'),
             ];
 
             if (result.ok && Array.isArray(result.data)) {
                 state.templates = result.data;
                 selects.forEach(select => {
+                    if (!select) return;
                     select.innerHTML = '<option value="">Select a template...</option>';
                     result.data.forEach(tpl => {
                         const option = document.createElement('option');
@@ -1362,38 +815,40 @@
                     });
                 });
                 renderTemplateList();
+                showToast('Templates loaded', 'success');
+            } else {
+                showToast('Failed to load templates', 'error');
+            }
+        }
+
+        async function loadCharacters() {
+            const result = await apiCall('GET', '/characters');
+            if (result.ok && Array.isArray(result.data)) {
+                state.characters = result.data;
             }
         }
 
         function renderTemplateList() {
             const container = document.getElementById('templatesList');
             if (!container) return;
-
             if (!state.templates.length) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📄</div>
-                        <p>No templates yet. Create one with ➕ New Template.</p>
-                    </div>`;
+                container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📄</div><p>No templates yet.</p></div>`;
                 return;
             }
-
             container.innerHTML = state.templates.map(tpl => `
-                <div class="job-card" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                    <div style="min-width: 0;">
-                        <div style="font-weight: 600; color: var(--text-bright);">${tpl.name}</div>
-                        <div style="color: var(--text-muted); font-size: 0.83rem; margin-top: 4px;">
-                            <code style="color: var(--accent);">${tpl.template_id}</code>
+                <div class="job-card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                    <div style="min-width:0;">
+                        <div style="font-weight:600;color:var(--text-bright);">${tpl.name}</div>
+                        <div style="color:var(--text-muted);font-size:0.83rem;margin-top:4px;">
+                            <code style="color:var(--accent);">${tpl.template_id}</code>
                             &nbsp;·&nbsp; ${tpl.target_lines || 6} lines
                             &nbsp;·&nbsp; ${(tpl.character_ids || []).join(', ') || 'no characters'}
                         </div>
-                        <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 6px; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; opacity: 0.7;">
+                        <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;white-space:pre-wrap;font-family:'JetBrains Mono',monospace;opacity:0.7;">
                             ${(tpl.prompt || '').substring(0, 140).replace(/</g, '&lt;')}…
                         </div>
                     </div>
-                    <button class="btn btn-secondary" style="flex-shrink: 0;" onclick="openTemplateEditor('${tpl.template_id}')">
-                        ✏️ Edit
-                    </button>
+                    <button class="btn btn-secondary" style="flex-shrink:0;" onclick="openTemplateEditor('${tpl.template_id}')">✏️ Edit</button>
                 </div>
             `).join('');
         }
@@ -1402,10 +857,8 @@
             const editor = document.getElementById('templateEditor');
             const titleEl = document.getElementById('templateEditorTitle');
             const deleteBtn = document.getElementById('deleteTemplateBtn');
-
             editor.style.display = 'block';
             editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
             if (templateId === null) {
                 titleEl.textContent = '➕ New Template';
                 document.getElementById('editTemplateId').value = '';
@@ -1429,43 +882,32 @@
             }
         }
 
-        function closeTemplateEditor() {
-            document.getElementById('templateEditor').style.display = 'none';
-        }
+        function closeTemplateEditor() { document.getElementById('templateEditor').style.display = 'none'; }
 
         async function saveTemplate() {
             const templateId = document.getElementById('editTemplateId').value;
-            const name = document.getElementById('editTemplateName').value.trim();
+            const name       = document.getElementById('editTemplateName').value.trim();
             const collection = document.getElementById('editTemplateCollection').value.trim();
-            const targetLines = document.getElementById('editTemplateTargetLines').value;
-            const charInput = document.getElementById('editTemplateCharacters').value;
-            const prompt = document.getElementById('editTemplatePrompt').value.trim();
-
-            if (!name || !prompt) {
-                showToast('Name and Prompt are required', 'error');
-                return;
-            }
-
+            const targetLines= document.getElementById('editTemplateTargetLines').value;
+            const charInput  = document.getElementById('editTemplateCharacters').value;
+            const prompt     = document.getElementById('editTemplatePrompt').value.trim();
+            if (!name || !prompt) { showToast('Name and Prompt are required', 'error'); return; }
             const characterIds = charInput.split(',').map(s => s.trim()).filter(Boolean);
-
             const fd = new FormData();
             fd.append('name', name);
             fd.append('prompt', prompt);
             fd.append('collection', collection || 'random');
             fd.append('target_lines', targetLines);
             characterIds.forEach(id => fd.append('character_ids', id));
-
             const result = templateId
-                ? await formApiCall('PUT', `/story-templates/${templateId}`, fd)
+                ? await formApiCall('PUT',  `/story-templates/${templateId}`, fd)
                 : await formApiCall('POST', `/story-templates`, fd);
-
             if (result.ok) {
                 showToast(templateId ? 'Template updated ✓' : 'Template created ✓', 'success');
                 closeTemplateEditor();
                 await loadTemplates();
             } else {
-                const msg = result.data?.detail || JSON.stringify(result.data) || 'Save failed';
-                showToast(`Error: ${msg}`, 'error');
+                showToast(`Error: ${result.data?.detail || 'Save failed'}`, 'error');
             }
         }
 
@@ -1474,7 +916,6 @@
             if (!templateId) return;
             const tpl = state.templates.find(t => t.template_id === templateId);
             if (!confirm(`Delete template "${tpl?.name || templateId}"? This cannot be undone.`)) return;
-
             const result = await formApiCall('DELETE', `/story-templates/${templateId}`);
             if (result.ok) {
                 showToast('Template deleted', 'success');
@@ -1485,11 +926,10 @@
             }
         }
 
-        document.getElementById('templateSelect').addEventListener('change', function() {
+        document.getElementById('templateSelect').addEventListener('change', function () {
             const templateId = this.value;
             const detailsDiv = document.getElementById('templateDetails');
             const previewDiv = document.getElementById('templatePreview');
-
             if (templateId) {
                 const template = state.templates.find(t => t.template_id === templateId);
                 if (template) {
@@ -1508,25 +948,17 @@
             const templateId = document.getElementById('templateSelect').value;
             if (!templateId) return;
             switchTab('templates');
-            // Small delay so the tab panel becomes visible before scrolling
             setTimeout(() => openTemplateEditor(templateId), 50);
         }
 
         // =============================================================================
-        // UI Helpers
+        // UI helpers
         // =============================================================================
-        function toggleCollapsible(element) {
-            element.classList.toggle('open');
-        }
-
         function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            
             document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
             document.getElementById(`tab-${tabName}`).classList.add('active');
-
-            // Stop auto-refresh when leaving status tab
             if (tabName !== 'status' && state.autoRefreshInterval) {
                 clearInterval(state.autoRefreshInterval);
                 state.autoRefreshInterval = null;
@@ -1536,7 +968,6 @@
         function selectInputMethod(method) {
             document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
             document.querySelector(`input[value="${method}"]`).parentElement.classList.add('selected');
-            
             document.querySelectorAll('.input-section').forEach(sec => sec.style.display = 'none');
             document.getElementById(`input-${method}`).style.display = 'block';
         }
@@ -1547,7 +978,6 @@
             toast.className = `toast ${type}`;
             toast.textContent = message;
             container.appendChild(toast);
-            
             setTimeout(() => {
                 toast.style.opacity = '0';
                 toast.style.transform = 'translateX(20px)';
@@ -1555,125 +985,73 @@
             }, 3000);
         }
 
-        function getConfig() {
-            return {
-                character_name: document.getElementById('characterSelect').value || null,
-                llm_provider: document.getElementById('llmProvider').value,
-                llm_model: document.getElementById('llmModel').value,
-                tts_provider: document.getElementById('ttsProvider').value,
-                tts_host: document.getElementById('ttsHost').value,
-                tts_port: parseInt(document.getElementById('ttsPort').value),
-                stt_provider: document.getElementById('sttProvider').value,
-                stt_model: document.getElementById('sttModel').value,
-                output_dir: document.getElementById('outputDir').value,
-                max_parallel_llm_calls: parseInt(document.getElementById('maxParallelCalls').value),
-                verbose: document.getElementById('verbose').checked,
-                enable_blueprint_dump: document.getElementById('enableBlueprintDump').checked
-            };
-        }
-
         // =============================================================================
-        // Job Submission
+        // Job submission (title / template / text modes)
         // =============================================================================
         async function submitJob(inputMethod) {
-            const config = getConfig();
-            let requestData = { ...config };
-            
+            const params = getLtxParams();
+            let requestData = { ...params };
+
             if (inputMethod === 'title') {
+                const templateId = document.getElementById('titleTemplateSelect').value;
                 const title = document.getElementById('titleInput').value.trim();
-                if (!title) {
-                    showToast('Please enter a title', 'error');
-                    return;
-                }
+                if (!templateId) { showToast('Please select a Story Template', 'error'); return; }
+                if (!title)      { showToast('Please enter a title', 'error'); return; }
+                requestData.story_template_id = templateId;
                 requestData.title = title;
             } else if (inputMethod === 'template') {
                 const templateId = document.getElementById('templateSelect').value;
                 const title = document.getElementById('templateTitle').value.trim();
-                if (!templateId || !title) {
-                    showToast('Please select a template and enter a title', 'error');
-                    return;
-                }
+                if (!templateId || !title) { showToast('Please select a template and enter a title', 'error'); return; }
                 requestData.story_template_id = templateId;
                 requestData.title = title;
             } else if (inputMethod === 'text') {
+                const templateId = document.getElementById('textTemplateSelect').value;
                 const storyText = document.getElementById('storyTextInput').value.trim();
-                if (!storyText) {
-                    showToast('Please enter story text', 'error');
-                    return;
-                }
+                if (!templateId) { showToast('Please select a Story Template', 'error'); return; }
+                if (!storyText)  { showToast('Please enter story text', 'error'); return; }
+                requestData.story_template_id = templateId;
                 requestData.story_text = storyText;
             }
 
+            // Remove undefined values
+            Object.keys(requestData).forEach(k => requestData[k] === undefined && delete requestData[k]);
+
             const resultDiv = document.getElementById('submitResult');
-            resultDiv.innerHTML = `
-                <div class="result-panel">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="spinner"></div>
-                        <span>Submitting job...</span>
-                    </div>
-                </div>
-            `;
+            resultDiv.innerHTML = `<div class="result-panel"><div style="display:flex;align-items:center;gap:10px;"><div class="spinner"></div><span>Submitting job...</span></div></div>`;
 
             const result = await apiCall('POST', '/video-generation/generate', requestData);
-            
             if (result.ok && result.data.job_id) {
                 const jobId = result.data.job_id;
                 state.currentJobId = jobId;
-                
                 resultDiv.innerHTML = `
                     <div class="result-panel success">
-                        <div class="result-header">
-                            <span style="font-size: 1.5rem;">✅</span>
-                            <h4>Job Submitted Successfully!</h4>
-                        </div>
-                        <p>Job ID: <code style="background: var(--bg-dark); padding: 4px 8px; border-radius: 4px;">${jobId}</code></p>
-                        <button class="btn btn-secondary" style="margin-top: 16px;" onclick="monitorJob('${jobId}')">
-                            📊 Monitor Job
-                        </button>
-                    </div>
-                `;
+                        <div class="result-header"><span style="font-size:1.5rem;">✅</span><h4>Job Submitted!</h4></div>
+                        <p>Job ID: <code style="background:var(--bg-dark);padding:4px 8px;border-radius:4px;">${jobId}</code></p>
+                        <button class="btn btn-secondary" style="margin-top:16px;" onclick="monitorJob('${jobId}')">📊 Monitor Job</button>
+                    </div>`;
                 showToast('Job submitted!', 'success');
             } else {
                 resultDiv.innerHTML = `
                     <div class="result-panel error">
-                        <div class="result-header">
-                            <span style="font-size: 1.5rem;">❌</span>
-                            <h4>Submission Failed</h4>
-                        </div>
+                        <div class="result-header"><span style="font-size:1.5rem;">❌</span><h4>Submission Failed</h4></div>
                         <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
-                    </div>
-                `;
+                    </div>`;
                 showToast('Submission failed', 'error');
             }
         }
 
         // =============================================================================
-        // LTX Video Submission
+        // LTX Job submission (direct from phase-1 — skips script editor)
         // =============================================================================
         async function submitLtxJob() {
             const templateId = document.getElementById('ltxTemplateSelect').value;
-            if (!templateId) {
-                showToast('Please select a story template', 'error');
-                return;
-            }
+            if (!templateId) { showToast('Please select a story template', 'error'); return; }
 
+            const params = getLtxParams();
             const requestData = {
                 story_template_id: templateId,
-                video_width: parseInt(document.getElementById('ltxWidth').value) || undefined,
-                video_height: parseInt(document.getElementById('ltxHeight').value) || undefined,
-                video_duration_seconds: parseFloat(document.getElementById('ltxDuration').value) || undefined,
-                video_fps: parseInt(document.getElementById('ltxFps').value) || undefined,
-                video_steps: parseInt(document.getElementById('ltxSteps').value) || undefined,
-                video_cfg_scale: parseFloat(document.getElementById('ltxCfgScale').value) || undefined,
-                video_seed: parseInt(document.getElementById('ltxSeed').value),
-                style_suffix: document.getElementById('ltxStyleSuffix').value || undefined,
-                enable_audio: document.getElementById('ltxEnableAudio').checked,
-                tts_host: document.getElementById('ltxTtsHost').value || undefined,
-                tts_port: parseInt(document.getElementById('ltxTtsPort').value) || undefined,
-                adapt_duration_to_audio: document.getElementById('ltxAdaptDuration').checked,
-                llm_provider: document.getElementById('llmProvider').value || undefined,
-                llm_model: document.getElementById('llmModel').value || undefined,
-                output_dir: document.getElementById('outputDir').value || undefined,
+                ...params,
             };
 
             const title = document.getElementById('ltxTitleInput').value.trim();
@@ -1682,47 +1060,28 @@
             const storyText = document.getElementById('ltxStoryText').value.trim();
             if (storyText) requestData.story_text = storyText;
 
-            // Remove undefined values
             Object.keys(requestData).forEach(k => requestData[k] === undefined && delete requestData[k]);
 
             const resultDiv = document.getElementById('submitResult');
-            resultDiv.innerHTML = `
-                <div class="result-panel">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="spinner"></div>
-                        <span>Submitting LTX job...</span>
-                    </div>
-                </div>
-            `;
+            resultDiv.innerHTML = `<div class="result-panel"><div style="display:flex;align-items:center;gap:10px;"><div class="spinner"></div><span>Submitting LTX job...</span></div></div>`;
 
             const result = await apiCall('POST', '/video-generation/generate', requestData);
-
             if (result.ok && result.data.job_id) {
                 const jobId = result.data.job_id;
                 state.currentJobId = jobId;
                 resultDiv.innerHTML = `
                     <div class="result-panel success">
-                        <div class="result-header">
-                            <span style="font-size: 1.5rem;">✅</span>
-                            <h4>LTX Job Submitted!</h4>
-                        </div>
-                        <p>Job ID: <code style="background: var(--bg-dark); padding: 4px 8px; border-radius: 4px;">${jobId}</code></p>
-                        <button class="btn btn-secondary" style="margin-top: 16px;" onclick="monitorJob('${jobId}')">
-                            📊 Monitor Job
-                        </button>
-                    </div>
-                `;
+                        <div class="result-header"><span style="font-size:1.5rem;">✅</span><h4>LTX Job Submitted!</h4></div>
+                        <p>Job ID: <code style="background:var(--bg-dark);padding:4px 8px;border-radius:4px;">${jobId}</code></p>
+                        <button class="btn btn-secondary" style="margin-top:16px;" onclick="monitorJob('${jobId}')">📊 Monitor Job</button>
+                    </div>`;
                 showToast('LTX job submitted!', 'success');
             } else {
                 resultDiv.innerHTML = `
                     <div class="result-panel error">
-                        <div class="result-header">
-                            <span style="font-size: 1.5rem;">❌</span>
-                            <h4>Submission Failed</h4>
-                        </div>
+                        <div class="result-header"><span style="font-size:1.5rem;">❌</span><h4>Submission Failed</h4></div>
                         <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
-                    </div>
-                `;
+                    </div>`;
                 showToast('LTX submission failed', 'error');
             }
         }
@@ -1738,182 +1097,136 @@
         // =============================================================================
         async function checkJobStatus() {
             const jobId = document.getElementById('jobIdInput').value.trim();
-            if (!jobId) {
-                showToast('Please enter a job ID', 'error');
-                return;
-            }
+            if (!jobId) { showToast('Please enter a job ID', 'error'); return; }
 
             const resultDiv = document.getElementById('statusResult');
-            resultDiv.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; padding: 20px;">
-                    <div class="spinner"></div>
-                    <span>Fetching status...</span>
-                </div>
-            `;
+            resultDiv.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:20px;"><div class="spinner"></div><span>Fetching status...</span></div>`;
 
-            const result = await apiCall('GET', `/video-generation/jobs/${jobId}`);
-            
+            const result = await apiCall('GET', `/jobs/${jobId}`);
             if (result.ok) {
                 renderJobStatus(result.data, resultDiv);
-                
-                // Auto-refresh for pending/running jobs
                 const autoRefresh = document.getElementById('autoRefresh').checked;
                 if (autoRefresh && ['pending', 'running'].includes(result.data.status)) {
-                    if (state.autoRefreshInterval) clearInterval(state.autoRefreshInterval);
-                    state.autoRefreshInterval = setInterval(() => checkJobStatus(), 5000);
-                } else if (state.autoRefreshInterval) {
+                    clearInterval(state.autoRefreshInterval);
+                    state.autoRefreshInterval = setInterval(checkJobStatus, 5000);
+                } else {
                     clearInterval(state.autoRefreshInterval);
                     state.autoRefreshInterval = null;
                 }
             } else {
                 resultDiv.innerHTML = `
                     <div class="result-panel error">
-                        <div class="result-header">
-                            <span style="font-size: 1.5rem;">❌</span>
-                            <h4>Failed to Get Status</h4>
-                        </div>
+                        <div class="result-header"><span style="font-size:1.5rem;">❌</span><h4>Failed to Get Status</h4></div>
                         <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
-                    </div>
-                `;
+                    </div>`;
             }
         }
 
         function renderJobStatus(job, container) {
-            const statusEmoji = {
-                pending: '⏳',
-                running: '🔄',
-                completed: '✅',
-                failed: '❌'
-            };
+            const statusEmoji = { pending: '⏳', running: '🔄', completed: '✅', failed: '❌' };
 
             let html = `
                 <div class="result-panel ${job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : ''}">
                     <div class="result-header">
-                        <span style="font-size: 1.5rem;">${statusEmoji[job.status] || '❓'}</span>
+                        <span style="font-size:1.5rem;">${statusEmoji[job.status] || '❓'}</span>
                         <h4>Status: ${job.status.toUpperCase()}</h4>
                         <span class="status-badge status-${job.status}">${job.status}</span>
                     </div>
+                    <p style="color:var(--text-muted);margin-bottom:16px;font-size:0.85rem;">
+                        Job ID: <code>${job.job_id}</code> &nbsp;·&nbsp; Created: ${job.created_at}
+                    </p>
             `;
-
-            if (job.progress) {
-                html += `
-                    <div class="progress-container">
-                        <p style="margin-bottom: 8px;">${job.progress}</p>
-                    </div>
-                `;
-            }
-
-            html += `<p style="color: var(--text-muted); margin-bottom: 16px;">Created: ${job.created_at}</p>`;
 
             if (job.status === 'completed' && job.result) {
                 const res = job.result;
                 const metadata = res.metadata || {};
-
-                // Metrics — check top-level result fields first, fall back to metadata
-                const totalDuration = res.total_duration_seconds ?? metadata.total_duration;
-                const segmentCount  = res.segment_count ?? metadata.sentence_count;
-                const storyTitle    = res.story_title || '';
+                const storyTitle = res.story_title || '';
 
                 if (storyTitle) {
-                    html += `<p style="color: var(--text-bright); font-weight: 600; margin-bottom: 12px;">📖 ${storyTitle}</p>`;
+                    html += `<p style="color:var(--text-bright);font-weight:600;margin-bottom:12px;">📖 ${storyTitle}</p>`;
                 }
 
-                html += `
-                    <div class="metrics">
-                        ${totalDuration != null ? `<div class="metric"><div class="metric-value">${Number(totalDuration).toFixed(1)}s</div><div class="metric-label">Duration</div></div>` : ''}
-                        ${segmentCount  != null ? `<div class="metric"><div class="metric-value">${segmentCount}</div><div class="metric-label">Segments</div></div>` : ''}
-                    </div>
-                `;
+                const totalDuration = res.total_duration_seconds ?? metadata.total_duration;
+                const segmentCount  = res.segment_count ?? metadata.sentence_count;
 
-                // ── Final video (MinIO URL) ──────────────────────────────
-                const videoUrl = (metadata.video_url || '').replace('http://minio:9000', 'http://localhost:8080/minio');
+                html += `<div class="metrics">
+                    ${totalDuration != null ? `<div class="metric"><div class="metric-value">${Number(totalDuration).toFixed(1)}s</div><div class="metric-label">Duration</div></div>` : ''}
+                    ${segmentCount  != null ? `<div class="metric"><div class="metric-value">${segmentCount}</div><div class="metric-label">Segments</div></div>` : ''}
+                </div>`;
+
+                // Final video (MinIO URL)
+                const rawUrl = metadata.video_url || '';
+                const videoUrl = rawUrl.replace('http://minio:9000', 'http://localhost:8080/minio');
                 if (videoUrl && (videoUrl.startsWith('http://') || videoUrl.startsWith('https://'))) {
                     html += `
-                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px;">🎬 Final video</p>
-                        <div class="video-container">
-                            <video controls src="${videoUrl}"></video>
-                        </div>
-                        <a class="download-link" style="margin-top: 8px; display: inline-flex;" href="${videoUrl}" download>⬇️ Download</a>
+                        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;">🎬 Final video</p>
+                        <div class="video-container"><video controls src="${videoUrl}"></video></div>
+                        <a class="download-link" style="margin-top:8px;display:inline-flex;" href="${videoUrl}" download>⬇️ Download</a>
                     `;
-                } else if (videoUrl) {
-                    html += `
-                        <div class="info-box" style="background: rgba(248, 81, 73, 0.1); border: 1px solid var(--error);">
-                            <p style="color: var(--error);">⚠️ Video not accessible from browser:</p>
-                            <code style="word-break: break-all; font-size: 0.8rem;">${videoUrl}</code>
-                        </div>
-                    `;
+                } else if (rawUrl) {
+                    html += `<div style="background:rgba(248,81,73,0.1);border:1px solid var(--error);border-radius:8px;padding:12px;margin:12px 0;">
+                        <p style="color:var(--error);margin-bottom:4px;">⚠️ Video not accessible from browser:</p>
+                        <code style="word-break:break-all;font-size:0.8rem;">${rawUrl}</code>
+                    </div>`;
                 }
 
-                // ── Single-clip base64 result ────────────────────────────
+                // Single-clip base64 result
                 if (res.video_b64) {
                     html += `
-                        <p style="color: var(--text-muted); font-size: 0.85rem; margin: 16px 0 8px;">🎬 Generated clip
+                        <p style="color:var(--text-muted);font-size:0.85rem;margin:16px 0 8px;">🎬 Generated clip
                             (${res.width}×${res.height} · ${res.fps}fps · ${Number(res.duration_seconds).toFixed(1)}s)
                         </p>
-                        <div class="video-container">
-                            <video controls src="data:video/mp4;base64,${res.video_b64}"></video>
-                        </div>
+                        <div class="video-container"><video controls src="data:video/mp4;base64,${res.video_b64}"></video></div>
                     `;
                 }
 
-                // ── Recurrent Locations ──────────────────────────────────
+                // Locations
                 if (Array.isArray(res.recurrent_locations) && res.recurrent_locations.length > 0) {
-                    html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin: 20px 0 8px;">📍 Locations (${res.recurrent_locations.length})</p>`;
-                    html += `<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">`;
+                    html += `<p style="color:var(--text-muted);font-size:0.85rem;margin:20px 0 8px;">📍 Locations (${res.recurrent_locations.length})</p>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">`;
                     res.recurrent_locations.forEach(loc => {
-                        html += `
-                            <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; flex: 1; min-width: 180px;">
-                                <div style="font-weight: 600; color: var(--purple); font-size: 0.85rem;">${loc.name || loc.location_id}</div>
-                                <div style="color: var(--text-muted); font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; margin-top: 2px;">${loc.location_id}</div>
-                            </div>
-                        `;
+                        html += `<div style="background:var(--bg-dark);border:1px solid var(--border);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
+                            <div style="font-weight:600;color:var(--purple);font-size:0.85rem;">${loc.name || loc.location_id}</div>
+                            <div style="color:var(--text-muted);font-size:0.75rem;font-family:'JetBrains Mono',monospace;margin-top:2px;">${loc.location_id}</div>
+                        </div>`;
                     });
                     html += `</div>`;
                 }
 
-                // ── Segment clips list ───────────────────────────────────
+                // Segments
                 if (Array.isArray(res.segments) && res.segments.length > 0) {
-                    html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin: 20px 0 8px;">📋 Scenes (${res.segments.length})</p>`;
-                    html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
-                    res.segments.forEach((seg, i) => {
-                        // Support both old pipeline (character_id/text) and new pipeline (speaker_id/spoken_line)
+                    html += `<p style="color:var(--text-muted);font-size:0.85rem;margin:20px 0 8px;">📋 Scenes (${res.segments.length})</p>
+                        <div style="display:flex;flex-direction:column;gap:8px;">`;
+                    res.segments.forEach(seg => {
                         const speaker = seg.speaker_id || seg.character_id || '';
                         const line    = seg.spoken_line || seg.text || '';
                         const prompt  = seg.ltx_prompt || seg.scene_description || '';
                         const chars   = Array.isArray(seg.character_on_screen) ? seg.character_on_screen.join(', ') : '';
-                        html += `
-                            <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
-                                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                        <span style="font-weight: 600; color: var(--accent); font-size: 0.85rem;">#${seg.index + 1}</span>
-                                        ${speaker ? `<span style="background: rgba(88,166,255,0.12); color: var(--accent); font-size: 0.78rem; padding: 2px 8px; border-radius: 12px;">🎤 ${speaker}</span>` : ''}
-                                        ${seg.location ? `<span style="background: rgba(163,113,247,0.12); color: var(--purple); font-size: 0.78rem; padding: 2px 8px; border-radius: 12px;">📍 ${seg.location}</span>` : ''}
-                                        ${chars ? `<span style="background: rgba(63,185,80,0.1); color: var(--success); font-size: 0.75rem; padding: 2px 8px; border-radius: 12px;">👥 ${chars}</span>` : ''}
-                                    </div>
-                                    <span style="color: var(--text-muted); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; white-space: nowrap;">
-                                        ${Number(seg.duration_seconds || 0).toFixed(1)}s
-                                    </span>
+                        html += `<div style="background:var(--bg-dark);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap;">
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <span style="font-weight:600;color:var(--accent);font-size:0.85rem;">#${seg.index + 1}</span>
+                                    ${speaker ? `<span style="background:rgba(88,166,255,0.12);color:var(--accent);font-size:0.78rem;padding:2px 8px;border-radius:12px;">🎤 ${speaker}</span>` : ''}
+                                    ${seg.location ? `<span style="background:rgba(163,113,247,0.12);color:var(--purple);font-size:0.78rem;padding:2px 8px;border-radius:12px;">📍 ${seg.location}</span>` : ''}
+                                    ${chars ? `<span style="background:rgba(63,185,80,0.1);color:var(--success);font-size:0.75rem;padding:2px 8px;border-radius:12px;">👥 ${chars}</span>` : ''}
                                 </div>
-                                ${line ? `<p style="font-size: 0.85rem; color: var(--text); margin-bottom: 6px;">"${line}"</p>` : ''}
-                                ${prompt ? `<p style="font-size: 0.75rem; color: var(--text-muted); font-style: italic; line-height: 1.4;">${prompt}</p>` : ''}
+                                <span style="color:var(--text-muted);font-size:0.8rem;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${Number(seg.duration_seconds || 0).toFixed(1)}s</span>
                             </div>
-                        `;
+                            ${line   ? `<p style="font-size:0.85rem;color:var(--text);margin-bottom:6px;">"${line}"</p>` : ''}
+                            ${prompt ? `<p style="font-size:0.75rem;color:var(--text-muted);font-style:italic;line-height:1.4;">${prompt}</p>` : ''}
+                        </div>`;
                     });
                     html += `</div>`;
                 }
 
-                html += `
-                    <details style="margin-top: 16px;">
-                        <summary style="cursor: pointer; color: var(--text-muted);">View Full Result JSON</summary>
-                        <div class="code-block" style="margin-top: 10px;">${JSON.stringify(res, null, 2)}</div>
-                    </details>
-                `;
+                html += `<details style="margin-top:16px;">
+                    <summary style="cursor:pointer;color:var(--text-muted);">View Full Result JSON</summary>
+                    <div class="code-block" style="margin-top:10px;">${JSON.stringify(res, null, 2)}</div>
+                </details>`;
             }
 
             if (job.status === 'failed' && job.error) {
-                html += `
-                    <div class="code-block" style="color: var(--error);">${job.error}</div>
-                `;
+                html += `<div class="code-block" style="color:var(--error);">${job.error}</div>`;
             }
 
             html += `</div>`;
@@ -1926,68 +1239,58 @@
         async function loadRecentJobs() {
             const limit = document.getElementById('recentJobsLimit').value;
             const container = document.getElementById('recentJobsList');
-            
-            container.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px;">
-                    <div class="spinner"></div>
-                    <span>Loading jobs...</span>
-                </div>
-            `;
+            container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:40px;"><div class="spinner"></div><span>Loading jobs...</span></div>`;
 
-            const result = await apiCall('GET', `/video-generation/jobs?limit=${limit}`);
-            
-            if (result.ok && Array.isArray(result.data)) {
-                if (result.data.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📋</div>
-                            <p>No jobs found</p>
-                        </div>
-                    `;
-                    return;
-                }
+            const result = await apiCall('GET', `/jobs?limit=${limit}`);
+            if (!result.ok || !Array.isArray(result.data)) {
+                container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><p>Failed to load jobs</p></div>`;
+                return;
+            }
+            if (result.data.length === 0) {
+                container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><p>No jobs found</p></div>`;
+                return;
+            }
 
-                container.innerHTML = result.data.map(job => `
+            container.innerHTML = result.data.map(job => {
+                const res = job.result || {};
+                const title = res.story_title
+                    || (res.metadata && res.metadata.pipeline ? `[${res.metadata.pipeline}]` : null)
+                    || `Job ${job.job_id.substring(0, 8)}…`;
+                const duration = res.total_duration_seconds ? `${Number(res.total_duration_seconds).toFixed(1)}s` : '';
+                const segments = res.segment_count ? `${res.segment_count} scenes` : '';
+                const meta = [duration, segments].filter(Boolean).join(' · ');
+                return `
                     <div class="job-card" onclick="monitorJob('${job.job_id}')">
                         <div class="job-card-header">
-                            <span class="job-title">${job.job_id.substring(0, 8)}...</span>
+                            <span class="job-title">${title}</span>
                             <span class="status-badge status-${job.status}">${job.status}</span>
                         </div>
-                        <div class="job-meta">Created: ${job.created_at}</div>
-                    </div>
-                `).join('');
-            } else {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">❌</div>
-                        <p>Failed to load jobs</p>
-                    </div>
-                `;
-            }
+                        ${meta ? `<div class="job-meta" style="margin-bottom:4px;">${meta}</div>` : ''}
+                        <div class="job-meta">${job.created_at}</div>
+                    </div>`;
+            }).join('');
         }
 
         // =============================================================================
         // LTX Quality Presets
         // =============================================================================
         const LTX_PRESETS = {
-            fast:         { steps: 8,  fps: 24 },
-            quality:      { steps: 30, fps: 24 },
-            high_quality: { steps: 30, fps: 50 },
+            fast:         { model: 'ltx2_22B_distilled',  steps: 8,  fps: 24 },
+            quality:      { model: 'ltx2_22B',            steps: 30, fps: 24 },
+            high_quality: { model: 'ltx2_22B_pure_dev',   steps: 50, fps: 50 },
         };
 
         function applyLtxPreset(name) {
             const p = LTX_PRESETS[name];
             if (!p) return;
-            document.getElementById('ltxSteps').value = p.steps;
-            document.getElementById('ltxFps').value   = p.fps;
+            document.getElementById('ltxModelType').value = p.model;
+            document.getElementById('ltxSteps').value     = p.steps;
+            document.getElementById('ltxFps').value       = p.fps;
         }
 
         // =============================================================================
         // 2-Phase LTX Script Workflow
         // =============================================================================
-
-        state.currentScript = { title: '', locations: [], scenes: [] };
-
         function setPhaseIndicator(active) {
             [1, 2, 3].forEach(n => {
                 const el = document.getElementById(`pi-step${n}`);
@@ -2002,20 +1305,19 @@
             const templateId = document.getElementById('ltxTemplateSelect').value;
             const title = document.getElementById('ltxTitleInput').value.trim();
             if (!templateId) { showToast('Please select a story template', 'error'); return; }
-            if (!title) { showToast('Please enter a title', 'error'); return; }
+            if (!title)      { showToast('Please enter a title', 'error'); return; }
 
             const loader = document.getElementById('script-gen-loader');
             const btns   = document.getElementById('phase1-buttons');
             loader.classList.add('visible');
             btns.style.display = 'none';
-            document.getElementById('script-gen-label').textContent = 'Generating script…';
 
-            const baseUrl = getApiUrl().replace('/api/v1', '');
             try {
+                const baseUrl = getApiUrl().replace('/api/v1', '');
                 const resp = await fetch(`${baseUrl}/api/v1/story-pipeline/run`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title }),
+                    body: JSON.stringify({ title, story_template_id: templateId }),
                 });
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
@@ -2043,13 +1345,10 @@
             const locs   = data.recurrent_locations?.locations || [];
             const scenes = data.detailed_scenes?.scenes || [];
             const title  = data.detailed_scenes?.title || data.title || '';
-
             state.currentScript = { title, locations: locs, scenes };
-
             document.getElementById('script-title').value = title;
             renderAllLocations();
             renderAllScenes();
-
             document.getElementById('ltx-phase1').style.display = 'none';
             document.getElementById('ltx-phase2').style.display = '';
         }
@@ -2066,17 +1365,11 @@
             card.className = 'loc-editor-card';
             card.dataset.idx = idx;
             card.dataset.original = JSON.stringify(loc);
-
             const fp = loc.flux_prompt || {};
-            // Flatten the flux_prompt to a human-readable text for editing
-            const fpText = [fp.scene, fp.lighting, fp.mood, fp.background]
-                .filter(Boolean).join('. ');
-
+            const fpText = [fp.scene, fp.lighting, fp.mood, fp.background].filter(Boolean).join('. ');
             card.innerHTML = `
                 <div class="loc-editor-header">
-                    <span class="loc-id-badge loc-id-field"
-                          contenteditable="true"
-                          title="location_id (slug)"
+                    <span class="loc-id-badge loc-id-field" contenteditable="true" title="location_id (slug)"
                           style="outline:none;min-width:60px;">${escHtml(loc.location_id)}</span>
                     <button class="btn-danger" onclick="removeLocation(${idx})">✕ Remove</button>
                 </div>
@@ -2087,8 +1380,7 @@
                 <div class="form-group" style="margin-bottom:0;">
                     <label style="font-size:0.78rem;">Environment description (Flux prompt)</label>
                     <textarea class="loc-scene-input" rows="2">${escHtml(fpText)}</textarea>
-                </div>
-            `;
+                </div>`;
             return card;
         }
 
@@ -2100,7 +1392,7 @@
             };
             state.currentScript.locations.push(blank);
             renderAllLocations();
-            renderAllScenes(); // update location dropdowns
+            renderAllScenes();
         }
 
         function removeLocation(idx) {
@@ -2121,20 +1413,11 @@
             card.className = 'scene-editor-card';
             card.dataset.idx = idx;
             card.dataset.original = JSON.stringify(scene);
-
             const locOptions = state.currentScript.locations.map(loc =>
                 `<option value="${escHtml(loc.location_id)}" ${scene.location === loc.location_id ? 'selected' : ''}>${escHtml(loc.name)}</option>`
             ).join('');
-
             const charStr = (scene.character_on_screen || []).join(', ');
-
-            // SD scene text: take the .scene field from scene_visual_description
-            const sdText = scene.scene_visual_description?.scene || '';
-
-            const speakerOpts = state.characters.map(ch =>
-                `<option value="${escHtml(ch.name)}" ${scene.speaker_id === ch.name ? 'selected' : ''}>${escHtml(ch.name)}</option>`
-            ).join('');
-
+            const sdText  = scene.scene_visual_description?.scene || '';
             card.innerHTML = `
                 <div class="scene-editor-header">
                     <span class="scene-num-badge">#${idx + 1}</span>
@@ -2144,12 +1427,10 @@
                     ).join('')}
                     <button class="btn-danger" onclick="removeScene(${idx})">✕</button>
                 </div>
-
                 <div class="form-group">
-                    <label style="font-size:0.78rem;">LTX Prompt <span style="color:var(--accent);font-weight:400;">(video motion &amp; content)</span></label>
+                    <label style="font-size:0.78rem;">LTX Prompt</label>
                     <textarea class="scene-ltx-input" rows="3">${escHtml(scene.ltx_prompt || '')}</textarea>
                 </div>
-
                 <div class="scene-editor-grid">
                     <div class="form-group" style="margin-bottom:0;">
                         <label style="font-size:0.78rem;">Location</label>
@@ -2164,7 +1445,8 @@
                     </div>
                     <div class="form-group" style="margin-bottom:0;">
                         <label style="font-size:0.78rem;">Speaker</label>
-                        <input class="scene-speaker-input" type="text" list="scene-speaker-list-${idx}" value="${escHtml(scene.speaker_id || '')}" placeholder="character_id">
+                        <input class="scene-speaker-input" type="text" list="scene-speaker-list-${idx}"
+                               value="${escHtml(scene.speaker_id || '')}" placeholder="character_id">
                         <datalist id="scene-speaker-list-${idx}">
                             ${state.characters.map(ch => `<option value="${escHtml(ch.name)}">`).join('')}
                         </datalist>
@@ -2174,27 +1456,20 @@
                         <textarea class="scene-line-input" rows="2">${escHtml(scene.spoken_line || '')}</textarea>
                     </div>
                 </div>
-
                 <details style="margin-top:10px;">
-                    <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);">
-                        SD conditioning image description
-                    </summary>
+                    <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);">SD conditioning image description</summary>
                     <div class="form-group" style="margin-top:6px;margin-bottom:0;">
                         <textarea class="scene-sd-text" rows="2" style="font-size:0.8rem;">${escHtml(sdText)}</textarea>
                     </div>
-                </details>
-            `;
+                </details>`;
             return card;
         }
 
         function addScene() {
             const blank = {
-                ltx_prompt: '',
-                location: null,
-                character_on_screen: [],
+                ltx_prompt: '', location: null, character_on_screen: [],
                 scene_visual_description: { scene: '', subjects: [], lighting: 'natural', camera: { angle: 'eye level', distance: 'medium shot' } },
-                speaker_id: null,
-                spoken_line: null,
+                speaker_id: null, spoken_line: null,
             };
             state.currentScript.scenes.push(blank);
             renderAllScenes();
@@ -2205,7 +1480,7 @@
             renderAllScenes();
         }
 
-        // ── Collect edited values and submit ──────────────────────────────
+        // ── Collect & submit from script editor ───────────────────────────
         function collectLocations() {
             return Array.from(document.querySelectorAll('#locations-editor .loc-editor-card')).map(card => {
                 const original = JSON.parse(card.dataset.original);
@@ -2243,77 +1518,59 @@
 
         function escHtml(s) {
             if (s == null) return '';
-            return String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
         async function submitLtxFromScript() {
             const templateId = document.getElementById('ltxTemplateSelect').value;
             if (!templateId) { showToast('Please select a story template', 'error'); return; }
 
-            const locations = collectLocations();
-            const scenes    = collectScenes();
-
+            const params = getLtxParams();
             const requestData = {
                 story_title: document.getElementById('script-title').value.trim() || 'story',
                 story_template_id: templateId,
-                scenes,
-                locations,
-                video_width:              parseInt(document.getElementById('ltxWidth').value) || undefined,
-                video_height:             parseInt(document.getElementById('ltxHeight').value) || undefined,
-                video_duration_seconds:   parseFloat(document.getElementById('ltxDuration').value) || undefined,
-                video_fps:                parseInt(document.getElementById('ltxFps').value) || undefined,
-                video_steps:              parseInt(document.getElementById('ltxSteps').value) || undefined,
-                video_cfg_scale:          parseFloat(document.getElementById('ltxCfgScale').value) || undefined,
-                video_seed:               parseInt(document.getElementById('ltxSeed').value),
-                style_suffix:             document.getElementById('ltxStyleSuffix').value || undefined,
-                enable_audio:             document.getElementById('ltxEnableAudio').checked,
-                tts_host:                 document.getElementById('ltxTtsHost').value || undefined,
-                tts_port:                 parseInt(document.getElementById('ltxTtsPort').value) || undefined,
-                adapt_duration_to_audio:  document.getElementById('ltxAdaptDuration').checked,
-                output_dir:               document.getElementById('outputDir').value || undefined,
+                scenes: collectScenes(),
+                locations: collectLocations(),
+                // VideoFromScriptRequest fields (no llm_provider/llm_model)
+                video_width:             params.video_width,
+                video_height:            params.video_height,
+                video_duration_seconds:  params.video_duration_seconds,
+                video_fps:               params.video_fps,
+                video_steps:             params.video_steps,
+                video_cfg_scale:         params.video_cfg_scale,
+                video_seed:              params.video_seed,
+                style_suffix:            params.style_suffix,
+                enable_audio:            params.enable_audio,
+                tts_host:                params.tts_host,
+                tts_port:                params.tts_port,
+                adapt_duration_to_audio: params.adapt_duration_to_audio,
+                enable_subtitles:        params.enable_subtitles,
+                subtitle_fontsize:       params.subtitle_fontsize,
+                output_dir:              params.output_dir,
             };
             Object.keys(requestData).forEach(k => requestData[k] === undefined && delete requestData[k]);
 
             setPhaseIndicator(3);
 
             const resultDiv = document.getElementById('submitResult');
-            resultDiv.innerHTML = `
-                <div class="result-panel">
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <div class="spinner"></div>
-                        <span>Submitting LTX job from script…</span>
-                    </div>
-                </div>`;
+            resultDiv.innerHTML = `<div class="result-panel"><div style="display:flex;align-items:center;gap:10px;"><div class="spinner"></div><span>Submitting LTX job from script…</span></div></div>`;
 
             const result = await apiCall('POST', '/video-generation/generate-from-script', requestData);
-
             if (result.ok && result.data.job_id) {
                 const jobId = result.data.job_id;
                 state.currentJobId = jobId;
                 resultDiv.innerHTML = `
                     <div class="result-panel success">
-                        <div class="result-header">
-                            <span style="font-size:1.5rem;">✅</span>
-                            <h4>Job Submitted!</h4>
-                        </div>
+                        <div class="result-header"><span style="font-size:1.5rem;">✅</span><h4>Job Submitted!</h4></div>
                         <p>Job ID: <code style="background:var(--bg-dark);padding:4px 8px;border-radius:4px;">${jobId}</code></p>
-                        <button class="btn btn-secondary" style="margin-top:16px;" onclick="monitorJob('${jobId}')">
-                            📊 Monitor Job
-                        </button>
+                        <button class="btn btn-secondary" style="margin-top:16px;" onclick="monitorJob('${jobId}')">📊 Monitor Job</button>
                     </div>`;
                 showToast('LTX-from-script job submitted!', 'success');
             } else {
                 setPhaseIndicator(2);
                 resultDiv.innerHTML = `
                     <div class="result-panel error">
-                        <div class="result-header">
-                            <span style="font-size:1.5rem;">❌</span>
-                            <h4>Submission Failed</h4>
-                        </div>
+                        <div class="result-header"><span style="font-size:1.5rem;">❌</span><h4>Submission Failed</h4></div>
                         <div class="code-block">${JSON.stringify(result.data || result.error, null, 2)}</div>
                     </div>`;
                 showToast('Submission failed', 'error');
@@ -2321,12 +1578,13 @@
         }
 
         // =============================================================================
-        // Initialize
+        // Init
         // =============================================================================
         document.addEventListener('DOMContentLoaded', () => {
-            loadCharacters();
             loadTemplates();
+            loadCharacters();
             applyLtxPreset(document.getElementById('ltxQualityPreset').value);
+            selectInputMethod('ltx');
         });
     </script>
 </body>

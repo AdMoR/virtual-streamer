@@ -580,7 +580,7 @@ async def generate_scene_image_from_input(
             return result.image_path
 
     except Exception as exc:
-        logger.warning(f"Scene conditioning image generation failed: {exc}")
+        logger.warning(f"Scene conditioning image generation failed: {exc}", exc_info=True)
         return None
 
 
@@ -637,7 +637,7 @@ async def story_input_to_video(
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    temp_dir = output_path / "temp"
+    temp_dir = output_path / f"temp_{uuid.uuid4().hex[:8]}"
     temp_dir.mkdir(exist_ok=True)
 
     _debug_storage = None
@@ -1102,7 +1102,7 @@ async def generate_scene_image(
             return result.image_path
 
     except Exception as exc:
-        logger.warning(f"Scene conditioning image generation failed: {exc}")
+        logger.warning(f"Scene conditioning image generation failed: {exc}", exc_info=True)
         return None
 
 

@@ -45,7 +45,13 @@ IMPORTANT: Your response must be structured with 4 parts:
 - **dialog**: The list of dialogue lines. For each line extract:
   - **character_id**: The optional character identifier (e.g. "fred", "jamy"). Use lowercase. If there is no-one on the screen, leave it empty
   - **text**: The spoken dialogue text (what the character says out loud).
-  - **scene_description**: Describe the action, location, characters present and scene appearance
+  - **scene_description**: Describe precisely the action, location, characters present and scene appearance. Make the action of character dynamic, with movement and or camera actions.
+
+Rules : 
+- Each dialog line should be atomic => avoid packing 3 different ideas in the same scene
+- In order to develop a complex idea, a long text could be broken down into 2 dialog lines
+- If we are in a narration situation, we can omit the mention of the character talking, otherwise the scene_description prompt should include the text line to allow lip-sync.
+   => refer to the the story template description and person in the scene to know if this is narration or speaking situation.
 
 ## What Works Well for the scene description 
 Strength	            Description
@@ -55,6 +61,9 @@ Atmosphere & setting	Fog, mist, golden-hour light, rain, reflections, ambient te
 Clear camera language	Explicit instructions like “slow dolly in” or “handheld tracking”
 Stylized aesthetics	    Painterly, noir, analog film, fashion editorial, pixelated animation
 Lighting & mood control	Backlighting, color palettes, rim light, flickering lamps
+
+Generate scenes with preferably a lot of dynamism. To do so, describe precisely how the camera moves and actions from the main character.
+
 
 ## Common Mistakes for the scene description 
 
@@ -73,11 +82,10 @@ yellow caution tape fluttering behind him. The light is warm, early sun reflecti
 
 When in a franchise, subjects must use the character names for better context.
 
-
 Focus on:
 - Making the refined title catchy and descriptive
-- In story_plan, explain your creative choices and the comedic arc. Please plan for a  format respecting the size mentioned.
-- In dialog, make scene_description specific enough to find visually matching videos
+- In story_plan, explain your creative choices and the comedic arc. Please plan for a format respecting the size mentioned.
+- make scene_description specific enough to find visually matching videos
 - Last line of the serie must have a twist.
 
 """

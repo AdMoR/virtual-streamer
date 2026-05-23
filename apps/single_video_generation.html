@@ -459,16 +459,49 @@
             </div>
         </div>
 
+        <!-- Identity preservation (always visible) -->
+        <div>
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;font-weight:500;">
+                <input type="checkbox" id="identity-preservation" style="width:1rem;height:1rem;accent-color:var(--accent-purple);cursor:pointer;">
+                Identity Preservation (Talking Heads)
+            </label>
+            <div id="id-preserve-hint" style="display:none;margin-top:0.5rem;padding:0.6rem 0.75rem;background:var(--bg-tertiary);border:1px solid var(--accent-purple);border-radius:6px;font-size:0.75rem;line-height:1.5;color:var(--text-secondary);">
+                Uses ID-LoRA to bind visual + voice identity. Requires portrait image + voice audio.<br>
+                Prompt format: <code style="color:var(--accent-cyan);">[VISUAL] … [SPEECH] … [SOUND] …</code><br>
+                Only the first ~4.8 s of audio are used. Steps auto-set to 10.
+            </div>
+            <div id="id-preserve-warning" style="display:none;margin-top:0.5rem;padding:0.5rem 0.75rem;background:rgba(248,81,73,0.12);border:1px solid var(--accent-red);border-radius:6px;font-size:0.75rem;color:var(--accent-red);">
+                ID-LoRA requires a non-distilled model. Switched to <strong>ltx2_22B</strong>.
+            </div>
+        </div>
+
         <!-- Model -->
         <div class="field">
             <label>Model</label>
             <select id="model-type">
                 <option value="ltx2_22B">ltx2_22B</option>
+                <option value="ltx2_22B_pure_dev">ltx2_22B_pure_dev</option>
                 <option value="ltx2_22B_distilled" selected>ltx2_22B_distilled</option>
+                <option value="ltx2_22B_distilled_1_1">ltx2_22B_distilled_1_1</option>
                 <option value="ltx2_distilled">ltx2_distilled</option>
                 <option value="ltx2_13B">ltx2_13B</option>
                 <option value="ltx2_13B_distilled">ltx2_13B_distilled</option>
             </select>
+        </div>
+
+        <!-- LoRA -->
+        <div>
+            <div class="section-label" style="margin-bottom:0.75rem;">LoRA <span style="font-weight:400;text-transform:none;font-size:0.72rem;">(optional)</span></div>
+            <div class="row">
+                <div class="field" style="grid-column: 1 / -1;">
+                    <label>LoRA filename</label>
+                    <input type="text" id="lora-name" placeholder="my-style.safetensors">
+                </div>
+            </div>
+            <div class="field" style="margin-top:0.75rem;">
+                <label>LoRA strength</label>
+                <input type="number" id="lora-multiplier" value="1.0" min="0" max="2" step="0.05">
+            </div>
         </div>
 
         <button class="btn-generate" id="btn-generate">Generate Video</button>
@@ -537,9 +570,9 @@
 
     // ── Quality preset auto-fill ───────────────────────────────────
     const PRESETS = {
-        fast:         { model: 'ltx2_22B_distilled', steps: 8,  fps: '24' },
-        quality:      { model: 'ltx2_22B',           steps: 30, fps: '24' },
-        high_quality: { model: 'ltx2_22B',           steps: 30, fps: '50' },
+        fast:         { model: 'ltx2_22B_distilled',  steps: 8,  fps: '24' },
+        quality:      { model: 'ltx2_22B',            steps: 30, fps: '24' },
+        high_quality: { model: 'ltx2_22B_pure_dev',   steps: 50, fps: '50' },
     };
 
     function applyPreset(name) {
@@ -568,6 +601,37 @@
     const DENOISING_STR     = document.getElementById('denoising-strength');
     const TRANSITION_FRAMES = document.getElementById('transition-frames');
     const TRANSITION_WRAP   = document.getElementById('transition-wrap');
+    const LORA_NAME         = document.getElementById('lora-name');
+    const LORA_MULTIPLIER   = document.getElementById('lora-multiplier');
+    const ID_PRESERVE       = document.getElementById('identity-preservation');
+    const ID_PRESERVE_HINT  = document.getElementById('id-preserve-hint');
+    const ID_PRESERVE_WARN  = document.getElementById('id-preserve-warning');
+
+    // ── Identity preservation toggle ───────────────────────────────
+    let _savedModelBeforeIdPreserve = null;
+    let _savedStepsBeforeIdPreserve = null;
+
+    const DISTILLED_MODELS = new Set(['ltx2_22B_distilled', 'ltx2_22B_distilled_1_1', 'ltx2_distilled', 'ltx2_13B_distilled']);
+
+    ID_PRESERVE.addEventListener('change', () => {
+        if (ID_PRESERVE.checked) {
+            ID_PRESERVE_HINT.style.display = 'block';
+            _savedModelBeforeIdPreserve = MODEL_TYPE.value;
+            _savedStepsBeforeIdPreserve = STEPS.value;
+            if (DISTILLED_MODELS.has(MODEL_TYPE.value)) {
+                MODEL_TYPE.value = 'ltx2_22B';
+                ID_PRESERVE_WARN.style.display = 'block';
+            }
+            STEPS.value = 10;
+        } else {
+            ID_PRESERVE_HINT.style.display = 'none';
+            ID_PRESERVE_WARN.style.display = 'none';
+            if (_savedModelBeforeIdPreserve !== null) MODEL_TYPE.value = _savedModelBeforeIdPreserve;
+            if (_savedStepsBeforeIdPreserve !== null) STEPS.value = _savedStepsBeforeIdPreserve;
+            _savedModelBeforeIdPreserve = null;
+            _savedStepsBeforeIdPreserve = null;
+        }
+    });
 
     // ── State ──────────────────────────────────────────────────────
     let imageFile    = null;
@@ -736,7 +800,7 @@
         pollTimer = setInterval(async () => {
             elapsed += 3;
             try {
-                const r = await fetch(`${apiBase}/video-generation/jobs/${jobId}`);
+                const r = await fetch(`${apiBase}/jobs/${jobId}`);
                 if (!r.ok) throw new Error(`Poll error: ${r.statusText}`);
                 const job = await r.json();
 
@@ -815,6 +879,11 @@
         fd.append('audio_guidance',        AUDIO_GUID.value);
         fd.append('denoising_strength',    DENOISING_STR.value);
         fd.append('transition_frames',     TRANSITION_FRAMES.value);
+        if (LORA_NAME.value.trim()) {
+            fd.append('lora_name',       LORA_NAME.value.trim());
+            fd.append('lora_multiplier', LORA_MULTIPLIER.value);
+        }
+        fd.append('identity_preservation', ID_PRESERVE.checked ? 'true' : 'false');
         if (videoFile)    fd.append('video',     videoFile,    videoFile.name);
         if (imageFile)    fd.append('image',     imageFile,    imageFile.name);
         if (endImageFile) fd.append('end_image', endImageFile, endImageFile.name);

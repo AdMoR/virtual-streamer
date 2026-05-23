@@ -653,28 +653,34 @@ class _SingleClipJob:
         denoising_strength: float,
         video_prompt_type: str,
         transition_frames: int,
+        lora_name: Optional[str] = None,
+        lora_multiplier: float = 1.0,
+        identity_preservation: bool = False,
     ):
-        self.prompt             = prompt
-        self.negative_prompt    = negative_prompt
-        self.image_bytes        = image_bytes
-        self.audio_bytes        = audio_bytes
-        self.video_bytes        = video_bytes
-        self.end_image_bytes    = end_image_bytes
-        self.wangp_url          = wangp_url
-        self.wangp_timeout      = wangp_timeout
-        self.model_type         = model_type
-        self.resolution         = resolution
-        self.duration_seconds   = duration_seconds
-        self.fps                = fps
-        self.steps              = steps
-        self.guidance_scale     = guidance_scale
-        self.flow_shift         = flow_shift
-        self.seed               = seed
-        self.audio_scale        = audio_scale
-        self.audio_guidance     = audio_guidance
-        self.denoising_strength = denoising_strength
-        self.video_prompt_type  = video_prompt_type
-        self.transition_frames  = transition_frames
+        self.prompt                = prompt
+        self.negative_prompt       = negative_prompt
+        self.image_bytes           = image_bytes
+        self.audio_bytes           = audio_bytes
+        self.video_bytes           = video_bytes
+        self.end_image_bytes       = end_image_bytes
+        self.wangp_url             = wangp_url
+        self.wangp_timeout         = wangp_timeout
+        self.model_type            = model_type
+        self.resolution            = resolution
+        self.duration_seconds      = duration_seconds
+        self.fps                   = fps
+        self.steps                 = steps
+        self.guidance_scale        = guidance_scale
+        self.flow_shift            = flow_shift
+        self.seed                  = seed
+        self.audio_scale           = audio_scale
+        self.audio_guidance        = audio_guidance
+        self.denoising_strength    = denoising_strength
+        self.video_prompt_type     = video_prompt_type
+        self.transition_frames     = transition_frames
+        self.lora_name             = lora_name
+        self.lora_multiplier       = lora_multiplier
+        self.identity_preservation = identity_preservation
 
 
 async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
@@ -730,6 +736,9 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
                 denoising_strength=job.denoising_strength,
                 video_prompt_type=job.video_prompt_type,
                 transition_frames=job.transition_frames,
+                lora_name=job.lora_name,
+                lora_multiplier=job.lora_multiplier,
+                identity_preservation=job.identity_preservation,
             )
 
             output_dir = os.path.join(tmpdir, "output")
@@ -853,6 +862,9 @@ async def generate_single_clip(
     denoising_strength: float        = Form(0.7),
     video_prompt_type:  str          = Form("DVG", description="V2V preprocessing mode: DVG, PVG, OVG, EVG, or VG"),
     transition_frames:  int          = Form(0, description="Smoothing frames between image_start and video_guide (0=off)."),
+    lora_name:             Optional[str] = Form(None, description="LoRA filename to activate (e.g. 'my-style.safetensors')."),
+    lora_multiplier:       float         = Form(1.0, description="Strength/weight for the user-supplied LoRA (0.0–2.0)."),
+    identity_preservation: bool          = Form(False, description="Enable ID-LoRA talking-heads mode (requires ltx2_22B or ltx2_19B)."),
     image:              Optional[UploadFile] = File(default=None),
     audio:              Optional[UploadFile] = File(default=None),
     video:              Optional[UploadFile] = File(default=None),
@@ -914,6 +926,9 @@ async def generate_single_clip(
         denoising_strength=denoising_strength,
         video_prompt_type=video_prompt_type,
         transition_frames=transition_frames,
+        lora_name=lora_name or None,
+        lora_multiplier=lora_multiplier,
+        identity_preservation=identity_preservation,
     )
 
     job_store = await get_global_job_store()
