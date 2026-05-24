@@ -3,17 +3,16 @@
 Virtual Streamer Video Generation Script (ADK Version)
 
 This script generates videos from stories using Google ADK agents for dialog/video
-matching, then calls the webservice API for TTS and Wav2Lip processing.
+matching, then calls the webservice API for TTS processing.
 
 WORKFLOW:
 =========
 1. ADK Orchestrator:
    - StoryGeneratorAgent: Generates story with DialogLines from title
    - SentenceVideoMatcher: Matches each dialog line to a video
-   
+
 2. Webservice API calls (for each dialog line):
    - POST /api/v1/tts/generate: Generate audio from dialog text
-   - POST /api/v1/wav2lip/generate: Generate lip-synced video
    - POST /api/v1/stt/transcribe-to-srt: Generate subtitles
 
 3. Video composition:
@@ -96,69 +95,58 @@ async def compose_video_from_matches(
 ) -> str:
     """
     Compose final video from dialog line matches using webservice APIs.
-    
+
     For each match:
     1. Generate audio via TTS API
-    2. Generate lip-synced video via Wav2Lip API
-    3. Combine audio with video
-    4. Generate and add subtitles
-    
+    2. Combine audio with matched video clip
+    3. Generate and add subtitles
+
     Then concatenate all segments into final video.
-    
+
     Args:
         matches: List of DialogLineMatch from orchestrator
         client: Webservice API client
         output_dir: Directory for final output
         temp_dir: Directory for intermediate files
         fontsize: Subtitle font size
-    
+
     Returns:
         Path to final concatenated video
     """
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(temp_dir, exist_ok=True)
-    
+
     video_segments = []
-    
+
     for i, match in enumerate(matches):
         logger.info(f"Processing segment {i+1}/{len(matches)}: {match.dialog_line.text[:50]}...")
-        
+
         dialog = match.dialog_line.text
         video_path = match.video_path
-        
+
         try:
             # Step 1: Generate audio via TTS API
-            logger.info(f"  [1/4] Generating TTS audio...")
+            logger.info(f"  [1/3] Generating TTS audio...")
             audio_path = await client.generate_tts(
                 text=dialog,
                 entry_id=f"segment_{i}",
             )
             logger.info(f"  Audio generated: {audio_path}")
-            
-            # Step 2: Generate lip-synced video via Wav2Lip API
-            logger.info(f"  [2/4] Generating Wav2Lip video...")
-            wav2lip_output_dir = os.path.join(temp_dir, f"wav2lip_{i}")
-            lip_synced_video = await client.generate_wav2lip(
-                audio_path=audio_path,
-                video_path=video_path,
-                output_dir=wav2lip_output_dir,
-            )
-            logger.info(f"  Lip-synced video: {lip_synced_video}")
-            
-            # Step 3: Combine video and audio
-            logger.info(f"  [3/4] Combining video and audio...")
+
+            # Step 2: Combine matched video clip and audio
+            logger.info(f"  [2/3] Combining video and audio...")
             combined_path = os.path.join(temp_dir, f"combined_{i}.mp4")
-            combine_video_and_short_audio(lip_synced_video, audio_path, combined_path)
-            
-            # Step 4: Generate subtitles and add to video
-            logger.info(f"  [4/4] Adding subtitles...")
+            combine_video_and_short_audio(video_path, audio_path, combined_path)
+
+            # Step 3: Generate subtitles and add to video
+            logger.info(f"  [3/3] Adding subtitles...")
             srt_path = await client.transcribe_to_srt(audio_path)
             segment_path = os.path.join(temp_dir, f"segment_{i}.mp4")
             add_subtitle_from_srt(combined_path, srt_path, segment_path, fontsize=fontsize)
-            
+
             video_segments.append(segment_path)
             logger.info(f"  Segment {i+1} complete: {segment_path}")
-            
+
         except Exception as e:
             logger.error(f"  Error processing segment {i+1}: {e}")
             raise
@@ -189,7 +177,7 @@ async def run_video_generation(
     Run the video generation pipeline.
     
     1. Use ADK orchestrator to generate story and match videos
-    2. Use webservice API for TTS and Wav2Lip
+    2. Use webservice API for TTS
     3. Compose final video from segments
     
     Args:
@@ -317,7 +305,7 @@ def parse_args():
         "--character-id",
         type=str,
         default=os.environ.get("CHARACTER_ID", "fred"),
-        help="Character ID for TTS and Wav2Lip (default: fred)",
+        help="Character ID for TTS (default: fred)",
     )
     parser.add_argument(
         "--output-dir",

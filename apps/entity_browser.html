@@ -443,7 +443,7 @@
         <div class="list-toolbar">
             <input class="search-input" type="text" id="search" placeholder="Filter…" oninput="applyFilter()">
             <button class="refresh-btn" onclick="reload()">↻ Refresh</button>
-            <button class="btn-primary" id="create-btn" style="display:none" onclick="showCreateLocationForm()">+ New</button>
+            <button class="btn-primary" id="create-btn" style="display:none" onclick="showCreateForm()">+ New</button>
         </div>
         <div class="list-scroller" id="list-scroller">
             <div class="empty-state">
@@ -512,7 +512,8 @@ async function loadSection(s) {
     selectedId = null;
     setNav(s);
     document.getElementById('search').value = '';
-    document.getElementById('create-btn').style.display = s === 'locations' ? '' : 'none';
+    document.getElementById('create-btn').style.display =
+        (s === 'locations' || s === 'story-templates') ? '' : 'none';
     showDetailPlaceholder();
     listLoading();
 
@@ -1208,6 +1209,168 @@ async function deleteLocation(locationId) {
     } catch(e) {
         document.getElementById('detail-panel').innerHTML +=
             `<div class="error-msg" style="margin-top:0.75rem">⚠ Delete failed: ${esc(e.message)}</div>`;
+    }
+}
+
+// ── Create dispatcher ─────────────────────────────────────────────────────────
+function showCreateForm() {
+    if (section === 'locations')       showCreateLocationForm();
+    else if (section === 'story-templates') showCreateTemplateForm();
+}
+
+// ── Create story template ─────────────────────────────────────────────────────
+function showCreateTemplateForm() {
+    selectedId = null;
+    document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+
+    document.getElementById('detail-panel').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-name">New Story Template</div>
+    </div>
+
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+      <button id="tab-manual" class="btn-primary" onclick="switchTemplateTab('manual')">📝 Manual</button>
+      <button id="tab-ai" class="btn-primary" style="opacity:0.55;border-color:rgba(88,166,255,0.2)" onclick="switchTemplateTab('ai')">✨ AI Generate</button>
+    </div>
+
+    <div id="tpl-form-manual" class="detail-section">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input class="form-input" type="text" id="tpl-new-name" placeholder="e.g. Tech Startup Parody">
+        <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.25rem">ID derived automatically (lowercase, spaces → underscores)</div>
+      </div>
+      <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div>
+          <label class="form-label">Collection</label>
+          <input class="form-input" type="text" id="tpl-new-collection" value="random">
+        </div>
+        <div>
+          <label class="form-label">Target Lines</label>
+          <input class="form-input" type="number" id="tpl-new-lines" value="6" min="1" max="30">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Character IDs <span style="color:var(--text-secondary);font-weight:400;text-transform:none">(comma-separated)</span></label>
+        <input class="form-input" type="text" id="tpl-new-chars" placeholder="narrator, jesus">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prompt</label>
+        <textarea class="form-textarea" id="tpl-new-prompt" rows="14"
+          style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--accent-green)"
+          placeholder="Full prompt for story generation…"></textarea>
+      </div>
+      <button class="btn-primary" id="tpl-create-btn" onclick="createStoryTemplate()">+ Create template</button>
+      <div id="tpl-create-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
+    </div>
+
+    <div id="tpl-form-ai" class="detail-section" style="display:none">
+      <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem;line-height:1.6">
+        Describe the creative concept for the story template. The AI agent will generate
+        the name, prompt, and target line count automatically.<br>
+        Fixed values: collection&nbsp;<span style="font-family:'JetBrains Mono',monospace;color:var(--accent-orange)">random</span>,
+        character&nbsp;<span style="font-family:'JetBrains Mono',monospace;color:var(--accent-cyan)">narrator</span>.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Story Concept</label>
+        <textarea class="form-textarea" id="tpl-ai-concept" rows="5"
+          placeholder="e.g. A parody of C'est pas Sorcier where Fred launches a startup…"></textarea>
+      </div>
+      <button class="btn-primary" id="tpl-ai-btn" onclick="generateStoryTemplate()">✨ Generate with AI</button>
+      <div id="tpl-ai-msg" style="font-size:0.78rem;margin-top:0.5rem"></div>
+    </div>`;
+}
+
+function switchTemplateTab(tab) {
+    document.getElementById('tpl-form-manual').style.display = tab === 'manual' ? '' : 'none';
+    document.getElementById('tpl-form-ai').style.display     = tab === 'ai'     ? '' : 'none';
+    document.getElementById('tab-manual').style.opacity      = tab === 'manual' ? '1' : '0.55';
+    document.getElementById('tab-manual').style.borderColor  = tab === 'manual' ? '' : 'rgba(88,166,255,0.2)';
+    document.getElementById('tab-ai').style.opacity          = tab === 'ai'     ? '1' : '0.55';
+    document.getElementById('tab-ai').style.borderColor      = tab === 'ai'     ? '' : 'rgba(88,166,255,0.2)';
+}
+
+async function createStoryTemplate() {
+    const name       = document.getElementById('tpl-new-name').value.trim();
+    const collection = document.getElementById('tpl-new-collection').value.trim();
+    const lines      = document.getElementById('tpl-new-lines').value;
+    const charsRaw   = document.getElementById('tpl-new-chars').value;
+    const prompt     = document.getElementById('tpl-new-prompt').value.trim();
+    const btn        = document.getElementById('tpl-create-btn');
+    const msg        = document.getElementById('tpl-create-msg');
+
+    if (!name || !prompt) {
+        msg.style.color = 'var(--accent-orange)';
+        msg.textContent = 'Name and Prompt are required.';
+        return;
+    }
+
+    const characterIds = charsRaw.split(',').map(s => s.trim()).filter(Boolean);
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('prompt', prompt);
+    fd.append('collection', collection || 'random');
+    fd.append('target_lines', lines);
+    characterIds.forEach(id => fd.append('character_ids', id));
+
+    btn.disabled = true;
+    msg.style.color = 'var(--text-secondary)';
+    msg.textContent = 'Creating…';
+    try {
+        const r = await fetch(apiUrl() + '/api/v1/story-templates', { method: 'POST', body: fd });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        const tpl = await r.json();
+        msg.style.color = 'var(--accent-green)';
+        msg.textContent = `✓ Created: ${tpl.template_id}`;
+        allItems = await fetchSection('story-templates');
+        setCount('story-templates', allItems.length);
+        renderList(allItems);
+        selectItem(tpl.template_id);
+    } catch(e) {
+        msg.style.color = 'var(--accent-red)';
+        msg.textContent = '⚠ ' + e.message;
+        btn.disabled = false;
+    }
+}
+
+async function generateStoryTemplate() {
+    const concept = document.getElementById('tpl-ai-concept').value.trim();
+    const btn     = document.getElementById('tpl-ai-btn');
+    const msg     = document.getElementById('tpl-ai-msg');
+
+    if (!concept) {
+        msg.style.color = 'var(--accent-orange)';
+        msg.textContent = 'Story concept is required.';
+        return;
+    }
+
+    btn.disabled = true;
+    msg.style.color = 'var(--text-secondary)';
+    msg.textContent = 'Running AI agent… (30–60 s)';
+    try {
+        const r = await fetch(apiUrl() + '/api/v1/story-template-generation/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ story_concept: concept }),
+        });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        const data = await r.json();
+        const tpl  = data.template;
+        msg.style.color = 'var(--accent-green)';
+        msg.textContent = `✓ Generated & saved: ${tpl.template_id}`;
+        allItems = await fetchSection('story-templates');
+        setCount('story-templates', allItems.length);
+        renderList(allItems);
+        selectItem(tpl.template_id);
+    } catch(e) {
+        msg.style.color = 'var(--accent-red)';
+        msg.textContent = '⚠ ' + e.message;
+        btn.disabled = false;
     }
 }
 

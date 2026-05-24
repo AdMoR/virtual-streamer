@@ -146,7 +146,7 @@ class FileNamingStrategy:
         Generate a standardized filename.
 
         Args:
-            prefix: Base name (e.g., "tts", "wav2lip", "combined")
+            prefix: Base name (e.g., "tts", "combined")
             extension: File extension without dot (e.g., "wav", "mp4")
             suffix: Optional suffix to add
             include_timestamp: Override config.use_timestamps
@@ -191,13 +191,6 @@ class FileNamingStrategy:
     def tts_filename(self, character_id: str, entry_id: str) -> str:
         """Generate TTS audio filename"""
         return self.generate_filename("tts", "wav", f"{character_id}_{entry_id}")
-
-    def wav2lip_filename(
-        self, character_id: str, session_id: Optional[str] = None
-    ) -> str:
-        """Generate Wav2Lip video filename"""
-        suffix = character_id if session_id is None else f"{character_id}_{session_id}"
-        return self.generate_filename("wav2lip", "avi", suffix)
 
     def subtitle_filename(self, source: str, format: str = "srt") -> str:
         """Generate subtitle filename"""

@@ -8,7 +8,7 @@ A three-step sequential pipeline for story generation:
                                (ltx_prompt, location, characters, speaker/audio)
 
 The legacy StoryFormatterAgent (step 2 of the old 2-step pipeline) is kept for
-the Wav2Lip pipeline but is no longer part of StoryPipelineAgent.
+backward compatibility but is no longer part of StoryPipelineAgent.
 
 State flow:
     Input:  title (str) in session state
@@ -110,7 +110,7 @@ class DetailedSceneBuilderAgent(BaseLlmAgent):
 
 class StoryFormatterAgent(BaseLlmAgent):
     """
-    Legacy formatter kept for the Wav2Lip pipeline.
+    Legacy formatter kept for backward compatibility.
 
     Reads RAW_STORY_TEXT from state and extracts the structured StoryOutput.
     SplitStoryCallback stores STORY_OUTPUT and SENTENCES in state.

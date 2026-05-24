@@ -13,14 +13,12 @@ import time
 import hashlib
 import pickle
 
-from virtual_streamer.wav2lip.main_logic import preprocess, FaceDetectionGroup, Config
 from virtual_streamer.api.dependencies import get_path_resolver, get_storage_client
 
 # Router setup
 router = APIRouter(prefix="/face-detection", tags=["Face Detection"])
 
 # Global state
-_detector = None
 _device = None
 
 # Cache configuration
@@ -57,48 +55,11 @@ class FaceDetectionResponse(BaseModel):
     processing_time_seconds: float
 
 
-class PreprocessRequest(BaseModel):
-    """Request to preprocess faces for Wav2Lip caching."""
-    video_path: str = Field(..., description="Path to video file")
-    character_id: str = Field(..., description="Character identifier for cache key")
-
-
-class PreprocessResponse(BaseModel):
-    """Response with preprocessed face data info."""
-    character_id: str
-    video_path: str
-    cache_path: str
-    frame_count: int
-    status: str
-
-
 class FaceDetectionHealthResponse(BaseModel):
     """Health check response."""
     status: str
     device: str
-    model_loaded: bool
     cached_videos: int
-
-
-def _init_detector():
-    """Initialize face detector (lazy loading)."""
-    global _detector, _device
-    
-    if _detector is not None:
-        return
-    
-    import torch
-    from virtual_streamer.wav2lip.main_logic import do_load, Config
-    
-    _device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f'Initializing face detector on {_device}...')
-    
-    args = Config()
-    args.checkpoint_path = os.environ.get("CHECKPOINT_PATH", "./checkpoints/Wav2Lip.pth")
-    
-    # Load just the detector from wav2lip
-    _, _detector, _ = do_load(args.checkpoint_path, _device)
-    print('Face detector initialized.')
 
 
 def _get_cache_path(video_path: str) -> str:
@@ -145,11 +106,9 @@ async def _save_to_cache(video_path: str, data: dict) -> str:
 async def detect_faces(request: FaceDetectionRequest):
     """
     Detect faces in a video or image file.
-    
+
     Returns list of detected faces with bounding boxes.
     """
-    _init_detector()
-    
     # Resolve path
     path_resolver = get_path_resolver()
     source_path = path_resolver.resolve(request.source_path)
@@ -224,74 +183,6 @@ async def detect_faces(request: FaceDetectionRequest):
     )
 
 
-@router.post("/preprocess", response_model=PreprocessResponse)
-async def preprocess_for_wav2lip(request: PreprocessRequest):
-    """
-    Preprocess and cache face detection for Wav2Lip.
-    
-    This extracts faces from all frames and caches the results to S3/local storage,
-    so Wav2Lip doesn't need to re-detect faces each time.
-    
-    The cache is stored in a NoSQL-like format (pickled dict) on the storage backend.
-    """
-    _init_detector()
-    
-    # Resolve path
-    path_resolver = get_path_resolver()
-    video_path = path_resolver.resolve(request.video_path)
-    
-    if not os.path.exists(video_path):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Video file not found: {request.video_path}"
-        )
-    
-    # Check if already cached
-    cached_data = await _load_from_cache(video_path)
-    if cached_data is not None:
-        return PreprocessResponse(
-            character_id=request.character_id,
-            video_path=request.video_path,
-            cache_path=_get_cache_path(video_path),
-            frame_count=len(cached_data.get('full_frames', [])),
-            status="already_cached"
-        )
-    
-    try:
-
-        # Preprocess using wav2lip logic
-        args = Config()
-        temp_groups = {}
-        preprocess(args, video_path, request.character_id, _detector, temp_groups)
-        
-        face_det_group = temp_groups[request.character_id]
-        
-        # Prepare data for caching
-        cache_data = {
-            'full_frames': face_det_group.full_frames,
-            'face_det_results': face_det_group.face_det_results,
-            'character_id': request.character_id,
-            'video_path': request.video_path
-        }
-        
-        # Save to cache
-        cache_path = await _save_to_cache(video_path, cache_data)
-        
-        return PreprocessResponse(
-            character_id=request.character_id,
-            video_path=request.video_path,
-            cache_path=cache_path,
-            frame_count=len(face_det_group.full_frames),
-            status="cached"
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Preprocessing failed: {str(e)}"
-        )
-
-
 @router.delete("/cache/{video_hash}")
 async def clear_cache(video_hash: str):
     """Clear cached face detection for a video."""
@@ -318,7 +209,6 @@ async def face_detection_health():
     return FaceDetectionHealthResponse(
         status="healthy",
         device=_device if _device else ("cuda" if torch.cuda.is_available() else "cpu"),
-        model_loaded=_detector is not None,
         cached_videos=cached_count
     )
 

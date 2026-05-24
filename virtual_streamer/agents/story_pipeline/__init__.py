@@ -6,7 +6,7 @@ Three-step sequential pipeline:
 2. RecurrentLocationBuilderAgent  — extracts recurring locations with FluxPrompts
 3. DetailedSceneBuilderAgent      — produces one DetailedScene per scene
 
-StoryFormatterAgent is kept for the legacy Wav2Lip pipeline.
+StoryFormatterAgent is kept for backward compatibility.
 """
 
 from virtual_streamer.agents.story_pipeline.agent import (

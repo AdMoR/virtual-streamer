@@ -1,5 +1,5 @@
 services:
-  # Unified Virtual Streamer API (combines all services including Wav2Lip)
+  # Unified Virtual Streamer API
   # Now using UV for fast dependency management
   virtual_streamer_api:
     ports:
@@ -46,8 +46,6 @@ services:
       - MYSQL_DATABASE=virtual_streamer
       # video embedding search
       - VIDEO_SEARCH_SERVER_URL=http://video-embedding-server:8004
-      # Model checkpoint
-      - CHECKPOINT_PATH=/app/checkpoints/Wav2Lip.pth
       # API configuration
       - API_HOST=0.0.0.0
       - API_PORT=8000
@@ -252,25 +250,25 @@ volumes:
     driver: local
     driver_opts:
       type: none
-      device: /media/amor/data1/virtual_streamer_folder/assets/ATARI
+      device: /media/amor/data/virtual_streamer_folder/ATARI
       o: bind
   videos:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data1/virtual_streamer_folder/videos
+      device: /media/amor/data/virtual_streamer_folder/videos
       o: bind
   traces:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data1/virtual_streamer_folder/prompts
+      device: /media/amor/data/virtual_streamer_folder/prompts
       o: bind
   minio_data:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data1/virtual_streamer_folder/storage
+      device: /media/amor/data/virtual_streamer_folder/storage
       o: bind
   mysql_data:
   qdrant_data:
@@ -279,13 +277,13 @@ volumes:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data1/virtual_streamer_folder/tts_references
+      device: /media/amor/data/virtual_streamer_folder/tts_references
       o: bind
   tts_checkpoints:
     driver: local # Define the driver and options under the volume name
     driver_opts:
       type: none
-      device: /media/amor/data1/virtual_streamer_folder/tts_checkpoints
+      device: /media/amor/data/virtual_streamer_folder/tts_checkpoints
       o: bind
 
 

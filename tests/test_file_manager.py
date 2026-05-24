@@ -214,15 +214,6 @@ class TestFileNamingStrategy:
         assert filename.startswith("tts_char1_entry123")
         assert filename.endswith(".wav")
 
-    def test_wav2lip_filename(self, test_config):
-        """Test Wav2Lip filename generation"""
-        naming = FileNamingStrategy(test_config)
-
-        filename = naming.wav2lip_filename("char1", "session456")
-
-        assert filename.startswith("wav2lip_char1_session456")
-        assert filename.endswith(".avi")
-
     def test_subtitle_filename(self, test_config):
         """Test subtitle filename generation"""
         naming = FileNamingStrategy(test_config)
@@ -266,9 +257,9 @@ class TestFileNamingStrategy:
         """Test temporary directory name generation"""
         naming = FileNamingStrategy(test_config)
 
-        dirname = naming.temp_dir_name("wav2lip")
+        dirname = naming.temp_dir_name("segment")
 
-        assert dirname.startswith("wav2lip_")
+        assert dirname.startswith("segment_")
         parts = dirname.split("_")
         assert len(parts) == 2
         assert len(parts[1]) == 8  # UUID

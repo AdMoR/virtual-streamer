@@ -2,7 +2,7 @@
 Webservice Client
 
 Async HTTP client for calling Virtual Streamer API endpoints.
-Consolidates TTS, Wav2Lip, and STT API calls in one reusable client.
+Consolidates TTS and STT API calls in one reusable client.
 """
 
 import os
@@ -28,12 +28,11 @@ class WebserviceClient:
     """
     Async HTTP client for calling the Virtual Streamer webservice API.
 
-    Handles TTS, Wav2Lip, and STT API calls with proper error handling.
-    
+    Handles TTS and STT API calls with proper error handling.
+
     Example:
         async with WebserviceClient(config) as client:
             audio_path = await client.generate_tts("Hello!", "fred")
-            video_path = await client.generate_wav2lip(audio_path, source_video, "fred")
             srt_path = await client.transcribe_to_srt(audio_path)
     """
 
@@ -114,54 +113,6 @@ class WebserviceClient:
         response.raise_for_status()
         data = response.json()
         return data["audio_path"]
-
-    async def generate_wav2lip(
-        self,
-        audio_path: str,
-        video_path: str,
-        character_id: Optional[str] = None,
-        output_dir: Optional[str] = None,
-    ) -> str:
-        """
-        Call Wav2Lip API to generate lip-synced video.
-
-        Args:
-            audio_path: Path to audio file
-            video_path: Path to source video
-            character_id: Character ID for face detection (falls back to config default)
-            output_dir: Optional output directory
-
-        Returns:
-            Path to generated lip-synced video
-            
-        Raises:
-            httpx.HTTPStatusError: If API call fails
-        """
-        cid = character_id or self.config.character_id
-        if not cid:
-            raise ValueError("character_id must be provided or set in config")
-            
-        client = self._get_client()
-        response = await client.post(
-            "/api/v1/wav2lip/generate",
-            json={
-                "audio_path": audio_path,
-                "video": {
-                    "storage_path": video_path,
-                    "collection_ids": [],
-                },
-                "options": {
-                    "subtitles_enabled": False,
-                    "subtitle_style": None,
-                },
-                "character_id": cid,
-                "output_dir": output_dir,
-            },
-            timeout=30 * 60,  # Wav2Lip can be slow
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["raw_video_path"]
 
     async def transcribe_to_srt(self, audio_path: str) -> str:
         """

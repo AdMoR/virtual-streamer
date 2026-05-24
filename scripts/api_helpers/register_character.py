@@ -5,12 +5,14 @@ Character Registration Script with Auto-Transcription.
 Registers a new character with voice samples, automatically transcribing
 audio files using Whisper large-v3, and uploads via the API.
 
+The video reference is optional. Transcripts are always auto-generated with
+Whisper — no manual transcripts needed.
+
 Usage:
     python scripts/register_character.py \
         --name "fred" \
         --description "Host of C'est pas Sorcier" \
-        --audio-dir ./samples/fred_voice/ \
-        --video ./videos/fred_talking.mp4
+        --audio-dir ./samples/fred_voice/
 
     python scripts/register_character.py \
         --name "jamy" \
@@ -73,7 +75,7 @@ def register_via_api(
     description: Optional[str],
     audio_paths: list[Path],
     transcripts: list[str],
-    video_path: Path,
+    video_path: Optional[Path],
     identity_image_paths: Optional[list[Path]] = None,
     video_search_tag: Optional[str] = None,
 ) -> dict:
@@ -117,10 +119,11 @@ def register_via_api(
     for transcript in transcripts:
         files.append(("transcripts", (None, transcript)))
     
-    # Add video file
-    files.append(
-        ("video_file", (video_path.name, open(video_path, "rb"), "video/mp4"))
-    )
+    # Add video file (optional)
+    if video_path is not None:
+        files.append(
+            ("video_file", (video_path.name, open(video_path, "rb"), "video/mp4"))
+        )
     
     # Add identity images
     if identity_image_paths:
@@ -137,7 +140,8 @@ def register_via_api(
     print(f"\nRegistering character '{name}' via API...")
     print(f"  URL: {url}")
     print(f"  Voice samples: {len(audio_paths)}")
-    print(f"  Video: {video_path.name}")
+    if video_path is not None:
+        print(f"  Video: {video_path.name}")
     if identity_image_paths:
         print(f"  Identity images: {len(identity_image_paths)}")
     if video_search_tag:
@@ -206,8 +210,8 @@ Examples:
     # Video
     parser.add_argument(
         "--video",
-        required=True,
-        help="Path to representative video file for Wav2Lip",
+        default=None,
+        help="Path to representative video file for the character (optional)",
     )
     
     # Identity images
@@ -240,11 +244,13 @@ Examples:
     
     args = parser.parse_args()
     
-    # Validate video file exists
-    video_path = Path(args.video)
-    if not video_path.exists():
-        print(f"Error: Video file not found: {args.video}")
-        sys.exit(1)
+    # Validate video file exists (if provided)
+    video_path = None
+    if args.video is not None:
+        video_path = Path(args.video)
+        if not video_path.exists():
+            print(f"Error: Video file not found: {args.video}")
+            sys.exit(1)
     
     # Get audio files
     try:

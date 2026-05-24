@@ -5,12 +5,16 @@ Handles CRUD operations for character entities with voice samples and video clip
 Uses MySQL for metadata storage and MinIO for binary files (audio/video).
 """
 
+import os
+import tempfile
+
 from fastapi import APIRouter, HTTPException, status, Form, File, UploadFile
 from typing import List, Optional
 
 from virtual_streamer.video_server.models import Character, VoiceSample
 from virtual_streamer.utils.minio_client import get_storage_client
 from virtual_streamer.utils.entity_repository import get_entity_repository
+from virtual_streamer.utils.transcription import transcribe_audio
 
 # Router setup
 router = APIRouter(prefix="/characters", tags=["Characters"])
@@ -27,27 +31,55 @@ async def create_character(
     description: str = Form(None),
     video_search_tag: str = Form(None),
     voice_files: List[UploadFile] = File(...),
-    transcripts: List[str] = Form(...),
-    video_file: UploadFile = File(...),
+    transcripts: Optional[List[str]] = Form(
+        None,
+        description="Transcripts for voice files. Omit to auto-transcribe with Whisper.",
+    ),
+    video_file: Optional[UploadFile] = File(
+        None, description="Representative video clip (optional)"
+    ),
     identity_files: List[UploadFile] = File(default=[]),
 ):
-    """Creates a new Character definition with voice samples, video, and identity images."""
+    """Creates a new Character definition with voice samples, optional video, and identity images.
+
+    Transcripts are auto-generated with Whisper when not provided.
+    """
     storage = get_storage_client()
     repo = get_entity_repository()
 
     character_id = name
 
+    # Validate transcript count when provided manually
+    if transcripts is not None and len(transcripts) != len(voice_files):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of transcripts ({len(transcripts)}) must match number of voice files ({len(voice_files)})",
+        )
+
     # Upload voice sample files to MinIO and collect metadata
     voice_samples_data = []
-    for vf, tr in zip(voice_files, transcripts):
+    for i, vf in enumerate(voice_files):
         file_content = await vf.read()
         storage_key = f"{PREFIX_AUDIO}{vf.filename}"
         await storage.put_object(storage_key, file_content, content_type="audio/wav")
+
+        # Use provided transcript or auto-transcribe with Whisper
+        if transcripts is not None:
+            tr = transcripts[i]
+        else:
+            with tempfile.NamedTemporaryFile(suffix=os.path.splitext(vf.filename)[1] or ".wav", delete=False) as tmp:
+                tmp.write(file_content)
+                tmp_path = tmp.name
+            try:
+                tr = transcribe_audio(tmp_path)
+            finally:
+                os.unlink(tmp_path)
+
         voice_samples_data.append({"storage_path": storage_key, "transcript": tr})
 
-    # Upload video file to MinIO
+    # Upload video file to MinIO (optional)
     video_path = None
-    if video_file:
+    if video_file is not None:
         file_content = await video_file.read()
         storage_key = f"{PREFIX_CLIPS}{video_file.filename}"
         await storage.put_object(storage_key, file_content, content_type="video/mp4")
@@ -204,19 +236,33 @@ async def update_character(
 
     # Handle voice files update
     if voice_files is not None:
-        if transcripts is None or len(voice_files) != len(transcripts):
+        # Validate transcript count only when provided manually
+        if transcripts is not None and len(transcripts) != len(voice_files):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Number of voice files must match number of transcripts",
+                detail=f"Number of transcripts ({len(transcripts)}) must match number of voice files ({len(voice_files)})",
             )
-        
+
         voice_samples_data = []
-        for vf, tr in zip(voice_files, transcripts):
+        for i, vf in enumerate(voice_files):
             file_content = await vf.read()
             storage_key = f"{PREFIX_AUDIO}{character_id}/{vf.filename}"
             await storage.put_object(storage_key, file_content, content_type="audio/wav")
+
+            # Use provided transcript or auto-transcribe with Whisper
+            if transcripts is not None:
+                tr = transcripts[i]
+            else:
+                with tempfile.NamedTemporaryFile(suffix=os.path.splitext(vf.filename)[1] or ".wav", delete=False) as tmp:
+                    tmp.write(file_content)
+                    tmp_path = tmp.name
+                try:
+                    tr = transcribe_audio(tmp_path)
+                finally:
+                    os.unlink(tmp_path)
+
             voice_samples_data.append({"storage_path": storage_key, "transcript": tr})
-        
+
         update_kwargs["voice_samples"] = voice_samples_data
 
     # Handle video file update

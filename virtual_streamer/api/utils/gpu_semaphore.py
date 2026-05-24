@@ -2,8 +2,8 @@
 GPU Semaphore module for controlling concurrent GPU operations.
 
 This module provides a global semaphore to prevent multiple GPU-intensive
-operations (like Wav2Lip inference) from running simultaneously, which
-could cause GPU memory overflow or degraded performance.
+operations from running simultaneously, which could cause GPU memory
+overflow or degraded performance.
 
 Usage:
     from virtual_streamer.api.utils.gpu_semaphore import run_on_gpu
@@ -48,7 +48,7 @@ async def run_on_gpu(func: Callable[..., T], *args, **kwargs) -> T:
     2. Runs the blocking function in a thread pool to avoid blocking the event loop
     
     Args:
-        func: The blocking function to run (e.g., wav2lip_exec)
+        func: The blocking function to run
         *args: Positional arguments to pass to the function
         **kwargs: Keyword arguments to pass to the function
         

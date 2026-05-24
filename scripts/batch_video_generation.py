@@ -113,7 +113,7 @@ def submit_job(
 
     try:
         response = requests.post(
-            f"{api_url}/video-generation/submit",
+            f"{api_url}/video-generation/generate",
             json=request_data,
             timeout=30,
         )
@@ -129,7 +129,7 @@ def get_job_status(api_url: str, job_id: str) -> Optional[dict]:
     """Get the status of a job."""
     try:
         response = requests.get(
-            f"{api_url}/video-generation/jobs/{job_id}",
+            f"{api_url}/jobs/{job_id}",
             timeout=30,
         )
         response.raise_for_status()

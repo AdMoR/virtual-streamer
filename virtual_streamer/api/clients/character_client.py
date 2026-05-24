@@ -83,7 +83,7 @@ class CharacterClient:
             character_id=data["character_id"],
             name=data["name"],
             description=data.get("description"),
-            video_clip_path=data.get("video_clip_path", ""),
+            video_clip_path=data.get("video_clip_path"),
             voice_samples=voice_samples,
             video_search_tag=data.get("video_search_tag"),
             identity_images=data.get("identity_images", []),

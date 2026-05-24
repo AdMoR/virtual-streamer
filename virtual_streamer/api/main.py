@@ -3,7 +3,7 @@ Virtual Streamer Unified API Server
 
 This is the main FastAPI application that combines all service layers:
 - Low-level: Entity management (characters, clips)
-- Medium-level: Core services (TTS, STT, Wav2lip)
+- Medium-level: Core services (TTS, STT)
 - High-level: Application workflows (video generation)
 - ADK Agents: Google ADK agents mounted at /adk
 
@@ -31,7 +31,6 @@ from virtual_streamer.api.low_level.db_browser import router as db_browser_route
 from virtual_streamer.api.low_level.storage import router as storage_router
 from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
-from virtual_streamer.api.medium_level.wav2lip import router as wav2lip_router
 from virtual_streamer.api.high_level.video_generation import (
     router as video_generation_router,
 )
@@ -104,8 +103,7 @@ app = FastAPI(
     **Medium-level (Services)**:
     - TTS: Text-to-speech generation
     - STT: Speech-to-text transcription
-    - Wav2Lip: Lip-sync video generation (single model instance)
-    
+
     **High-level (Applications)**:
     - Video Generation: Complete story-to-video workflow
     
@@ -152,7 +150,6 @@ app.include_router(jobs_router, prefix="/api/v1")
 # Medium-level: Core services
 app.include_router(tts_router, prefix="/api/v1")
 app.include_router(stt_router, prefix="/api/v1")
-app.include_router(wav2lip_router, prefix="/api/v1")
 
 # High-level: Applications
 app.include_router(video_generation_router, prefix="/api/v1")
@@ -193,7 +190,7 @@ async def root():
         "docs": "/docs",
         "layers": {
             "low_level": ["characters", "clips", "story-templates", "articles", "streams", "programmations", "playlist"],
-            "medium_level": ["tts", "stt", "wav2lip"],
+            "medium_level": ["tts", "stt"],
             "high_level": ["video_generation"],
             "adk_agents": "/adk",
         },

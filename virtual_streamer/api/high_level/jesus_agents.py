@@ -2,7 +2,7 @@
 High-level API: Jesus Agent Video Generation
 
 Provides endpoints for character agent video responses.
-Pipeline: Agent → TTS → Wav2Lip → STT → Subtitles → MinIO
+Pipeline: Agent → TTS → STT → Subtitles → MinIO
 """
 
 from fastapi import APIRouter, BackgroundTasks
@@ -10,9 +10,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, Callable, Optional
 import uuid
 import os
-import shutil
 import logging
-import tempfile
 from datetime import datetime
 
 # ADK imports
@@ -21,13 +19,11 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 # Reused imports
-from virtual_streamer.video_server.models import DialogueEntry, VideoClipBase, VideoOptions
+from virtual_streamer.video_server.models import DialogueEntry
 from virtual_streamer.utils.character_loader import load_character
 from virtual_streamer.utils.job_store import get_global_job_store
 from virtual_streamer.utils.minio_client import get_storage_client
-from virtual_streamer.utils.utils import combine_video_and_audio, add_subtitle_from_srt
 from virtual_streamer.api.medium_level.tts import generate_tts
-from virtual_streamer.api.medium_level.wav2lip import generate_wav2lip, Wav2LipRequest
 from virtual_streamer.agents.factory import get_agent
 
 logger = logging.getLogger(__name__)
@@ -138,93 +134,6 @@ async def run_adk_agent(agent_name: str, user_message: str) -> str:
     return response_text
 
 
-async def text_to_video_with_subtitles(
-    text: str,
-    character_id: str,
-    job_id: str,
-    agent_name: str,
-) -> Dict[str, Any]:
-    """
-    Convert text to video with TTS, Wav2Lip, and subtitles.
-    
-    Pipeline (reusing existing services like script_to_video):
-    1. TTS: Text → Audio
-    2. Wav2Lip: Audio + Character video → Lip-synced video
-    3. Combine: Video + Audio → Combined video
-    4. STT: Audio → SRT subtitles
-    5. Add subtitles to video
-    6. Upload to MinIO
-    """
-    temp_dir = os.environ.get("TEMP_DIR", "./temp")
-    work_dir = os.path.join(temp_dir, f"jesus_agent_{job_id}")
-    os.makedirs(work_dir, exist_ok=True)
-    
-    final_path = None
-    
-    try:
-        # Load character (using new utility)
-        character = await load_character(character_id)
-        
-        # Step 1: TTS (reused from script_to_video pattern)
-        logger.info(f"[Job {job_id}] [1/5] Generating TTS audio...")
-        tts_response = await generate_tts(
-            DialogueEntry(
-                entry_id=str(uuid.uuid4()),
-                character_id=character.character_id,
-                text=text,
-                timestamp=0,
-            )
-        )
-        audio_path = tts_response.audio_path
-        
-        # Step 2: Wav2Lip (reused)
-        logger.info(f"[Job {job_id}] [2/5] Generating Wav2Lip video...")
-        wav2lip_response = await generate_wav2lip(Wav2LipRequest(
-            audio_path=os.path.abspath(audio_path),
-            video=VideoClipBase(
-                storage_path="minio://virtual-streamer/" + character.video_clip_path,
-                collection_ids=[],
-            ),
-            character_id=character.character_id,
-            output_dir=work_dir,
-            options=VideoOptions(subtitles_enabled=False, subtitle_style=None),
-        ))
-        raw_video_path = wav2lip_response.raw_video_path
-        
-        # Step 3: Combine video + audio (reused)
-        logger.info(f"[Job {job_id}] [3/5] Combining video and audio...")
-        combined_path = os.path.join(work_dir, "combined.mp4")
-        combine_video_and_audio(raw_video_path, audio_path, combined_path)
-        
-        # Step 4: Generate subtitles via STT (local call)
-        logger.info(f"[Job {job_id}] [4/5] Generating subtitles...")
-        srt_path = await _transcribe_audio_to_srt(audio_path, work_dir)
-        
-        # Step 5: Add subtitles to video (reused)
-        logger.info(f"[Job {job_id}] [5/5] Adding subtitles...")
-        final_path = os.path.join(work_dir, "final.mp4")
-        add_subtitle_from_srt(combined_path, srt_path, final_path, fontsize=14)
-        
-        # Step 6: Upload to MinIO (reused)
-        logger.info(f"[Job {job_id}] Uploading to MinIO...")
-        storage = get_storage_client()
-        minio_video_key = f"generated_videos/{agent_name}/{job_id}.mp4"
-        await storage.upload_file(final_path, minio_video_key)
-        video_url = storage.get_url(minio_video_key)
-        
-        return {
-            "video_path": final_path,
-            "minio_video_key": minio_video_key,
-            "video_url": video_url,
-            "agent_response": text,
-        }
-        
-    finally:
-        # Cleanup work directory (but not the final uploaded video)
-        if os.path.exists(work_dir):
-            shutil.rmtree(work_dir, ignore_errors=True)
-
-
 # =============================================================================
 # Factored Background Task
 # =============================================================================
@@ -237,40 +146,34 @@ async def _run_agent_video_job(
     extra_result: Optional[Dict[str, Any]] = None,
 ):
     """
-    Common background task for agent video generation.
-    
+    Common background task for agent text generation (video generation removed).
+
     Args:
         job_id: Job identifier
         agent_name: Name of agent to run
-        character_id: Character for TTS/Wav2Lip
+        character_id: Character identifier (kept for API compatibility)
         user_message: The message to send to the agent
         extra_result: Additional fields to include in result
     """
     job_store = await get_global_job_store()
     try:
         await job_store.update_job(job_id, status="running")
-        
+
         # Run agent
         logger.info(f"[Job {job_id}] Running agent '{agent_name}' with message: {user_message[:50]}...")
         agent_text = await run_adk_agent(agent_name, user_message)
         logger.info(f"[Job {job_id}] Agent response: {agent_text[:100]}...")
-        
-        # Generate video with subtitles
-        result = await text_to_video_with_subtitles(
-            text=agent_text,
-            character_id=character_id,
-            job_id=job_id,
-            agent_name=agent_name,
-        )
-        
-        # Add timestamp and any extra fields
-        result["timestamp"] = datetime.now().isoformat()
+
+        result: Dict[str, Any] = {
+            "agent_response": agent_text,
+            "timestamp": datetime.now().isoformat(),
+        }
         if extra_result:
             result.update(extra_result)
-        
+
         await job_store.update_job(job_id, status="completed", result=result)
         logger.info(f"[Job {job_id}] Completed successfully")
-        
+
     except Exception as e:
         logger.error(f"[Job {job_id}] Failed: {e}", exc_info=True)
         await job_store.update_job(job_id, status="failed", error=str(e))
@@ -293,7 +196,7 @@ async def _run_agent_video_job_with_broadcast(
     Args:
         job_id: Job identifier
         agent_name: Name of agent to run
-        character_id: Character for TTS/Wav2Lip
+        character_id: Character identifier (kept for API compatibility)
         user_message: The message to send to the agent
         stream_id: Stream to add the video to
         extra_result: Additional fields to include in result
@@ -358,12 +261,11 @@ async def submit_greeting(
     background_tasks: BackgroundTasks,
 ):
     """
-    Submit a greeting video generation job.
-    
-    The agent generates a personalized greeting for the user,
-    then TTS + Wav2Lip + subtitles creates a video.
-    
-    If stream_id is provided, the video will be added to the broadcast
+    Submit a greeting agent job.
+
+    The agent generates a personalized greeting for the user.
+
+    If stream_id is provided, the result will be added to the broadcast
     playlist with play_once=True (no replay).
     """
     job_store = await get_global_job_store()
@@ -409,12 +311,11 @@ async def submit_answering(
     background_tasks: BackgroundTasks,
 ):
     """
-    Submit a Q&A video generation job.
-    
-    The agent generates an answer to the question,
-    then TTS + Wav2Lip + subtitles creates a video.
-    
-    If stream_id is provided, the video will be added to the broadcast
+    Submit a Q&A agent job.
+
+    The agent generates an answer to the question.
+
+    If stream_id is provided, the result will be added to the broadcast
     playlist with play_once=True (no replay).
     """
     job_store = await get_global_job_store()

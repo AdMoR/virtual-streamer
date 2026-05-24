@@ -3,8 +3,8 @@
 Rebuild Video from Blueprint Dump
 
 This script downloads debug artifacts from MinIO and recombines them into a final video
-without regenerating any content. It uses the existing TTS audio, wav2lip videos, and
-subtitles stored during a previous generation run.
+without regenerating any content. It uses the existing TTS audio and subtitles stored
+during a previous generation run.
 
 Usage:
     python scripts/rebuild_from_blueprint.py --debug-path debug/video-generation/template_id/job_id
@@ -15,9 +15,6 @@ The script expects the following structure in MinIO:
     ├── blueprint.json
     ├── tts/
     │   ├── segment_0.wav
-    │   └── ...
-    ├── wav2lip/
-    │   ├── segment_0.mp4
     │   └── ...
     └── subtitles/
         ├── segment_0.srt
@@ -64,16 +61,14 @@ async def download_artifacts(
     
     # Create subdirectories
     tts_dir = os.path.join(temp_dir, "tts")
-    wav2lip_dir = os.path.join(temp_dir, "wav2lip")
     subtitles_dir = os.path.join(temp_dir, "subtitles")
-    
-    for d in [tts_dir, wav2lip_dir, subtitles_dir]:
+
+    for d in [tts_dir, subtitles_dir]:
         os.makedirs(d, exist_ok=True)
-    
+
     artifacts = {
         "blueprint": None,
         "tts": {},
-        "wav2lip": {},
         "subtitles": {},
     }
     
@@ -106,17 +101,7 @@ async def download_artifacts(
             artifacts["tts"][i] = tts_local
         except Exception as e:
             print(f"  Warning: Could not download TTS segment {i}: {e}")
-        
-        # Wav2lip video
-        wav2lip_key = f"{debug_path}/wav2lip/segment_{i}.mp4"
-        wav2lip_local = os.path.join(wav2lip_dir, f"segment_{i}.mp4")
-        try:
-            print(f"  Downloading Wav2lip segment {i}...")
-            await client.download_file(wav2lip_key, wav2lip_local)
-            artifacts["wav2lip"][i] = wav2lip_local
-        except Exception as e:
-            print(f"  Warning: Could not download Wav2lip segment {i}: {e}")
-        
+
         # Subtitles
         srt_key = f"{debug_path}/subtitles/segment_{i}.srt"
         srt_local = os.path.join(subtitles_dir, f"segment_{i}.srt")
@@ -155,35 +140,31 @@ def rebuild_video(
     combined_dir = os.path.join(temp_dir, "combined_rebuild")
     os.makedirs(combined_dir, exist_ok=True)
     
-    # Get segment indices (sorted)
-    segment_indices = sorted(artifacts["wav2lip"].keys())
-    
+    # Get segment indices (sorted from TTS artifacts)
+    segment_indices = sorted(artifacts["tts"].keys())
+
     if not segment_indices:
-        raise RuntimeError("No wav2lip segments found in artifacts")
-    
+        raise RuntimeError("No TTS segments found in artifacts")
+
     print(f"\nRebuilding {len(segment_indices)} segments...")
-    
+
     video_segments = []
-    
+
     for i in segment_indices:
         print(f"\n  Processing segment {i}...")
-        
-        wav2lip_path = artifacts["wav2lip"].get(i)
+
         tts_path = artifacts["tts"].get(i)
         srt_path = artifacts["subtitles"].get(i)
-        
-        if not wav2lip_path or not os.path.exists(wav2lip_path):
-            print(f"    Skipping segment {i}: wav2lip video not found")
-            continue
-            
+
         if not tts_path or not os.path.exists(tts_path):
             print(f"    Skipping segment {i}: TTS audio not found")
             continue
-        
-        # Step 1: Combine video and audio
-        combined_path = os.path.join(combined_dir, f"combined_{i}.mp4")
-        print(f"    Combining video + audio -> {combined_path}")
-        combine_video_and_short_audio(wav2lip_path, tts_path, combined_path)
+
+        # NOTE: Without lip-sync video, we cannot combine video + audio here.
+        # The blueprint must include video clip paths for a full rebuild.
+        # For now, copy TTS audio path as a placeholder so subtitles can be applied.
+        combined_path = tts_path  # placeholder — no video to combine with
+        print(f"    (No video clip available for segment {i}, using audio only)")
         
         # Step 2: Add subtitles if available
         if srt_path and os.path.exists(srt_path):
@@ -296,7 +277,6 @@ Examples:
     
     print(f"\nDownloaded artifacts:")
     print(f"  TTS segments: {len(artifacts['tts'])}")
-    print(f"  Wav2lip segments: {len(artifacts['wav2lip'])}")
     print(f"  Subtitle segments: {len(artifacts['subtitles'])}")
     
     # Rebuild video

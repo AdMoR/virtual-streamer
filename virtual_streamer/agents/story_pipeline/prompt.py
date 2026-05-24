@@ -1,7 +1,7 @@
 """
 Story Pipeline Prompts.
 
-StoryFormatterInstructionProvider       — kept for the legacy Wav2Lip pipeline
+StoryFormatterInstructionProvider       — kept for backward compatibility (legacy)
 RecurrentLocationBuilderInstructionProvider — step 2 of the new 3-step LTX pipeline
 DetailedSceneBuilderInstructionProvider     — step 3 of the new 3-step LTX pipeline
 """
@@ -17,7 +17,7 @@ from virtual_streamer.agents.common.state_keys import RAW_STORY_TEXT, RECURRENT_
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Legacy formatter prompt (kept for Wav2Lip pipeline / StoryFormatterAgent)
+# Legacy formatter prompt (kept for StoryFormatterAgent backward compatibility)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 FORMATTER_PROMPT = """You are a structured data extractor.
@@ -61,7 +61,7 @@ Raw story:
 
 class StoryFormatterInstructionProvider(InstructionProvider):
     """
-    Dynamic instruction provider for story_formatter (legacy Wav2Lip pipeline).
+    Dynamic instruction provider for story_formatter (legacy pipeline).
 
     Reads RAW_STORY_TEXT from state (set by story_writer) and injects it
     into the formatting prompt.
