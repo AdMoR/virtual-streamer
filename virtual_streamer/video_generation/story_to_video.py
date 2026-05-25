@@ -48,6 +48,7 @@ from virtual_streamer.video_generation.ltx_client import (
 from virtual_streamer.video_generation.ltx_prompt_builder import (
     build_ltx_prompt,
     build_negative_prompt,
+    build_talking_head_prompt,
 )
 from virtual_streamer.video_generation.scene_input import (
     SceneInput,
@@ -71,6 +72,31 @@ LOCATION_IMAGE_QUALITY_KEYWORDS = (
     "cinematic composition, photorealistic, high quality, detailed environment, "
     "dramatic lighting, sharp focus, 8k"
 )
+
+# ---------------------------------------------------------------------------
+# Talking-head (A1O) constants
+# ---------------------------------------------------------------------------
+
+#: ID-LoRA filename on the WanGP server used for audio-conditioned talking-head generation.
+TALKING_HEAD_LORA = "id-lora-celebvhq-ltx2.3.safetensors"
+TALKING_HEAD_LORA_MULTIPLIER = "1.0"
+
+#: Distilled-model settings shared by all talking-head segments.
+TALKING_HEAD_PARAMS: dict = {
+    "model_type":          "ltx2_22B_distilled_1_1",
+    "num_inference_steps": 8,
+    "guidance_scale":      1.0,
+    "flow_shift":          5.0,
+    "guidance_phases":     2,
+    "sample_solver":       "distilled_8_steps",
+    "audio_scale":         1.0,
+    "audio_guidance_scale": 5.0,
+}
+
+#: Approximate spoken words per second (French/general conversational rate).
+_WORDS_PER_SECOND: float = 2.2
+_MIN_SPEECH_SECONDS: float = 5.0
+_MAX_SPEECH_SECONDS: float = 15.0
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +287,22 @@ def _frames_from_duration(duration_seconds: float, fps: int) -> int:
     return 8 * n + 1
 
 
+def _video_length_from_spoken_line(spoken_line: Optional[str], fps: int) -> int:
+    """
+    Estimate the required video_length (8n+1 frames) from the word count of
+    *spoken_line*.
+
+    Uses a conversational speech rate of ~2.2 words/second plus a 1.5-second
+    margin for lead-in/lead-out, clamped to [5, 15] seconds.
+    """
+    words = len(spoken_line.split()) if spoken_line else 0
+    duration = max(
+        _MIN_SPEECH_SECONDS,
+        min(_MAX_SPEECH_SECONDS, words / _WORDS_PER_SECOND + 1.5),
+    )
+    return _frames_from_duration(duration, fps)
+
+
 def _file_size(path: str) -> int:
     try:
         return os.path.getsize(path)
@@ -427,56 +469,95 @@ async def generate_segment_from_input(
     image_path: Optional[str] = None,
 ) -> SegmentResult:
     """
-    Generate one video segment from a stable SceneInput.
+    Generate one video segment from a SceneInput.
 
-    Uses scene_input.ltx_prompt directly — no prompt-building step.
-    Audio and image conditioning follow the same logic as generate_segment.
+    Two modes are selected automatically:
+
+    **Talking-head (A1O)** — when *audio_path* is provided:
+      - ``audio_prompt_type = "A1O"`` (audio conditioning + ID-LoRA + force output)
+      - ``image_prompt_type = "S"`` (start-frame conditioning)
+      - Distilled-model settings from ``TALKING_HEAD_PARAMS``
+      - Prompt in ``[VISUAL]/[SPEECH]/[SOUNDS]`` format
+      - ``video_length`` estimated from word count of ``scene_input.spoken_line``
+
+    **Image-to-video / text-to-video** — when *audio_path* is absent:
+      - Uses ``scene_input.ltx_prompt`` as-is
+      - ``video_length`` from ``video_params.duration_seconds``
     """
     i = scene_input.scene_index
-    mode = "audio-conditioned i2v" if audio_path else ("i2v" if image_path else "t2v")
+    talking_head = audio_path is not None
+
+    if talking_head and not os.path.exists(audio_path):
+        logger.warning(f"[scene {i}] Audio file not found: {audio_path} — falling back to i2v")
+        talking_head = False
+        audio_path = None
+
+    mode = "talking-head A1O" if talking_head else ("i2v" if image_path else "t2v")
     logger.info(
         f"[scene {i}] START  mode={mode}  "
         f"speaker={scene_input.speaker_id!r}  "
         f"line={str(scene_input.spoken_line or '')[:60]!r}"
     )
 
-    duration = video_params.duration_seconds
-    if audio_path:
-        if not os.path.exists(audio_path):
-            logger.warning(f"[scene {i}] Audio file not found: {audio_path} — skipping audio")
-            audio_path = None
-        else:
+    if talking_head:
+        # Build [VISUAL]/[SPEECH]/[SOUNDS] prompt from scene data
+        if scene_input.scene_visual_description:
             try:
-                from virtual_streamer.utils.utils import get_length
-                audio_dur = get_length(audio_path)
-                if audio_dur > 0:
-                    duration = audio_dur + 0.5
-                    logger.info(f"[scene {i}] Duration adapted to audio: {duration:.2f}s")
-                else:
-                    logger.warning(f"[scene {i}] get_length returned {audio_dur} — using configured duration")
-            except Exception as exc:
-                logger.warning(f"[scene {i}] Could not read audio length: {exc} — using configured duration")
+                from virtual_streamer.image_generation.models import FluxPrompt
+                flux_prompt = FluxPrompt.model_validate(scene_input.scene_visual_description)
+                visual = flux_prompt.to_prompt()
+            except Exception:
+                visual = scene_input.ltx_prompt
+        else:
+            visual = scene_input.ltx_prompt
 
-    frames = _frames_from_duration(duration, video_params.fps)
-    logger.info(
-        f"[scene {i}] frames={frames}  duration={duration:.2f}s  "
-        f"fps={video_params.fps}  audio_path={audio_path}"
-    )
+        prompt = build_talking_head_prompt(
+            visual_description=visual,
+            spoken_line=scene_input.spoken_line or "",
+        )
+        video_length = _video_length_from_spoken_line(scene_input.spoken_line, video_params.fps)
 
-    segment_params = VideoGenerationParams(
-        prompt=scene_input.ltx_prompt,
-        negative_prompt=build_negative_prompt(),
-        width=video_params.width,
-        height=video_params.height,
-        frames=frames,
-        fps=video_params.fps,
-        steps=video_params.steps,
-        guidance_scale=video_params.guidance_scale,
-        seed=video_params.seed,
-        enable_audio=audio_path is not None,
-        audio_path=audio_path,
-        image_path=image_path,
-    )
+        logger.info(
+            f"[scene {i}] talking-head  video_length={video_length}  "
+            f"words={len((scene_input.spoken_line or '').split())}"
+        )
+
+        segment_params = VideoGenerationParams(
+            prompt=prompt,
+            negative_prompt=build_negative_prompt(),
+            # Resolution left at default — client auto-corrects to match the start image
+            resolution=video_params.resolution,
+            video_length=video_length,
+            fps=video_params.fps,
+            seed=video_params.seed,
+            # Talking-head conditioning
+            image_start=image_path,
+            image_prompt_type="S" if image_path else "",
+            audio_guide=audio_path,
+            audio_prompt_type="A1O",
+            # Distilled model + LoRA settings (hardcoded for A1O pipeline)
+            **TALKING_HEAD_PARAMS,
+            activated_loras=[TALKING_HEAD_LORA],
+            loras_multipliers=TALKING_HEAD_LORA_MULTIPLIER,
+        )
+    else:
+        frames = _frames_from_duration(
+            video_params.duration_seconds or 5.0, video_params.fps
+        )
+        logger.info(f"[scene {i}] i2v/t2v  frames={frames}")
+
+        segment_params = VideoGenerationParams(
+            prompt=scene_input.ltx_prompt,
+            negative_prompt=build_negative_prompt(),
+            resolution=video_params.resolution,
+            video_length=frames,
+            fps=video_params.fps,
+            num_inference_steps=video_params.num_inference_steps,
+            guidance_scale=video_params.guidance_scale,
+            seed=video_params.seed,
+            image_start=image_path,
+            image_prompt_type="S" if image_path else "",
+        )
 
     segment_dir = os.path.join(output_dir, f"scene_{i:03d}_{uuid.uuid4().hex[:8]}")
     os.makedirs(segment_dir, exist_ok=True)
@@ -611,7 +692,6 @@ async def story_input_to_video(
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    segment_audio_paths: Optional[Dict[int, str]] = None,
     sd_server_url: Optional[str] = None,
     debug_minio_prefix: Optional[str] = None,
     reference_videos: Optional[Dict[int, str]] = None,
@@ -621,15 +701,21 @@ async def story_input_to_video(
     """
     Convert a StoryInput into a final concatenated video.
 
-    This is the unified core entry point. story_to_video() and scenes_to_video()
-    are thin wrappers that construct a StoryInput and delegate here.
+    For each scene the pipeline:
+      1. Generates a situational conditioning image via Stable Diffusion (character
+         in their scene location) → used as ``image_start`` (i2v).
+      2. Downloads the speaker's first voice sample from MinIO → used as
+         ``audio_guide`` for the talking-head A1O pipeline.
+      3. Calls LTX via ``generate_segment_from_input`` which selects talking-head
+         mode (A1O + ID-LoRA + distilled solver) when audio is available, or falls
+         back to plain i2v/t2v when no voice sample exists.
 
     DB persistence (best-effort, never aborts generation):
-      - create_scene()                    before each segment
+      - create_scene()                     before each segment
       - create_conditioning_image_artifact after conditioning image upload
-      - update_scene_artifacts()          after each segment completes
-      - update_story_status(COMPLETED)    after final video upload
-      - update_story_status(FAILED)       on unrecoverable exception
+      - update_scene_artifacts()           after each segment completes
+      - update_story_status(COMPLETED)     after final video upload
+      - update_story_status(FAILED)        on unrecoverable exception
     """
     config = ltx_config or LTXVideoConfig()
     params = video_params or VideoGenerationParams.from_preset("fast", duration_seconds=5.0)
@@ -696,7 +782,6 @@ async def story_input_to_video(
         except Exception as exc:
             logger.warning(f"[db] Could not initialise storage client for conditioning uploads: {exc}")
 
-    audio_map = segment_audio_paths or {}
     segments: List[SegmentResult] = []
     failed_indices: List[int] = []
     total = len(story_input.scenes)
@@ -779,13 +864,52 @@ async def story_input_to_video(
                         except Exception as db_exc:
                             logger.warning(f"[db] create_conditioning_image_artifact failed: {db_exc}")
 
+                # ── Resolve speaker's reference audio (voice sample) ───────
+                speaker_audio_path: Optional[str] = None
+                speaker_id = scene_input.speaker_id
+                if speaker_id and speaker_id in character_map:
+                    char_data = character_map[speaker_id]
+                    voice_samples = char_data.get("voice_samples") or []
+                    if voice_samples:
+                        sample_key = voice_samples[0].get("sample_storage_path")
+                        if sample_key:
+                            audio_tmp_dir = str(
+                                output_path / f"audio_{i:03d}_{uuid.uuid4().hex[:8]}"
+                            )
+                            os.makedirs(audio_tmp_dir, exist_ok=True)
+                            fname = os.path.basename(sample_key) or "ref_audio.wav"
+                            local_audio = os.path.join(audio_tmp_dir, fname)
+                            try:
+                                storage = get_storage_client()
+                                await storage.download_file(sample_key, local_audio)
+                                if os.path.exists(local_audio) and os.path.getsize(local_audio) > 0:
+                                    speaker_audio_path = local_audio
+                                    logger.info(
+                                        f"[scene {i}] voice ref downloaded: "
+                                        f"{sample_key} → {local_audio}"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"[scene {i}] Voice sample downloaded but empty: {local_audio}"
+                                    )
+                            except Exception as dl_exc:
+                                logger.warning(
+                                    f"[scene {i}] Could not download voice sample "
+                                    f"'{sample_key}': {dl_exc}"
+                                )
+                    else:
+                        logger.info(
+                            f"[scene {i}] No voice samples for speaker '{speaker_id}' "
+                            "— using i2v mode"
+                        )
+
                 try:
                     segment = await generate_segment_from_input(
                         client=client,
                         scene_input=scene_input,
                         output_dir=str(output_path),
                         video_params=params,
-                        audio_path=audio_map.get(i),
+                        audio_path=speaker_audio_path,
                         image_path=conditioning_image_path,
                     )
                     segment.db_scene_id = db_scene_id
@@ -979,8 +1103,6 @@ async def story_to_video(
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    style_suffix: str = "Cinematic quality, smooth motion, natural lighting.",
-    segment_audio_paths: Optional[Dict[int, str]] = None,
     story_template_id: Optional[str] = None,
     sd_server_url: Optional[str] = None,
     debug_minio_prefix: Optional[str] = None,
@@ -989,7 +1111,8 @@ async def story_to_video(
     Convert a StoryOutput into a final concatenated video.
 
     Thin wrapper: converts StoryOutput → StoryInput and delegates to
-    story_input_to_video. Public signature is unchanged for backward compat.
+    story_input_to_video.  Audio is sourced automatically from each speaker's
+    voice samples (talking-head A1O mode); no TTS pre-generation is needed.
     """
     if story_template_id:
         stripped = await sanitize_story_locations(story_output, story_template_id)
@@ -998,7 +1121,7 @@ async def story_to_video(
 
     scene_inputs = [
         DialogLineInput.from_dialog_line(
-            dl, i, build_ltx_prompt(dialog_line=dl, include_dialog_audio=True)
+            dl, i, build_ltx_prompt(dialog_line=dl, include_dialog_audio=False)
         )
         for i, dl in enumerate(story_output.dialog)
     ]
@@ -1015,7 +1138,6 @@ async def story_to_video(
         video_params=video_params,
         output_dir=output_dir,
         progress_callback=progress_callback,
-        segment_audio_paths=segment_audio_paths,
         sd_server_url=sd_server_url,
         debug_minio_prefix=debug_minio_prefix,
     )
@@ -1187,7 +1309,6 @@ async def scenes_to_video(
     ltx_config: Optional[LTXVideoConfig] = None,
     video_params: Optional[VideoGenerationParams] = None,
     output_dir: str = "./output",
-    segment_audio_paths: Optional[Dict[int, str]] = None,
     story_template_id: Optional[str] = None,
     sd_server_url: Optional[str] = None,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
@@ -1200,8 +1321,8 @@ async def scenes_to_video(
     Convert a list of DetailedScene objects into a final concatenated video.
 
     Thin wrapper: converts scenes → StoryInput (via DetailedSceneInput) and
-    delegates to story_input_to_video. Public signature is backward-compatible;
-    story_repo and db_story_id are new optional parameters for DB persistence.
+    delegates to story_input_to_video. Audio is sourced automatically from
+    each speaker's voice samples — no TTS pre-generation needed.
     """
     scene_inputs = [DetailedSceneInput.from_detailed_scene(s, i) for i, s in enumerate(scenes)]
     story_input = StoryInput(
@@ -1217,7 +1338,6 @@ async def scenes_to_video(
         video_params=video_params,
         output_dir=output_dir,
         progress_callback=progress_callback,
-        segment_audio_paths=segment_audio_paths,
         sd_server_url=sd_server_url,
         debug_minio_prefix=debug_minio_prefix,
         reference_videos=reference_videos,

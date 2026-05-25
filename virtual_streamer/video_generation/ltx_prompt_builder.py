@@ -112,6 +112,34 @@ def build_ltx_prompt_detailed(
     return " ".join(parts)
 
 
+def build_talking_head_prompt(
+    visual_description: str,
+    spoken_line: str,
+    sounds: Optional[str] = None,
+) -> str:
+    """
+    Build a talking-head prompt in the [VISUAL]/[SPEECH]/[SOUNDS] format expected
+    by the A1O audio-conditioned talking-head pipeline.
+
+    Args:
+        visual_description: Scene/character description for the visual component.
+        spoken_line: The dialogue the character will speak.
+        sounds: Optional ambient/environmental sound description.
+
+    Returns:
+        Formatted prompt string, e.g.:
+            "[VISUAL]: A man in a lab coat facing the camera
+             [SPEECH]: 'Eh dis donc Jamy!'
+             [SOUNDS] Ambient lab noise"
+    """
+    parts = [f"[VISUAL]: {visual_description.strip()}"]
+    if spoken_line:
+        parts.append(f"[SPEECH]: '{spoken_line.strip()}'")
+    if sounds:
+        parts.append(f"[SOUNDS] {sounds.strip()}")
+    return "\n".join(parts)
+
+
 def build_negative_prompt() -> str:
     """Return the standard negative prompt for LTX video generation."""
     return DEFAULT_NEGATIVE_PROMPT

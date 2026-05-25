@@ -1,37 +1,66 @@
 """
-LTX Video Client (WanGP REST API)
+LTX Video Client (WanGP REST API — /jobs/raw endpoint)
 
-Client for generating videos via a remote WanGP server (wangp_server.py).
-Supports text-to-video, image-to-video, audio-conditioned i2v, and video-to-video.
+Client for generating videos via a remote WanGP server using POST /jobs/raw.
+All generation flags must be set explicitly by the caller — there are no
+server-side auto-defaults applied by this endpoint.
 
-Usage:
-    from virtual_streamer.video_generation.ltx_client import (
-        WanGPLTXClient, LTXVideoConfig, VideoGenerationParams
-    )
+Supported modes (caller sets flags in image_prompt_type / video_prompt_type / audio_prompt_type):
+  - Text-to-video (t2v):          no file paths needed
+  - Image-to-video (i2v):         image_start + image_prompt_type="S"
+  - Start + end frame (SE):       image_start + image_end + image_prompt_type="SE"
+  - Audio-conditioned i2v:        audio_guide + audio_prompt_type="A"
+  - Video-to-video (depth):       video_guide + video_prompt_type="DVG"
+  - Video-to-video (pose):        video_guide + video_prompt_type="PVG"
+  - Identity reference (I mode):  image_refs=["ref.jpg"] + video_prompt_type="I"
+  - Keyframe interpolation:       model_type="ltx2_22B_keyframe" + keyframes=[...]
+  - Talking head (ID-LoRA):       audio_guide + image_start + audio_prompt_type="A1O"
+                                  + image_prompt_type="S"
+
+Upload media with POST /files/upload, then reference it via "file:<file_id>".  The
+client handles uploads and reference substitution automatically.
+
+Usage::
 
     params = VideoGenerationParams(
-        prompt="a person talking to camera",
-        image_path="path/to/start.jpg",
-        audio_path="path/to/voice.wav",   # optional — enables audio conditioning
+        prompt="A woman walking in a park, cinematic, soft light",
+        image_start="path/to/start.jpg",
+        image_prompt_type="S",
+        audio_guide="path/to/voice.wav",
+        audio_prompt_type="A",
+        audio_scale=1.0,
+        audio_guidance_scale=4.5,
+        model_type="ltx2_22B_distilled_1_1",
+        resolution="832x480",
+        video_length=97,
+        num_inference_steps=8,
     )
     async with WanGPLTXClient(LTXVideoConfig()) as client:
         result = await client.generate_video(params, output_dir="./output")
         print(result.video_path)
 
-    # Video-to-video: edit an existing clip
+    # Keyframe interpolation::
+
     params = VideoGenerationParams(
-        prompt="same scene but at night, neon lights",
-        video_path="path/to/source.mp4",
-        denoising_strength=0.7,
+        prompt="Smooth cinematic transition through an autumn forest",
+        model_type="ltx2_22B_keyframe",
+        keyframes=[
+            ["frame0.png",   0, 1.0],
+            ["frame60.png", 60, 1.0],
+            ["frame120.png", 120, 1.0],
+        ],
+        video_length=121,
+        resolution="1280x720",
+        num_inference_steps=40,
     )
-    async with WanGPLTXClient(LTXVideoConfig()) as client:
-        result = await client.generate_video(params, output_dir="./output")
 """
 
 from __future__ import annotations
 
 import asyncio
+import struct
 import time
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -46,56 +75,32 @@ from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_NEGATIVE_PROMPT = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
-_DEFAULTS_FAST = {
-    "model_type":      "ltx2_22B_distilled_1_1",
-    "resolution":      "1280x720",
-    "frames":          97,
-    "steps":           8,
-    "guidance_scale":  3.0,
-    "flow_shift":      3.0,
-    "seed":            -1,
-    "fps":             "24",
-    "audio_scale":     1.0,
-    "audio_guidance":  4.5,
-    "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
+_DEFAULTS_FAST: dict = {
+    "model_type":          "ltx2_22B_distilled_1_1",
+    "resolution":          "1280x720",
+    "video_length":        97,
+    "num_inference_steps": 8,
+    "guidance_scale":      1.0,
+    "flow_shift":          3.0,
 }
 
-_DEFAULTS = {
-    "model_type":      "ltx2_22B",
-    "resolution":      "1280x720",
-    "frames":          97,
-    "steps":           30,
-    "guidance_scale":  3.0,
-    "flow_shift":      3.0,
-    "seed":            -1,
-    "fps":             "24",
-    "audio_scale":     1.0,
-    "audio_guidance":  4.5,
-    "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
+_DEFAULTS: dict = {
+    "model_type":          "ltx2_22B",
+    "resolution":          "1280x720",
+    "video_length":        97,
+    "num_inference_steps": 30,
+    "guidance_scale":      3.0,
+    "flow_shift":          3.0,
 }
 
-
-_DEFAULTS_HIGH_QUALITY = {
-    "model_type":      "ltx2_22B_pure_dev",
-    "resolution":      "1280x720",
-    "frames":          97,
-    "steps":           50,
-    "guidance_scale":  3.0,
-    "flow_shift":      3.0,
-    "seed":            -1,
-    "fps":             "30",
-    "audio_scale":     1.0,
-    "audio_guidance":  4.5,
-    "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
+_DEFAULTS_HIGH_QUALITY: dict = {
+    "model_type":          "ltx2_22B_pure_dev",
+    "resolution":          "1280x720",
+    "video_length":        97,
+    "num_inference_steps": 50,
+    "guidance_scale":      3.0,
+    "flow_shift":          3.0,
 }
-
-# Union-control IC-LoRA filename by model — required for DVG/PVG/OVG/EVG v2v modes.
-_V2V_UNION_CONTROL_LORA: dict[str, str] = {
-    "ltx2_22B_distilled":     "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
-    "ltx2_22B_distilled_1_1": "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
-    "ltx2_distilled":         "ltx-2-19b-ic-lora-union-control-ref0.5.safetensors",
-}
-_DEFAULT_V2V_LORA = "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
 
 # Named presets exposed to callers (API, UI, etc.)
 VIDEO_PRESETS: dict[str, dict] = {
@@ -103,6 +108,18 @@ VIDEO_PRESETS: dict[str, dict] = {
     "quality":      _DEFAULTS,
     "high_quality": _DEFAULTS_HIGH_QUALITY,
 }
+
+# Client-side file path fields — uploaded before submission, excluded from the JSON payload
+_PATH_FIELDS: frozenset[str] = frozenset({
+    "image_start", "image_end", "audio_guide", "video_guide",
+    "video_mask", "image_refs", "keyframes",
+})
+
+# Convenience-only fields — used to compute API params but not sent themselves
+_CONVENIENCE_FIELDS: frozenset[str] = frozenset({"duration_seconds", "fps"})
+
+# String fields that should be omitted from the payload when empty
+_STRIP_EMPTY_STRINGS = ("video_prompt_type", "image_prompt_type", "audio_prompt_type", "loras_multipliers")
 
 
 # =============================================================================
@@ -121,8 +138,8 @@ class LTXVideoConfig(BaseModel):
         description="HTTP timeout in seconds for uploads and downloads",
     )
     stream_timeout: float = Field(
-        default=12*3600.0,
-        description="Timeout in seconds for the SSE event stream",
+        default=12 * 3600.0,
+        description="Timeout in seconds for polling",
     )
     api_key: Optional[str] = Field(
         default=None,
@@ -136,168 +153,290 @@ class LTXVideoConfig(BaseModel):
 
 class VideoGenerationParams(BaseModel):
     """
-    Parameters for LTX video generation via WanGP.
+    Parameters for LTX video generation via WanGP POST /jobs/raw.
 
-    Primary fields:
-        prompt, image_path, audio_path, model_type, resolution, frames,
-        steps, guidance_scale, flow_shift, seed, force_fps,
-        audio_scale, audio_guidance, negative_prompt
+    All generation flags (video_prompt_type, image_prompt_type, audio_prompt_type)
+    must be set explicitly — there are no auto-defaults.
 
-    Legacy / convenience fields (auto-converted to primary fields):
-        width, height     → resolution  (e.g. 1280 × 720 → "1280x720")
-        duration_seconds  → frames      (computed as 8n+1 nearest)
-        fps               → force_fps   (str cast)
-        cfg_scale         → guidance_scale
-        enable_audio      (informational; audio conditioning uses audio_path)
+    File path fields (image_start, image_end, audio_guide, video_guide, video_mask,
+    image_refs, keyframes) accept local filesystem paths.  The client uploads each
+    file and substitutes "file:<id>" references before submitting the job.
+
+    Convenience:
+        Set duration_seconds (+ optionally fps, default 24) to compute video_length
+        as the nearest 8n+1 value.  video_length takes precedence when both are set.
     """
 
-    # --- Core ---
-    prompt: str = Field(description="Text prompt describing the video content")
-    negative_prompt: str = Field(default=_DEFAULTS["negative_prompt"])
+    # ── File paths (local FS, not sent to API) ────────────────────────────────
 
-    # --- I2V inputs ---
-    image_path: Optional[str] = Field(
-        default=None,
-        description="Local path to the start image (JPEG/PNG). Required for i2v.",
-    )
-    end_image_path: Optional[str] = Field(
-        default=None,
-        description="Local path to the end/last-frame image (JPEG/PNG). Enables end-frame conditioning.",
-    )
-    audio_path: Optional[str] = Field(
+    image_start: Optional[str] = Field(
         default=None,
         description=(
-            "Local path to a conditioning audio file (WAV/MP3/FLAC). "
-            "When set the audio drives video motion. "
-            "Only distilled LTX models support this."
+            "Local path to start/first-frame image. "
+            "Enable with 'S' in image_prompt_type."
+        ),
+    )
+    image_end: Optional[str] = Field(
+        default=None,
+        description=(
+            "Local path to end/last-frame image. "
+            "Enable with 'E' in image_prompt_type."
+        ),
+    )
+    audio_guide: Optional[str] = Field(
+        default=None,
+        description=(
+            "Local path to audio conditioning file (WAV/MP3/FLAC). "
+            "Enable with 'A' in audio_prompt_type."
+        ),
+    )
+    video_guide: Optional[str] = Field(
+        default=None,
+        description=(
+            "Local path to source video for V2V. "
+            "Set video_prompt_type accordingly (e.g. 'DVG', 'PVG', 'VG')."
+        ),
+    )
+    video_mask: Optional[str] = Field(
+        default=None,
+        description=(
+            "Local path to binary mask video (white=regenerate, black=keep). "
+            "Add 'A' to video_prompt_type to activate masking."
+        ),
+    )
+    image_refs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Local paths to reference images. "
+            "Used for identity ('I') mode — set video_prompt_type='I'."
+        ),
+    )
+    keyframes: List[List] = Field(
+        default_factory=list,
+        description=(
+            "Keyframe entries: [[local_image_path, frame_idx_0based, strength], ...]. "
+            "Mirrors the API structure — the client uploads each image and replaces the "
+            "path with 'file:<id>'. Requires model_type='ltx2_22B_keyframe'."
         ),
     )
 
-    # --- V2V inputs ---
-    video_path: Optional[str] = Field(
-        default=None,
+    # ── Core settings (1:1 API fields) ───────────────────────────────────────
+
+    model_type: str = Field(default="ltx2_22B_distilled_1_1")
+    prompt: str = Field(default="", description="Text prompt describing the video content")
+    negative_prompt: str = Field(default=DEFAULT_NEGATIVE_PROMPT)
+    resolution: str = Field(
+        default="1280x720",
         description=(
-            "Local path to a source video (MP4/WebM). "
-            "When set the generation runs in video-to-video mode. "
-            "Can be combined with image_path to pin the first frame via image_start."
+            "WxH string (e.g. '1280x720', '832x480'). "
+            "Must match any provided image dimensions — LTX is sensitive to mismatches."
         ),
     )
+    video_length: int = Field(
+        default=97,
+        description=(
+            "Frame count. Must satisfy 8n+1 (9, 17, 25 … 241). "
+            "Auto-computed from duration_seconds/fps when duration_seconds is set."
+        ),
+    )
+    num_inference_steps: int = Field(default=8, ge=1, le=200)
+    guidance_scale: float = Field(default=1.0, ge=0.0, le=30.0)
+    flow_shift: float = Field(default=5.0)
+    seed: int = Field(default=-1, description="-1 for random")
+
+    # ── Conditioning flags (explicit, no auto-defaults) ───────────────────────
+
     video_prompt_type: str = Field(
-        default="DVG",
+        default="",
         description=(
-            "V2V preprocessing mode. 'DVG'=depth map, 'PVG'=pose, 'OVG'=pose+align, "
-            "'EVG'=Canny edges (all use union-control LoRA). 'VG'=raw (task-specific LoRA)."
+            "V2V / identity flags. Examples: 'DVG' (depth+video+guide), 'PVG' (pose), "
+            "'OVG' (aligned-pose), 'EVG' (Canny), 'VG' (raw passthrough), "
+            "'I' (identity reference). "
+            "D/P/O/E/I auto-load union-control LoRA on the server. "
+            "Empty string = not sent."
         ),
     )
+    image_prompt_type: str = Field(
+        default="",
+        description=(
+            "Image conditioning flags: 'S' (pin start frame), 'E' (guide end frame), "
+            "'SE' (both). Empty string = not sent."
+        ),
+    )
+    audio_prompt_type: str = Field(
+        default="",
+        description=(
+            "Audio flags: 'A' (audio conditioning), 'A1O' (audio + ID-LoRA + force output). "
+            "Empty string = not sent."
+        ),
+    )
+
+    # ── Conditioning strengths ────────────────────────────────────────────────
+
     denoising_strength: float = Field(
-        default=0.7,
+        default=1.0,
         ge=0.0,
         le=1.0,
-        description=(
-            "V2V Control Video Strength: higher = output closer to source (0.9–1.0 subtle, "
-            "0.6–0.8 moderate, 0.3–0.5 light)."
-        ),
-    )
-    transition_frames: int = Field(
-        default=0,
-        ge=0,
-        description=(
-            "Soften the hard cut between image_start (frame 0) and video_guide. "
-            "Blanks the first N guide frames so the model generates freely from image_start "
-            "before guide conditioning takes over at frame N+1. "
-            "0=disabled, 8=minimal, 16=recommended, 24=strong. "
-            "Only applied when both video_path and image_path are set. "
-            "Not supported for model_type='ltxv_13B'."
-        ),
-    )
-
-    # --- Optional LoRA override ---
-    lora_name: Optional[str] = Field(
-        default=None,
-        description="LoRA filename to activate (e.g. 'my-style.safetensors'). Merged with any V2V LoRAs.",
-    )
-    lora_multiplier: float = Field(
-        default=1.0,
-        description="Strength/weight for the user-supplied LoRA.",
-    )
-
-    # --- Generation settings ---
-    model_type: str = Field(default=_DEFAULTS["model_type"])
-    resolution: str = Field(
-        default="",
-        description="WxH string (e.g. '1280x720'). Derived from width/height when empty.",
-    )
-    frames: int = Field(
-        default=0,
-        description="Frame count (must satisfy 8n+1). Derived from duration_seconds/fps when 0.",
-    )
-    steps: int = Field(default=_DEFAULTS["steps"], ge=1, le=200)
-    guidance_scale: float = Field(default=_DEFAULTS["guidance_scale"], ge=0.0, le=30.0)
-    flow_shift: float = Field(default=_DEFAULTS["flow_shift"])
-    seed: int = Field(default=_DEFAULTS["seed"], description="-1 for random")
-    force_fps: str = Field(
-        default="",
-        description="Output frame-rate string. Derived from fps when empty.",
+        description="V2V Control Video Strength (0–1). Higher = output closer to guide.",
     )
     audio_scale: float = Field(
-        default=_DEFAULTS["audio_scale"],
-        description="Prompt Audio Strength (0–1): how strongly audio drives video.",
+        default=1.0,
+        description="Prompt Audio Strength (0–1): how strongly the audio drives video motion.",
     )
-    audio_guidance: float = Field(
-        default=_DEFAULTS["audio_guidance"],
-        description="Audio CFG guidance scale (1–20): higher = more audio-faithful.",
+    audio_guidance_scale: float = Field(
+        default=7.0,
+        description="Audio CFG guidance scale (1–20): higher = more audio-faithful output.",
+    )
+    remove_background_images_ref: Optional[int] = Field(
+        default=None,
+        description=(
+            "Strip background from image_refs before encoding (0=keep, 1=strip). "
+            "Server default is 1 (strip). Only relevant when image_refs is set."
+        ),
     )
 
-    # --- Legacy / convenience fields ---
-    width: int = Field(default=1280, ge=64)
-    height: int = Field(default=720, ge=64)
-    duration_seconds: float = Field(default=4.0, ge=0.1)
-    fps: int = Field(default=24, ge=1)
-    cfg_scale: float = Field(
-        default=_DEFAULTS["guidance_scale"],
-        description="Legacy alias for guidance_scale.",
+    # ── LoRA ─────────────────────────────────────────────────────────────────
+
+    activated_loras: List[str] = Field(
+        default_factory=list,
+        description="LoRA filenames from the loras/ltx2/ directory on the server.",
     )
-    enable_audio: bool = Field(
-        default=False,
-        description="Informational flag. Actual audio conditioning uses audio_path.",
+    loras_multipliers: str = Field(
+        default="",
+        description="Space-separated multipliers, one per entry in activated_loras.",
     )
-    identity_preservation: bool = Field(
-        default=False,
-        description="Enable ID-LoRA talking-heads mode. Sets audio_prompt_type to 'A1OF' and audio_guidance_scale to 7.0. Requires a non-distilled DEV checkpoint (ltx2_22B or ltx2_19B).",
+
+    # ── Two-stage pipeline ───────────────────────────────────────────────────
+
+    guidance_phases: Optional[int] = Field(
+        default=None,
+        description="1 = dev only; 2 = dev + distilled-LoRA phase.",
     )
+    sample_solver: Optional[str] = Field(
+        default=None,
+        description="Solver type, e.g. 'euler', 'res2s', 'distilled_8_steps'.",
+    )
+    alt_guidance_scale: Optional[float] = Field(default=None)
+    alt_scale: Optional[float] = Field(default=None)
+
+    # ── SLG / NAG ────────────────────────────────────────────────────────────
+
+    perturbation_switch: Optional[int] = Field(
+        default=None,
+        description="Skip-Layer Guidance: 0=off, 1=SLG, 2=skip self-attention.",
+    )
+    perturbation_layers: Optional[List[int]] = Field(
+        default=None,
+        description="Transformer layer indices for SLG.",
+    )
+    perturbation_start_perc: Optional[float] = Field(
+        default=None,
+        description="% of total steps at which SLG activates.",
+    )
+    perturbation_end_perc: Optional[float] = Field(
+        default=None,
+        description="% of total steps at which SLG deactivates.",
+    )
+    NAG_scale: Optional[float] = Field(
+        default=None,
+        description="Negative Attention Guidance strength (1.0 = off).",
+    )
+    NAG_tau: Optional[float] = Field(default=None)
+    NAG_alpha: Optional[float] = Field(default=None)
+
+    # ── Frame control ────────────────────────────────────────────────────────
+
+    keep_frames_video_guide: Optional[str] = Field(
+        default=None,
+        description=(
+            "Frame range to blank from guide, e.g. '17:-1' blanks first 17 frames "
+            "(model generates freely from image_start before guide conditioning takes over). "
+            "Use with video_guide + image_start to smooth hard cuts."
+        ),
+    )
+    masking_strength: Optional[float] = Field(
+        default=None,
+        description="Mask reinjection strength per step.",
+    )
+    mask_expand: Optional[int] = Field(
+        default=None,
+        description="Pixels to expand mask boundary.",
+    )
+
+    # ── Sliding window (long video) ──────────────────────────────────────────
+
+    sliding_window_size: Optional[int] = Field(default=None)
+    sliding_window_overlap: Optional[int] = Field(default=None)
+    sliding_window_color_correction_strength: Optional[float] = Field(default=None)
+    sliding_window_overlap_noise: Optional[float] = Field(default=None)
+    sliding_window_discard_last_frames: Optional[int] = Field(default=None)
+
+    # ── Convenience (not sent to API) ────────────────────────────────────────
+
+    duration_seconds: Optional[float] = Field(
+        default=None,
+        description=(
+            "Convenience: compute video_length = nearest 8n+1 to duration_seconds × fps. "
+            "Ignored when video_length has been set explicitly (i.e. differs from default 97). "
+            "When in doubt, set video_length directly."
+        ),
+    )
+    fps: int = Field(
+        default=24,
+        description="Used with duration_seconds to compute video_length and actual_duration.",
+    )
+
+    # ── Validator ────────────────────────────────────────────────────────────
 
     @model_validator(mode="after")
-    def _resolve_fields(self) -> "VideoGenerationParams":
-        if self.cfg_scale != _DEFAULTS["guidance_scale"]:
-            self.guidance_scale = self.cfg_scale
+    def _compute_video_length(self) -> "VideoGenerationParams":
+        """Override video_length from duration_seconds when duration is provided."""
+        if self.duration_seconds is not None:
+            raw = int(self.duration_seconds * self.fps)
+            n = round((raw - 1) / 8)
+            self.video_length = max(8 * n + 1, 9)
         return self
 
-    # --- Computed properties ---
+    # ── Computed properties ──────────────────────────────────────────────────
 
     @property
     def effective_resolution(self) -> str:
-        return self.resolution if self.resolution else f"{self.width}x{self.height}"
-
-    @property
-    def effective_frames(self) -> int:
-        if self.frames > 0:
-            return self.frames
-        raw = int(self.duration_seconds * self.fps)
-        n = round((raw - 1) / 8)
-        return max(8 * n + 1, 9)
-
-    @property
-    def effective_fps(self) -> str:
-        return self.force_fps if self.force_fps else str(self.fps)
+        """The resolution string that will be sent to the API."""
+        return self.resolution
 
     @property
     def actual_duration(self) -> float:
-        fps_val = int(self.effective_fps) if self.effective_fps.isdigit() else self.fps
-        return self.effective_frames / fps_val
+        """Approximate duration of the generated video in seconds."""
+        return self.video_length / self.fps
 
     @property
     def frame_count(self) -> int:
-        return self.effective_frames
+        """Alias for video_length."""
+        return self.video_length
+
+    # Backward-compat read-only shims used by story_to_video and legacy callers
+
+    @property
+    def width(self) -> int:
+        return int(self.resolution.split("x")[0])
+
+    @property
+    def height(self) -> int:
+        return int(self.resolution.split("x")[1])
+
+    @property
+    def steps(self) -> int:
+        return self.num_inference_steps
+
+    @property
+    def effective_frames(self) -> int:
+        return self.video_length
+
+    @property
+    def effective_fps(self) -> str:
+        return str(self.fps)
+
+    # ── Class method ─────────────────────────────────────────────────────────
 
     @classmethod
     def from_preset(
@@ -306,7 +445,13 @@ class VideoGenerationParams(BaseModel):
         prompt: str = "",
         **overrides,
     ) -> "VideoGenerationParams":
-        """Create VideoGenerationParams from a named quality preset ('fast', 'quality', 'high_quality')."""
+        """Create VideoGenerationParams from a named quality preset.
+
+        Args:
+            preset_name: ``'fast'``, ``'quality'``, or ``'high_quality'``.
+            prompt: Text prompt.
+            **overrides: Any VideoGenerationParams field to override.
+        """
         preset = VIDEO_PRESETS[preset_name]
         return cls(prompt=prompt, **preset, **overrides)
 
@@ -357,18 +502,52 @@ class LTXClientInterface(ABC):
 
 
 # =============================================================================
+# Image dimension utility
+# =============================================================================
+
+def _get_image_dimensions(path: str) -> Optional[tuple[int, int]]:
+    """Return *(width, height)* of an image, or *None* if undetectable.
+
+    Tries PIL first; falls back to a stdlib PNG-header parse.
+    """
+    # Prefer Pillow when available
+    try:
+        from PIL import Image
+        with Image.open(path) as img:
+            return img.size  # (width, height)
+    except ImportError:
+        pass
+    except Exception:
+        return None
+
+    # Stdlib PNG fallback (reads only the 24-byte IHDR)
+    try:
+        with open(path, "rb") as f:
+            header = f.read(24)
+        if header[:8] == b"\x89PNG\r\n\x1a\n":
+            w, h = struct.unpack(">II", header[16:24])
+            return w, h
+    except Exception:
+        pass
+
+    return None
+
+
+# =============================================================================
 # WanGP REST Implementation
 # =============================================================================
 
 class WanGPLTXClient(LTXClientInterface):
     """
-    LTX video generation backed by the WanGP REST server (wangp_server.py).
+    LTX video generation backed by the WanGP REST server (POST /jobs/raw).
 
-    Replaces the old Gradio-based 5-step pipeline with a simple REST workflow:
-      1. Upload any local files (image, audio) → file_id
-      2. POST /jobs with a settings dict → job_id
-      3. Stream SSE events from GET /jobs/{job_id}/events until completed
-      4. GET /files/{filename} to download the output video
+    Workflow:
+      1. Health check (GET /health)
+      2. Upload local files (POST /files/upload) → file_ids
+      3. Resolve resolution against provided image dimensions
+      4. Submit job (POST /jobs/raw) with explicit settings
+      5. Poll (GET /jobs/{job_id}) until completion
+      6. Download output (GET /files/{filename})
     """
 
     def __init__(self, config: Optional[LTXVideoConfig] = None) -> None:
@@ -393,7 +572,7 @@ class WanGPLTXClient(LTXClientInterface):
         print(f"[health] status={body.get('status')}  queue_depth={body.get('queue_depth')}")
 
     def _upload_file(self, path: str) -> str:
-        """Upload *path* to the server and return the file_id."""
+        """Upload *path* to the server and return the ``file_id``."""
         url = f"{self.config.server_url.rstrip('/')}/files/upload"
         p = Path(path)
         with p.open("rb") as fh:
@@ -408,80 +587,88 @@ class WanGPLTXClient(LTXClientInterface):
         print(f"  uploaded {p.name} → {file_id}")
         return file_id
 
+    @staticmethod
+    def _get_mode_label(params: VideoGenerationParams) -> str:
+        if params.video_guide:
+            vpt = params.video_prompt_type or "VG"
+            if params.image_start:
+                return f"v2v+image_start ({vpt})"
+            return f"v2v ({vpt})"
+        if params.keyframes:
+            return "keyframe-interpolation"
+        if "I" in params.video_prompt_type:
+            return "identity-ref (I)"
+        if params.image_start and params.image_end:
+            return "i2v SE (start+end)"
+        if params.image_start:
+            return "audio-conditioned i2v" if params.audio_guide else "i2v"
+        if params.image_end:
+            return "i2v E (end-frame only)"
+        if params.audio_guide:
+            return "t2v+audio"
+        return "t2v"
+
     def _build_settings(
         self,
         params: VideoGenerationParams,
-        image_file_id: Optional[str],
-        audio_file_id: Optional[str],
-        video_file_id: Optional[str] = None,
-        end_image_file_id: Optional[str] = None,
+        image_start_id: Optional[str] = None,
+        image_end_id: Optional[str] = None,
+        audio_guide_id: Optional[str] = None,
+        video_guide_id: Optional[str] = None,
+        video_mask_id: Optional[str] = None,
+        image_ref_ids: Optional[List[str]] = None,
+        keyframe_ids: Optional[List[str]] = None,
+        resolution_override: Optional[str] = None,
     ) -> Dict[str, Any]:
-        settings: Dict[str, Any] = {
-            "model_type":           params.model_type,
-            "prompt":               params.prompt,
-            "negative_prompt":      params.negative_prompt,
-            "num_inference_steps":  params.steps,
-            "video_length":         params.effective_frames,
-            "resolution":           params.effective_resolution,
-            "guidance_scale":       params.guidance_scale,
-            "flow_shift":           params.flow_shift,
-            "seed":                 params.seed,
-            "force_fps":            params.effective_fps,
-        }
+        """
+        Build the ``/jobs/raw`` settings payload.
 
-        if video_file_id is not None:
-            settings["video_guide"] = f"file:{video_file_id}"
-            settings["video_prompt_type"] = params.video_prompt_type
-            settings["denoising_strength"] = params.denoising_strength
-            # DVG/PVG/OVG/EVG all require the union-control IC-LoRA; VG needs a task-specific one.
-            if params.video_prompt_type != "VG":
-                lora = _V2V_UNION_CONTROL_LORA.get(params.model_type, _DEFAULT_V2V_LORA)
-                settings["activated_loras"] = [lora]
-                settings["loras_multipliers"] = "1"
+        Serialises *params* (excluding file path and convenience fields), injects
+        uploaded file references, and applies an optional resolution override.
+        """
+        # Serialize all API settings, drop None values
+        settings: Dict[str, Any] = params.model_dump(
+            exclude=_PATH_FIELDS | _CONVENIENCE_FIELDS,
+            exclude_none=True,
+        )
 
-        if params.lora_name:
-            existing: list = settings.get("activated_loras", [])
-            existing_mults: str = settings.get("loras_multipliers", "")
-            existing.append(params.lora_name)
-            mults = [existing_mults] if existing_mults else []
-            mults.append(str(params.lora_multiplier))
-            settings["activated_loras"] = existing
-            settings["loras_multipliers"] = ";".join(mults)
+        # Drop empty string flags — server rejects empty strings for flag fields
+        for key in _STRIP_EMPTY_STRINGS:
+            if not settings.get(key):
+                settings.pop(key, None)
 
-        if image_file_id is not None or end_image_file_id is not None:
-            if image_file_id is not None:
-                settings["image_start"] = f"file:{image_file_id}"
-            if end_image_file_id is not None:
-                settings["image_end"] = f"file:{end_image_file_id}"
-            if image_file_id and end_image_file_id:
-                settings["image_prompt_type"] = "SE"
-            elif image_file_id:
-                settings["image_prompt_type"] = "S"
-            else:
-                settings["image_prompt_type"] = "E"
-            if (
-                video_file_id is not None
-                and image_file_id is not None
-                and params.transition_frames > 0
-                and params.model_type != "ltxv_13B"
-            ):
-                settings["transition_frames"] = params.transition_frames
+        # Drop empty LoRA list
+        if not settings.get("activated_loras"):
+            settings.pop("activated_loras", None)
 
-        if audio_file_id is not None:
-            settings["audio_guide"] = f"file:{audio_file_id}"
-            if params.identity_preservation:
-                settings["audio_prompt_type"] = "A1OF"
-                settings["audio_guidance_scale"] = 7.0
-            else:
-                settings["audio_prompt_type"] = "A"
-                settings["audio_guidance_scale"] = params.audio_guidance
-            settings["audio_scale"] = params.audio_scale
+        # Apply optional resolution override (from image dimension auto-detection)
+        if resolution_override:
+            settings["resolution"] = resolution_override
+
+        # Inject uploaded file references
+        if image_start_id:
+            settings["image_start"] = f"file:{image_start_id}"
+        if image_end_id:
+            settings["image_end"] = f"file:{image_end_id}"
+        if audio_guide_id:
+            settings["audio_guide"] = f"file:{audio_guide_id}"
+        if video_guide_id:
+            settings["video_guide"] = f"file:{video_guide_id}"
+        if video_mask_id:
+            settings["video_mask"] = f"file:{video_mask_id}"
+        if image_ref_ids:
+            settings["image_refs"] = [f"file:{fid}" for fid in image_ref_ids]
+        if keyframe_ids and params.keyframes:
+            settings["keyframes"] = [
+                [f"file:{fid}", entry[1], entry[2]]
+                for fid, entry in zip(keyframe_ids, params.keyframes)
+            ]
 
         return settings
 
     def _submit_job(self, settings: Dict[str, Any]) -> tuple[str, int]:
-        """Submit a job and return (job_id, queue_position)."""
-        url = f"{self.config.server_url.rstrip('/')}/jobs"
+        """Submit a raw job and return *(job_id, queue_position)*."""
+        url = f"{self.config.server_url.rstrip('/')}/jobs/raw"
         r = requests.post(
             url,
             json={"settings": settings},
@@ -502,7 +689,7 @@ class WanGPLTXClient(LTXClientInterface):
         progress_callback: Optional[Callable[[float, str], None]],
         poll_interval: float = 5.0,
     ) -> List[str]:
-        """Poll GET /jobs/{job_id} until the job is done. Returns list of output URLs."""
+        """Poll ``GET /jobs/{job_id}`` until done. Returns list of output file URLs."""
         url = f"{self.config.server_url.rstrip('/')}/jobs/{job_id}"
         print(f"[poll] polling {url} …")
         deadline = time.time() + self.config.stream_timeout
@@ -523,17 +710,12 @@ class WanGPLTXClient(LTXClientInterface):
                 if status == "queued":
                     print(f"\r  [queue] position={pos}    ", end="", flush=True)
                 else:
-                    print(
-                        f"\r  [{bar}] {pct:5.1%}  {phase}    ",
-                        end="",
-                        flush=True,
-                    )
+                    print(f"\r  [{bar}] {pct:5.1%}  {phase}    ", end="", flush=True)
                 if progress_callback:
                     progress_callback(pct, phase)
                 time.sleep(poll_interval)
                 continue
 
-            # Terminal states
             print()
             files   = body.get("generated_files", [])
             errors  = body.get("errors", [])
@@ -552,7 +734,7 @@ class WanGPLTXClient(LTXClientInterface):
         )
 
     def _download_output(self, file_url: str, output_dir: str) -> str:
-        """Download *file_url* (a complete URL) and save to *output_dir*. Returns local path."""
+        """Download *file_url* and save to *output_dir*. Returns local path."""
         from virtual_streamer.utils.file_manager import get_file_manager
         fm = get_file_manager()
         filename = file_url.rstrip("/").rsplit("/", 1)[-1]
@@ -577,53 +759,96 @@ class WanGPLTXClient(LTXClientInterface):
         params: VideoGenerationParams,
         output_dir: str,
         progress_callback: Optional[Callable[[float, str], None]],
-    ) -> List[str]:
-        """Execute the full REST generation pipeline synchronously. Returns local paths."""
-        base = self.config.server_url.rstrip("/")
+    ) -> tuple[List[str], str]:
+        """
+        Execute the full REST generation pipeline synchronously.
 
-        if params.video_path and params.image_path and params.end_image_path:
-            mode_label = "v2v+image_start+image_end"
-        elif params.video_path and params.image_path:
-            mode_label = "v2v+image_start"
-        elif params.video_path:
-            mode_label = "v2v"
-        elif params.image_path and params.end_image_path:
-            mode_label = "i2v+image_end (SE)"
-        elif params.image_path:
-            mode_label = "audio-conditioned i2v" if params.audio_path else "i2v"
-        elif params.end_image_path:
-            mode_label = "i2v end-frame only (E)"
-        else:
-            mode_label = "t2v"
+        Returns:
+            *(local_paths, effective_resolution)* — list of downloaded file paths
+            and the resolution string that was actually submitted.
+        """
+        base = self.config.server_url.rstrip("/")
+        mode_label = self._get_mode_label(params)
 
         print(f"[1] Health check ({base})")
         self._check_health()
 
-        image_file_id: Optional[str] = None
-        audio_file_id: Optional[str] = None
-        video_file_id: Optional[str] = None
-        end_image_file_id: Optional[str] = None
+        # ── Upload files ───────────────────────────────────────────────────────
+        image_start_id: Optional[str]  = None
+        image_end_id: Optional[str]    = None
+        audio_guide_id: Optional[str]  = None
+        video_guide_id: Optional[str]  = None
+        video_mask_id: Optional[str]   = None
+        image_ref_ids: List[str]       = []
+        keyframe_ids: List[str]        = []
 
-        if params.video_path:
-            print(f"[2a] Uploading source video ({mode_label})")
-            video_file_id = self._upload_file(params.video_path)
-
-        if params.image_path:
+        if params.video_guide:
+            print(f"[2a] Uploading video guide ({mode_label})")
+            video_guide_id = self._upload_file(params.video_guide)
+        if params.image_start:
             print("[2b] Uploading start image")
-            image_file_id = self._upload_file(params.image_path)
-
-        if params.audio_path:
+            image_start_id = self._upload_file(params.image_start)
+        if params.audio_guide:
             print("[2c] Uploading audio guide")
-            audio_file_id = self._upload_file(params.audio_path)
-
-        if params.end_image_path:
+            audio_guide_id = self._upload_file(params.audio_guide)
+        if params.image_end:
             print("[2d] Uploading end image")
-            end_image_file_id = self._upload_file(params.end_image_path)
+            image_end_id = self._upload_file(params.image_end)
+        if params.video_mask:
+            print("[2e] Uploading video mask")
+            video_mask_id = self._upload_file(params.video_mask)
+        if params.image_refs:
+            print(f"[2f] Uploading {len(params.image_refs)} reference image(s)")
+            for ref_path in params.image_refs:
+                image_ref_ids.append(self._upload_file(ref_path))
+        if params.keyframes:
+            print(f"[2g] Uploading {len(params.keyframes)} keyframe image(s)")
+            for entry in params.keyframes:
+                keyframe_ids.append(self._upload_file(entry[0]))
 
+        # ── Dimension guard ────────────────────────────────────────────────────
+        # Detect actual image dimensions and warn or auto-correct resolution.
+        primary_image = params.image_start or (params.image_refs[0] if params.image_refs else None)
+        resolution_override: Optional[str] = None
+        if primary_image:
+            detected = _get_image_dimensions(primary_image)
+            if detected is not None:
+                detected_res = f"{detected[0]}x{detected[1]}"
+                if detected_res != params.resolution:
+                    if params.resolution == "1280x720":
+                        # Resolution is still at the default → auto-correct silently
+                        resolution_override = detected_res
+                        print(
+                            f"  [resolution] auto-set to {detected_res} "
+                            f"(matched image dimensions; was default '1280x720')"
+                        )
+                    else:
+                        warnings.warn(
+                            f"Resolution mismatch: params.resolution={params.resolution!r} "
+                            f"but the primary image is {detected_res}. "
+                            "LTX is sensitive to dimension mismatches — "
+                            "align resolution to image dimensions to avoid artifacts.",
+                            stacklevel=2,
+                        )
+
+        effective_resolution = resolution_override or params.resolution
+
+        # ── Submit job ─────────────────────────────────────────────────────────
         print(f"[3] Submitting job  model={params.model_type}  mode={mode_label}")
-        settings = self._build_settings(params, image_file_id, audio_file_id, video_file_id, end_image_file_id)
+        settings = self._build_settings(
+            params,
+            image_start_id=image_start_id,
+            image_end_id=image_end_id,
+            audio_guide_id=audio_guide_id,
+            video_guide_id=video_guide_id,
+            video_mask_id=video_mask_id,
+            image_ref_ids=image_ref_ids or None,
+            keyframe_ids=keyframe_ids or None,
+            resolution_override=resolution_override,
+        )
         job_id, _ = self._submit_job(settings)
 
+        # ── Poll ───────────────────────────────────────────────────────────────
         print("[4] Polling job status …")
         t0 = time.time()
         filenames = self._poll_job(job_id, progress_callback)
@@ -632,12 +857,13 @@ class WanGPLTXClient(LTXClientInterface):
         if not filenames:
             raise RuntimeError("WanGP generation produced no output files")
 
+        # ── Download ───────────────────────────────────────────────────────────
         print("[5] Downloading output file(s)")
         local_paths: List[str] = []
         for name in filenames:
             local_paths.append(self._download_output(name, output_dir))
 
-        return local_paths
+        return local_paths, effective_resolution
 
     # ------------------------------------------------------------------
     # LTXClientInterface implementation
@@ -653,17 +879,14 @@ class WanGPLTXClient(LTXClientInterface):
         progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> VideoGenerationResult:
         """
-        Generate a video via the WanGP REST server.
+        Generate a video via the WanGP REST server (POST /jobs/raw).
 
-        The blocking HTTP calls run in a thread so this coroutine stays non-blocking.
+        All HTTP calls run in a thread so this coroutine stays non-blocking.
 
         Args:
-            params: Generation parameters.
-                - Text-to-video: only ``prompt`` required.
-                - Image-to-video: set ``image_path``.
-                - Audio-conditioned i2v: set both ``image_path`` and ``audio_path``.
-                - Video-to-video: set ``video_path``.
-                - V2V with pinned first frame: set both ``video_path`` and ``image_path``.
+            params: Generation parameters. Set file path fields (image_start,
+                audio_guide, video_guide, …) and the corresponding flag fields
+                (image_prompt_type, audio_prompt_type, video_prompt_type).
             output_dir: Local directory to save the downloaded video.
             progress_callback: Optional ``callback(fraction, message)``.
 
@@ -671,12 +894,13 @@ class WanGPLTXClient(LTXClientInterface):
             :class:`VideoGenerationResult` with local video path and metadata.
 
         Raises:
-            RuntimeError: If the server is not ready, inference fails, or no files produced.
+            RuntimeError: If the server is not ready, inference fails, or no
+                files were produced.
         """
         if progress_callback:
             progress_callback(0.0, "Starting WanGP generation…")
 
-        output_files: List[str] = await asyncio.to_thread(
+        output_files, effective_resolution = await asyncio.to_thread(
             self._run_generation_sync, params, output_dir, progress_callback
         )
 
@@ -686,8 +910,7 @@ class WanGPLTXClient(LTXClientInterface):
         if progress_callback:
             progress_callback(1.0, "Done!")
 
-        w_str, h_str = params.effective_resolution.split("x")
-        fps_val = int(params.effective_fps) if params.effective_fps.isdigit() else params.fps
+        w_str, h_str = effective_resolution.split("x")
 
         return VideoGenerationResult(
             video_path=output_files[0],
@@ -695,7 +918,7 @@ class WanGPLTXClient(LTXClientInterface):
             duration_seconds=params.actual_duration,
             width=int(w_str),
             height=int(h_str),
-            fps=fps_val,
+            fps=params.fps,
             prompt_id=Path(output_files[0]).stem,
         )
 
@@ -706,32 +929,33 @@ class WanGPLTXClient(LTXClientInterface):
 
 async def generate_video(
     prompt: str,
-    image_path: Optional[str] = None,
+    image_start: Optional[str] = None,
     output_dir: str = "./output",
     server_url: str = "http://localhost:8082",
-    audio_path: Optional[str] = None,
-    video_path: Optional[str] = None,
-    end_image_path: Optional[str] = None,
+    audio_guide: Optional[str] = None,
+    video_guide: Optional[str] = None,
+    image_end: Optional[str] = None,
+    image_refs: Optional[List[str]] = None,
+    image_prompt_type: str = "",
+    video_prompt_type: str = "",
+    audio_prompt_type: str = "",
     **kwargs,
 ) -> VideoGenerationResult:
     """
     Generate a video with a single async call.
 
-    Modes (determined by which path arguments are set):
-        - Text-to-video: only ``prompt``.
-        - Image-to-video: ``image_path`` (+ optional ``audio_path``).
-        - Video-to-video: ``video_path``.
-        - V2V with pinned first frame: ``video_path`` + ``image_path``.
-        - Start+end frame: ``image_path`` + ``end_image_path``.
-
     Args:
-        prompt: Text prompt describing the video content.
-        image_path: Local path to the start image.
+        prompt: Text prompt.
+        image_start: Local path to start-frame image (add ``'S'`` to image_prompt_type).
         output_dir: Directory to save the output video.
         server_url: URL of the remote WanGP REST server.
-        audio_path: Optional conditioning audio file. Enables audio-driven i2v.
-        video_path: Local path to the source video (v2v). Can be combined with image_path.
-        end_image_path: Local path to the end/last-frame image. Enables end-frame conditioning.
+        audio_guide: Local path to conditioning audio (add ``'A'`` to audio_prompt_type).
+        video_guide: Local path to source video for V2V (set video_prompt_type accordingly).
+        image_end: Local path to end-frame image (add ``'E'`` to image_prompt_type).
+        image_refs: Local paths to identity-reference images (set video_prompt_type='I').
+        image_prompt_type: Image conditioning flags (e.g. ``'S'``, ``'SE'``).
+        video_prompt_type: V2V / identity flags (e.g. ``'DVG'``, ``'I'``).
+        audio_prompt_type: Audio flags (e.g. ``'A'``, ``'A1O'``).
         **kwargs: Additional :class:`VideoGenerationParams` fields.
 
     Returns:
@@ -740,10 +964,14 @@ async def generate_video(
     config = LTXVideoConfig(server_url=server_url)
     params = VideoGenerationParams(
         prompt=prompt,
-        image_path=image_path,
-        audio_path=audio_path,
-        video_path=video_path,
-        end_image_path=end_image_path,
+        image_start=image_start,
+        audio_guide=audio_guide,
+        video_guide=video_guide,
+        image_end=image_end,
+        image_refs=image_refs or [],
+        image_prompt_type=image_prompt_type,
+        video_prompt_type=video_prompt_type,
+        audio_prompt_type=audio_prompt_type,
         **kwargs,
     )
     async with WanGPLTXClient(config) as client:

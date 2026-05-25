@@ -235,23 +235,23 @@ def render_sidebar():
         # Generation settings
         st.markdown("### Generation")
         
-        steps = st.slider(
+        num_inference_steps = st.slider(
             "Sampling Steps",
-            min_value=10,
+            min_value=4,
             max_value=50,
-            value=20,
-            help="More steps = higher quality but slower"
+            value=8,
+            help="More steps = higher quality but slower. 8 is typical for distilled model."
         )
-        
-        cfg_scale = st.slider(
-            "CFG Scale",
+
+        guidance_scale = st.slider(
+            "Guidance Scale",
             min_value=1.0,
             max_value=15.0,
-            value=4.0,
+            value=1.0,
             step=0.5,
-            help="How closely to follow the prompt"
+            help="How closely to follow the prompt. 1.0 works well for distilled model."
         )
-        
+
         seed = st.number_input(
             "Seed",
             min_value=-1,
@@ -259,13 +259,7 @@ def render_sidebar():
             value=-1,
             help="-1 for random seed"
         )
-        
-        enable_audio = st.checkbox(
-            "Generate Audio",
-            value=True,
-            help="Generate synchronized audio (if supported)"
-        )
-        
+
         st.divider()
         
         # Output settings
@@ -282,10 +276,9 @@ def render_sidebar():
             "height": height,
             "duration": duration,
             "fps": fps,
-            "steps": steps,
-            "cfg_scale": cfg_scale,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
             "seed": seed,
-            "enable_audio": enable_audio,
             "output_dir": output_dir,
         }
 
@@ -312,10 +305,10 @@ def render_main_content(config_values: dict):
 
 def render_single_prompt_tab(config_values: dict):
     """Render the single prompt generation tab."""
-    
+
     # Prompt inputs
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         prompt = st.text_area(
             "📝 Prompt",
@@ -323,7 +316,7 @@ def render_single_prompt_tab(config_values: dict):
             height=150,
             help="Describe what you want to see in the video"
         )
-    
+
     with col2:
         negative_prompt = st.text_area(
             "🚫 Negative Prompt",
@@ -331,30 +324,93 @@ def render_single_prompt_tab(config_values: dict):
             height=150,
             help="Describe what you want to avoid"
         )
-    
+
+    # ── Identity reference conditioning ──────────────────────────────────────
+    with st.expander("🆔 Identity Reference (IC-LoRA)", expanded=False):
+        st.markdown(
+            """
+            Upload a photo of a person or object. The model will generate a video
+            where that subject appears consistently **in every frame** via the
+            union-control IC-LoRA pathway — not just in frame 0.
+
+            > **Note:** Activates `video_prompt_type = "I"`. Incompatible with
+            > Video-to-Video mode (V2V takes precedence when a source video is set).
+            """
+        )
+        ref_image_file = st.file_uploader(
+            "Reference image",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="identity_ref_image",
+            help="Photo of the subject whose identity should be preserved across all frames.",
+        )
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            remove_bg_ref = st.checkbox(
+                "Remove background (recommended)",
+                value=True,
+                key="remove_bg_ref",
+                help="Strips the reference image background so the model focuses on the subject.",
+            )
+        with col_b:
+            ic_lora_multiplier = st.slider(
+                "IC-LoRA strength",
+                min_value=0.1,
+                max_value=1.5,
+                value=1.0,
+                step=0.05,
+                key="ic_lora_multiplier",
+                help="Lower values (e.g. 0.7) give lighter identity influence.",
+            )
+
+        ic_lora_name = st.text_input(
+            "IC-LoRA filename",
+            value="id-lora-celebvhq-ltx2.3.safetensors",
+            key="ic_lora_name",
+            help="LoRA file in loras/ltx2/ on the server. Used with video_prompt_type='I'.",
+        )
+
+        if ref_image_file is not None:
+            st.image(ref_image_file, caption="Reference image preview", width=200)
+            st.caption(
+                "⚡ Fast path: set **Sampling Steps = 8**, **CFG Scale = 1.0** in the sidebar "
+                "and use model `ltx2_22B` with `sample_solver = distilled_8_steps` / "
+                "`guidance_phases = 2` for best results."
+            )
+
+        # Advanced solver settings for "I" mode distilled fast path
+        with st.expander("⚙️ Advanced Solver (distilled fast path)", expanded=False):
+            use_distilled_solver = st.checkbox(
+                "Enable distilled_8_steps solver",
+                value=False,
+                key="use_distilled_solver",
+                help=(
+                    "Use distilled_8_steps + guidance_phases=2 for faster generation. "
+                    "The server auto-injects the distilled LoRA on top of the IC-LoRA."
+                ),
+            )
+
     # Show calculated parameters
     params = VideoGenerationParams(
         prompt=prompt or "placeholder",
-        negative_prompt=negative_prompt,
-        width=config_values["width"],
-        height=config_values["height"],
+        negative_prompt=negative_prompt or "",
+        resolution=f"{config_values['width']}x{config_values['height']}",
         duration_seconds=config_values["duration"],
         fps=config_values["fps"],
-        steps=config_values["steps"],
-        cfg_scale=config_values["cfg_scale"],
+        num_inference_steps=config_values["num_inference_steps"],
+        guidance_scale=config_values["guidance_scale"],
         seed=config_values["seed"],
-        enable_audio=config_values["enable_audio"],
     )
-    
+
     with st.expander("📊 Video Parameters", expanded=False):
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Resolution", f"{params.width}×{params.height}")
         col2.metric("Frame Count", params.frame_count)
         col3.metric("Actual Duration", f"{params.actual_duration:.2f}s")
         col4.metric("Total Frames", f"{params.frame_count} @ {params.fps}fps")
-    
+
     st.divider()
-    
+
     # Generate button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -364,38 +420,70 @@ def render_single_prompt_tab(config_values: dict):
             use_container_width=True,
             disabled=not prompt or st.session_state.generation_in_progress
         )
-    
+
     # Progress and status area
     progress_placeholder = st.empty()
     status_placeholder = st.empty()
-    
+
     if generate_clicked and prompt:
         st.session_state.generation_in_progress = True
-        
+
+        # Write uploaded reference image to a temp file if provided
+        image_ref_tmp = None
+        if ref_image_file is not None:
+            suffix = Path(ref_image_file.name).suffix or ".jpg"
+            image_ref_tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=suffix, prefix="ltx_ref_"
+            )
+            image_ref_tmp.write(ref_image_file.read())
+            image_ref_tmp.flush()
+            image_ref_tmp.close()
+
         try:
             # Create config and params
             config = LTXVideoConfig(
                 server_url=config_values["server_url"],
                 timeout=600.0  # 10 minute timeout for video generation
             )
-            
+
+            # Build identity-reference LoRA settings
+            _loras: list[str] = []
+            _lora_mults: str = ""
+            _vpt = ""
+            _image_refs: list[str] = []
+            _remove_bg: Optional[int] = None
+            if image_ref_tmp is not None:
+                _image_refs = [image_ref_tmp.name]
+                _vpt = "I"
+                if ic_lora_name.strip():
+                    _loras = [ic_lora_name.strip()]
+                    _lora_mults = str(ic_lora_multiplier)
+                _remove_bg = 1 if remove_bg_ref else 0
+
             params = VideoGenerationParams(
                 prompt=prompt,
-                negative_prompt=negative_prompt,
-                width=config_values["width"],
-                height=config_values["height"],
+                negative_prompt=negative_prompt or "",
+                resolution=f"{config_values['width']}x{config_values['height']}",
                 duration_seconds=config_values["duration"],
                 fps=config_values["fps"],
-                steps=config_values["steps"],
-                cfg_scale=config_values["cfg_scale"],
+                num_inference_steps=config_values["num_inference_steps"],
+                guidance_scale=config_values["guidance_scale"],
                 seed=config_values["seed"],
-                enable_audio=config_values["enable_audio"],
+                # Identity reference
+                image_refs=_image_refs,
+                video_prompt_type=_vpt,
+                remove_background_images_ref=_remove_bg,
+                activated_loras=_loras,
+                loras_multipliers=_lora_mults,
+                # Distilled fast path
+                sample_solver="distilled_8_steps" if use_distilled_solver else None,
+                guidance_phases=2 if use_distilled_solver else None,
             )
-            
+
             # Ensure output directory exists
             output_dir = config_values["output_dir"]
             Path(output_dir).mkdir(parents=True, exist_ok=True)
-            
+
             # Generate video
             with st.spinner("Generating video..."):
                 result = run_async(
@@ -407,23 +495,29 @@ def render_single_prompt_tab(config_values: dict):
                         status_placeholder=status_placeholder,
                     )
                 )
-            
+
             st.session_state.last_result = result
             st.session_state.generated_videos.append({
                 "result": result,
                 "prompt": prompt,
                 "timestamp": datetime.now().isoformat()
             })
-            
+
             status_placeholder.success(f"✅ Video generated successfully!")
-            
+
         except Exception as e:
             status_placeholder.error(f"❌ Generation failed: {str(e)}")
             st.exception(e)
-        
+
         finally:
             st.session_state.generation_in_progress = False
-    
+            # Clean up temp reference image
+            if image_ref_tmp is not None:
+                try:
+                    Path(image_ref_tmp.name).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
     # Display result
     if st.session_state.last_result:
         st.divider()
@@ -615,14 +709,12 @@ def render_story_mode_tab(config_values: dict):
                 
                 video_params = VideoGenerationParams(
                     prompt="",  # Will be set per segment
-                    width=config_values["width"],
-                    height=config_values["height"],
+                    resolution=f"{config_values['width']}x{config_values['height']}",
                     duration_seconds=config_values["duration"],
                     fps=config_values["fps"],
-                    steps=config_values["steps"],
-                    cfg_scale=config_values["cfg_scale"],
+                    num_inference_steps=config_values["num_inference_steps"],
+                    guidance_scale=config_values["guidance_scale"],
                     seed=config_values["seed"],
-                    enable_audio=config_values["enable_audio"],
                 )
                 
                 # Ensure output directory exists

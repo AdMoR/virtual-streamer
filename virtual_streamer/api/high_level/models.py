@@ -60,14 +60,12 @@ class VideoGenerationRequest(BaseModel):
         return VideoGenerationParams(
             prompt=prompt,
             negative_prompt=DEFAULT_NEGATIVE_PROMPT,
-            width=self.video_width,
-            height=self.video_height,
+            resolution=f"{self.video_width}x{self.video_height}",
             duration_seconds=self.video_duration_seconds,
             fps=self.video_fps,
-            steps=self.video_steps,
-            cfg_scale=self.video_cfg_scale,
+            num_inference_steps=self.video_steps,
+            guidance_scale=self.video_cfg_scale,
             seed=self.video_seed,
-            enable_audio=self.enable_audio,
             **overrides,
         )
 
@@ -120,14 +118,12 @@ class VideoFromScriptRequest(BaseModel):
         return VideoGenerationParams(
             prompt=prompt,
             negative_prompt=DEFAULT_NEGATIVE_PROMPT,
-            width=self.video_width,
-            height=self.video_height,
+            resolution=f"{self.video_width}x{self.video_height}",
             duration_seconds=self.video_duration_seconds,
             fps=self.video_fps,
-            steps=self.video_steps,
-            cfg_scale=self.video_cfg_scale,
+            num_inference_steps=self.video_steps,
+            guidance_scale=self.video_cfg_scale,
             seed=self.video_seed,
-            enable_audio=self.enable_audio,
             **overrides,
         )
 

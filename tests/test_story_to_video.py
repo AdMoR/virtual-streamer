@@ -23,7 +23,9 @@ from virtual_streamer.video_generation.ltx_client import (
 from virtual_streamer.video_generation.scene_input import SceneInput, StoryInput
 from virtual_streamer.video_generation.story_to_video import (
     StoryVideoResult,
+    TALKING_HEAD_LORA,
     _frames_from_duration,
+    _video_length_from_spoken_line,
     concatenate_videos,
     generate_segment_from_input,
     generate_scene_image_from_input,
@@ -161,9 +163,9 @@ class TestGenerateSegmentFromInput:
         client = _make_segment_client(fake_video_file)
         await generate_segment_from_input(client, sample_scene_input, str(tmp_path), sample_video_params)
         params = client.generate_video.call_args.kwargs["params"]
-        assert params.image_path is None
-        assert params.audio_path is None
-        assert params.enable_audio is False
+        assert params.image_start is None
+        assert params.audio_guide is None
+        assert params.audio_prompt_type == ""
 
     async def test_result_fields_populated(self, fake_video_file, sample_scene_input, sample_video_params, tmp_path):
         client = _make_segment_client(fake_video_file)
@@ -188,60 +190,78 @@ class TestGenerateSegmentFromInput:
             image_path=fake_image_file,
         )
         params = client.generate_video.call_args.kwargs["params"]
-        assert params.image_path == fake_image_file
-        assert params.enable_audio is False
+        assert params.image_start == fake_image_file
+        assert params.audio_prompt_type == ""
         assert seg.image_path == fake_image_file
 
-    async def test_audio_conditioned_i2v_both_params_set(self, fake_video_file, fake_audio_file, fake_image_file, sample_scene_input, sample_video_params, tmp_path, mock_get_length):
+    async def test_talking_head_uses_a1o_audio_prompt_type(self, fake_video_file, fake_audio_file, fake_image_file, sample_scene_input, sample_video_params, tmp_path):
         client = _make_segment_client(fake_video_file)
         seg = await generate_segment_from_input(
             client, sample_scene_input, str(tmp_path), sample_video_params,
             audio_path=fake_audio_file, image_path=fake_image_file,
         )
         params = client.generate_video.call_args.kwargs["params"]
-        assert params.image_path == fake_image_file
-        assert params.audio_path == fake_audio_file
-        assert params.enable_audio is True
+        assert params.image_start == fake_image_file
+        assert params.audio_guide == fake_audio_file
+        assert params.audio_prompt_type == "A1O"
         assert seg.audio_path == fake_audio_file
 
-    async def test_audio_adapts_duration_to_get_length(self, fake_video_file, fake_audio_file, sample_scene_input, sample_video_params, tmp_path, mock_get_length):
-        mock_get_length.return_value = 5.5
+    async def test_talking_head_sets_lora_and_solver(self, fake_video_file, fake_audio_file, sample_scene_input, sample_video_params, tmp_path):
         client = _make_segment_client(fake_video_file)
         await generate_segment_from_input(
             client, sample_scene_input, str(tmp_path), sample_video_params,
             audio_path=fake_audio_file,
         )
         params = client.generate_video.call_args.kwargs["params"]
-        assert params.frames == _frames_from_duration(5.5 + 0.5, sample_video_params.fps)
+        assert TALKING_HEAD_LORA in params.activated_loras
+        assert params.sample_solver == "distilled_8_steps"
+        assert params.guidance_phases == 2
 
-    async def test_missing_audio_file_falls_back_to_configured_duration(self, fake_video_file, sample_scene_input, sample_video_params, tmp_path):
+    async def test_talking_head_video_length_from_spoken_line(self, fake_video_file, fake_audio_file, sample_video_params, tmp_path):
+        client = _make_segment_client(fake_video_file)
+        scene = SceneInput(
+            scene_index=0,
+            ltx_prompt="A scientist explains",
+            spoken_line="Eh dis donc Jamy voici comment fonctionne l'intelligence artificielle",
+            raw_scene_data={},
+        )
+        await generate_segment_from_input(
+            client, scene, str(tmp_path), sample_video_params,
+            audio_path=fake_audio_file,
+        )
+        params = client.generate_video.call_args.kwargs["params"]
+        expected = _video_length_from_spoken_line(scene.spoken_line, sample_video_params.fps)
+        assert params.video_length == expected
+
+    async def test_talking_head_prompt_uses_visual_speech_format(self, fake_video_file, fake_audio_file, sample_video_params, tmp_path):
+        client = _make_segment_client(fake_video_file)
+        scene = SceneInput(
+            scene_index=0,
+            ltx_prompt="fallback prompt",
+            spoken_line="Bonjour Jamy!",
+            raw_scene_data={},
+        )
+        await generate_segment_from_input(
+            client, scene, str(tmp_path), sample_video_params,
+            audio_path=fake_audio_file,
+        )
+        params = client.generate_video.call_args.kwargs["params"]
+        assert "[VISUAL]:" in params.prompt
+        assert "[SPEECH]:" in params.prompt
+        assert "Bonjour Jamy!" in params.prompt
+
+    async def test_missing_audio_file_falls_back_to_i2v(self, fake_video_file, fake_image_file, sample_scene_input, sample_video_params, tmp_path):
         client = _make_segment_client(fake_video_file)
         await generate_segment_from_input(
             client, sample_scene_input, str(tmp_path), sample_video_params,
             audio_path="/nonexistent/audio.wav",
+            image_path=fake_image_file,
         )
         params = client.generate_video.call_args.kwargs["params"]
-        assert params.frames == _frames_from_duration(sample_video_params.duration_seconds, sample_video_params.fps)
-
-    async def test_get_length_zero_falls_back_to_configured_duration(self, fake_video_file, fake_audio_file, sample_scene_input, sample_video_params, tmp_path, mock_get_length):
-        mock_get_length.return_value = 0.0
-        client = _make_segment_client(fake_video_file)
-        await generate_segment_from_input(
-            client, sample_scene_input, str(tmp_path), sample_video_params,
-            audio_path=fake_audio_file,
-        )
-        params = client.generate_video.call_args.kwargs["params"]
-        assert params.frames == _frames_from_duration(sample_video_params.duration_seconds, sample_video_params.fps)
-
-    async def test_get_length_exception_falls_back_to_configured_duration(self, fake_video_file, fake_audio_file, sample_scene_input, sample_video_params, tmp_path, mock_get_length):
-        mock_get_length.side_effect = RuntimeError("bad file")
-        client = _make_segment_client(fake_video_file)
-        await generate_segment_from_input(
-            client, sample_scene_input, str(tmp_path), sample_video_params,
-            audio_path=fake_audio_file,
-        )
-        params = client.generate_video.call_args.kwargs["params"]
-        assert params.frames == _frames_from_duration(sample_video_params.duration_seconds, sample_video_params.fps)
+        # Fell back to i2v — no audio, no A1O, no LoRA
+        assert params.audio_guide is None
+        assert params.audio_prompt_type == ""
+        assert params.image_start == fake_image_file
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +460,7 @@ class TestStoryInputToVideoConditioning:
         mock_sd_client.txt2image.assert_called()
         # LTX receives image_path (from txt2image result → i2v, not t2v)
         for call in mock_ltx_client.generate_video.call_args_list:
-            assert call.kwargs["params"].image_path is not None
+            assert call.kwargs["params"].image_start is not None
 
     async def test_template_id_loads_entities_from_repo(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_entity_repository):
         await story_input_to_video(
@@ -468,7 +488,7 @@ class TestStoryInputToVideoConditioning:
         mock_sd_client.image_edit.assert_called()
         mock_sd_client.txt2image.assert_not_called()
         for call in mock_ltx_client.generate_video.call_args_list:
-            assert call.kwargs["params"].image_path is not None
+            assert call.kwargs["params"].image_start is not None
 
     async def test_character_with_identity_images_triggers_image_edit_and_i2v(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_storage_client, mock_entity_repository):
         mock_entity_repository.get_character.return_value = {
@@ -485,7 +505,7 @@ class TestStoryInputToVideoConditioning:
         )
         mock_sd_client.image_edit.assert_called()
         for call in mock_ltx_client.generate_video.call_args_list:
-            assert call.kwargs["params"].image_path is not None
+            assert call.kwargs["params"].image_start is not None
 
     async def test_location_and_character_both_with_images_downloads_all_refs(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_storage_client, mock_entity_repository):
         mock_entity_repository.list_locations_by_template.return_value = [{
@@ -522,7 +542,7 @@ class TestStoryInputToVideoConditioning:
         mock_sd_client.image_edit.assert_not_called()
         # txt2image still produces an image → LTX is i2v, not t2v
         for call in mock_ltx_client.generate_video.call_args_list:
-            assert call.kwargs["params"].image_path is not None
+            assert call.kwargs["params"].image_start is not None
 
     async def test_sd_failure_falls_back_to_t2v(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_entity_repository):
         # Make both SD methods raise so generate_scene_image_from_input returns None
@@ -537,32 +557,42 @@ class TestStoryInputToVideoConditioning:
         # Graceful degradation: generation still succeeds with t2v
         assert len(result.segments) == 2
         for call in mock_ltx_client.generate_video.call_args_list:
-            assert call.kwargs["params"].image_path is None
+            assert call.kwargs["params"].image_start is None
 
-    async def test_location_image_plus_audio_gives_audio_conditioned_i2v(self, fake_audio_file, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_storage_client, mock_entity_repository, mock_get_length):
-        mock_entity_repository.list_locations_by_template.return_value = [{
-            "location_id": "loc-1",
-            "story_template_id": "tmpl-1",
-            "description": "A test lab",
-            "image_path": "minio/locations/loc-1.png",
-        }]
+    async def test_character_voice_sample_gives_talking_head_mode(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_storage_client, mock_entity_repository):
+        """When the character has a voice sample, all their scenes use A1O talking-head mode."""
+        # mock_entity_repository already returns a character with voice_samples (from conftest)
         await story_input_to_video(
             story_input=sample_story_input,
             ltx_config=sample_ltx_config,
             video_params=sample_video_params,
             output_dir=output_dir,
-            segment_audio_paths={0: fake_audio_file},
         )
         calls = mock_ltx_client.generate_video.call_args_list
-        # Scene 0: audio-conditioned i2v
-        first = calls[0].kwargs["params"]
-        assert first.image_path is not None
-        assert first.audio_path == fake_audio_file
-        assert first.enable_audio is True
-        # Scene 1: i2v without audio
-        second = calls[1].kwargs["params"]
-        assert second.image_path is not None
-        assert second.audio_path is None
+        for call in calls:
+            params = call.kwargs["params"]
+            assert params.audio_prompt_type == "A1O"
+            assert TALKING_HEAD_LORA in params.activated_loras
+
+    async def test_no_voice_sample_falls_back_to_i2v(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_entity_repository):
+        """When character has no voice samples, falls back to plain i2v (no audio)."""
+        mock_entity_repository.get_character.return_value = {
+            "character_id": "fred",
+            "name": "Fred",
+            "description": "a scientist",
+            "identity_images": [],
+            "voice_samples": [],
+        }
+        await story_input_to_video(
+            story_input=sample_story_input,
+            ltx_config=sample_ltx_config,
+            video_params=sample_video_params,
+            output_dir=output_dir,
+        )
+        for call in mock_ltx_client.generate_video.call_args_list:
+            params = call.kwargs["params"]
+            assert params.audio_guide is None
+            assert params.audio_prompt_type == ""
 
 
 # ---------------------------------------------------------------------------
@@ -614,17 +644,23 @@ class TestStoryInputToVideoResilience:
 
 class TestStoryInputToVideoAudio:
 
-    async def test_audio_forwarded_to_matching_scene_only(self, fake_audio_file, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_entity_repository, mock_get_length):
+    async def test_voice_sample_downloaded_and_passed_as_audio_guide(self, sample_story_input, sample_ltx_config, sample_video_params, output_dir, mock_ltx_client, mock_subprocess_run, mock_sd_client, mock_storage_client, mock_entity_repository):
+        """Character voice sample is auto-downloaded and passed as audio_guide."""
         await story_input_to_video(
             story_input=sample_story_input,
             ltx_config=sample_ltx_config,
             video_params=sample_video_params,
             output_dir=output_dir,
-            segment_audio_paths={0: fake_audio_file},
         )
-        calls = mock_ltx_client.generate_video.call_args_list
-        assert calls[0].kwargs["params"].audio_path == fake_audio_file
-        assert calls[1].kwargs["params"].audio_path is None
+        # storage.download_file called for the voice sample (once per scene)
+        audio_downloads = [
+            call for call in mock_storage_client.download_file.call_args_list
+            if "voice_samples" in str(call)
+        ]
+        assert len(audio_downloads) >= 1
+        # LTX called with audio guide set
+        for call in mock_ltx_client.generate_video.call_args_list:
+            assert call.kwargs["params"].audio_guide is not None
 
 
 # ---------------------------------------------------------------------------

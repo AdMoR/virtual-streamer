@@ -89,11 +89,10 @@ def sample_video_params() -> VideoGenerationParams:
     return VideoGenerationParams(
         prompt="",
         duration_seconds=3.0,
-        width=1280,
-        height=720,
+        resolution="1280x720",
         fps=24,
-        steps=4,
-        cfg_scale=3.0,
+        num_inference_steps=4,
+        guidance_scale=3.0,
     )
 
 
@@ -224,6 +223,9 @@ def mock_entity_repository():
         "name": "Fred",
         "description": "a scientist",
         "identity_images": [],
+        "voice_samples": [
+            {"sample_storage_path": "voice_samples/fred/ref.wav", "transcript": "Test line"}
+        ],
     })
     repo.list_locations_by_template = AsyncMock(return_value=[{
         "location_id": "loc-1",

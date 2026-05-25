@@ -38,7 +38,6 @@ from virtual_streamer.agents.story_pipeline.schema import (
     get_recurrent_locations_from_state,
     get_detailed_scenes_from_state,
 )
-from virtual_streamer.api.dependencies import get_storage_resolver
 from virtual_streamer.api.high_level.models import (
     StoryPipelineResult,
     VideoGenerationRequest,
@@ -50,13 +49,9 @@ from virtual_streamer.image_generation.stable_cpp_client import (
     StableDiffusionCppConfig,
     Txt2ImageParams,
 )
-from virtual_streamer.utils.character_loader import load_character
 from virtual_streamer.utils.job_store import get_global_job_store
 from virtual_streamer.utils.minio_client import get_storage_client
-from virtual_streamer.utils.utils import (
-    add_subtitle_from_srt,
-    txt_to_speech_call_fish_async,
-)
+from virtual_streamer.utils.utils import add_subtitle_from_srt
 from virtual_streamer.video_generation.ltx_client import (
     WanGPLTXClient,
     LTXVideoConfig,
@@ -265,42 +260,8 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
                 except Exception as loc_exc:
                     logger.warning(f"[Job {job_id}] Failed to create location '{loc.location_id}': {loc_exc}")
 
-        # Step 3: TTS per scene
-        segment_audio_paths: Dict[int, str] = {}
-        tts_dir: Optional[str] = None
-        if request.enable_audio:
-            tts_dir = os.path.join(output_dir, "tts")
-            os.makedirs(tts_dir, exist_ok=True)
-            storage_resolver = get_storage_resolver()
-
-            for i, scene in enumerate(scenes):
-                if not scene.speaker_id or not scene.spoken_line:
-                    continue
-                try:
-                    character = await load_character(scene.speaker_id)
-                    reference_audio: Optional[str] = None
-                    reference_text: Optional[str] = None
-                    if character.voice_samples:
-                        sample = character.voice_samples[0]
-                        reference_audio = await storage_resolver.resolve_file(sample.sample_storage_path)
-                        reference_text = sample.transcript
-                    audio_out = os.path.join(tts_dir, f"scene_{i:03d}.wav")
-                    await txt_to_speech_call_fish_async(
-                        speech_lines=scene.spoken_line,
-                        reference_audio=reference_audio,
-                        reference_text=reference_text,
-                        outpath=audio_out,
-                        format="wav",
-                        host=request.tts_host,
-                        port=request.tts_port,
-                    )
-                    segment_audio_paths[i] = audio_out
-                    logger.info(f"[Job {job_id}] TTS scene {i} ({scene.speaker_id}): {audio_out}")
-                except Exception as exc:
-                    logger.warning(f"[Job {job_id}] TTS failed for scene {i}: {exc} — continuing without audio")
-
-        # Step 4: scenes_to_video (LTX-2 audio-conditioned pipeline)
-        logger.info(f"[Job {job_id}] Running scenes_to_video with LTX-2...")
+        # Step 3: scenes_to_video — audio sourced automatically from character voice samples
+        logger.info(f"[Job {job_id}] Running scenes_to_video with LTX-2 (talking-head A1O)...")
 
         debug_prefix = None
         if _ENABLE_DEBUG:
@@ -342,7 +303,6 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             ltx_config=ltx_config,
             video_params=video_params,
             output_dir=output_dir,
-            segment_audio_paths=segment_audio_paths or None,
             story_template_id=request.story_template_id,
             sd_server_url=SD_URL,
             progress_callback=progress_callback,
@@ -351,14 +311,11 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             db_story_id=_db_story_id,
         )
 
-        # Step 5 (optional): Burn subtitles per segment, then re-concatenate
+        # Step 4 (optional): Burn subtitles per segment, then re-concatenate
         final_video_path = result.final_video_path
         if request.enable_subtitles and result.segments:
             logger.info(f"[Job {job_id}] Adding subtitles...")
             final_video_path = _apply_subtitles(result, output_dir, request.subtitle_fontsize)
-
-        if tts_dir:
-            shutil.rmtree(tts_dir, ignore_errors=True)
 
         logger.info(f"[Job {job_id}] Video generation complete: {final_video_path}")
 
@@ -479,40 +436,7 @@ async def _run_from_script(job_id: str, request: VideoFromScriptRequest):
                 except Exception as loc_exc:
                     logger.warning(f"[FromScript {job_id}] Location '{loc.location_id}' failed: {loc_exc}")
 
-        # Step 2: TTS per scene
-        segment_audio_paths: Dict[int, str] = {}
-        tts_dir: Optional[str] = None
-        if request.enable_audio:
-            tts_dir = os.path.join(output_dir, "tts")
-            os.makedirs(tts_dir, exist_ok=True)
-            storage_resolver = get_storage_resolver()
-            for i, scene in enumerate(scenes):
-                if not scene.speaker_id or not scene.spoken_line:
-                    continue
-                try:
-                    character = await load_character(scene.speaker_id)
-                    reference_audio: Optional[str] = None
-                    reference_text: Optional[str] = None
-                    if character.voice_samples:
-                        sample = character.voice_samples[0]
-                        reference_audio = await storage_resolver.resolve_file(sample.sample_storage_path)
-                        reference_text = sample.transcript
-                    audio_out = os.path.join(tts_dir, f"scene_{i:03d}.wav")
-                    await txt_to_speech_call_fish_async(
-                        speech_lines=scene.spoken_line,
-                        reference_audio=reference_audio,
-                        reference_text=reference_text,
-                        outpath=audio_out,
-                        format="wav",
-                        host=request.tts_host,
-                        port=request.tts_port,
-                    )
-                    segment_audio_paths[i] = audio_out
-                    logger.info(f"[FromScript {job_id}] TTS scene {i}: {audio_out}")
-                except Exception as exc:
-                    logger.warning(f"[FromScript {job_id}] TTS scene {i} failed: {exc} — continuing without audio")
-
-        # Step 3: scenes_to_video
+        # Step 2: scenes_to_video — audio sourced automatically from character voice samples
         debug_prefix = None
         if _ENABLE_DEBUG:
             ts = datetime.now().strftime("%Y-%m-%d-%H-%M")
@@ -551,7 +475,6 @@ async def _run_from_script(job_id: str, request: VideoFromScriptRequest):
             ltx_config=ltx_config,
             video_params=video_params,
             output_dir=output_dir,
-            segment_audio_paths=segment_audio_paths or None,
             story_template_id=request.story_template_id,
             sd_server_url=_sd_url,
             progress_callback=progress_callback,
@@ -560,14 +483,11 @@ async def _run_from_script(job_id: str, request: VideoFromScriptRequest):
             db_story_id=_db_story_id,
         )
 
-        # Step 4 (optional): Burn subtitles per segment, then re-concatenate
+        # Step 3 (optional): Burn subtitles per segment, then re-concatenate
         final_video_path = result.final_video_path
         if request.enable_subtitles and result.segments:
             logger.info(f"[FromScript {job_id}] Adding subtitles...")
             final_video_path = _apply_subtitles(result, output_dir, request.subtitle_fontsize)
-
-        if tts_dir:
-            shutil.rmtree(tts_dir, ignore_errors=True)
 
         # Upload final video
         storage = get_storage_client()
@@ -644,43 +564,54 @@ class _SingleClipJob:
         resolution: str,
         duration_seconds: float,
         fps: int,
-        steps: int,
+        num_inference_steps: int,
         guidance_scale: float,
         flow_shift: float,
         seed: int,
         audio_scale: float,
-        audio_guidance: float,
+        audio_guidance_scale: float,
         denoising_strength: float,
         video_prompt_type: str,
-        transition_frames: int,
-        lora_name: Optional[str] = None,
-        lora_multiplier: float = 1.0,
-        identity_preservation: bool = False,
+        image_prompt_type: str,
+        audio_prompt_type: str,
+        keep_frames_video_guide: Optional[str] = None,
+        activated_loras: Optional[List[str]] = None,
+        loras_multipliers: str = "",
+        # Identity reference conditioning ("I" mode)
+        image_ref_bytes: Optional[bytes] = None,
+        remove_background_images_ref: Optional[int] = None,
+        sample_solver: Optional[str] = None,
+        guidance_phases: Optional[int] = None,
     ):
-        self.prompt                = prompt
-        self.negative_prompt       = negative_prompt
-        self.image_bytes           = image_bytes
-        self.audio_bytes           = audio_bytes
-        self.video_bytes           = video_bytes
-        self.end_image_bytes       = end_image_bytes
-        self.wangp_url             = wangp_url
-        self.wangp_timeout         = wangp_timeout
-        self.model_type            = model_type
-        self.resolution            = resolution
-        self.duration_seconds      = duration_seconds
-        self.fps                   = fps
-        self.steps                 = steps
-        self.guidance_scale        = guidance_scale
-        self.flow_shift            = flow_shift
-        self.seed                  = seed
-        self.audio_scale           = audio_scale
-        self.audio_guidance        = audio_guidance
-        self.denoising_strength    = denoising_strength
-        self.video_prompt_type     = video_prompt_type
-        self.transition_frames     = transition_frames
-        self.lora_name             = lora_name
-        self.lora_multiplier       = lora_multiplier
-        self.identity_preservation = identity_preservation
+        self.prompt                      = prompt
+        self.negative_prompt             = negative_prompt
+        self.image_bytes                 = image_bytes
+        self.audio_bytes                 = audio_bytes
+        self.video_bytes                 = video_bytes
+        self.end_image_bytes             = end_image_bytes
+        self.wangp_url                   = wangp_url
+        self.wangp_timeout               = wangp_timeout
+        self.model_type                  = model_type
+        self.resolution                  = resolution
+        self.duration_seconds            = duration_seconds
+        self.fps                         = fps
+        self.num_inference_steps         = num_inference_steps
+        self.guidance_scale              = guidance_scale
+        self.flow_shift                  = flow_shift
+        self.seed                        = seed
+        self.audio_scale                 = audio_scale
+        self.audio_guidance_scale        = audio_guidance_scale
+        self.denoising_strength          = denoising_strength
+        self.video_prompt_type           = video_prompt_type
+        self.image_prompt_type           = image_prompt_type
+        self.audio_prompt_type           = audio_prompt_type
+        self.keep_frames_video_guide     = keep_frames_video_guide
+        self.activated_loras             = activated_loras or []
+        self.loras_multipliers           = loras_multipliers
+        self.image_ref_bytes             = image_ref_bytes
+        self.remove_background_images_ref = remove_background_images_ref
+        self.sample_solver               = sample_solver
+        self.guidance_phases             = guidance_phases
 
 
 async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
@@ -694,6 +625,7 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
             audio_path: Optional[str] = None
             video_path: Optional[str] = None
             end_image_path: Optional[str] = None
+            image_ref_path: Optional[str] = None
 
             if job.video_bytes:
                 video_path = os.path.join(tmpdir, "input_video.mp4")
@@ -715,30 +647,40 @@ async def _run_single_clip(job_id: str, job: _SingleClipJob) -> None:
                 with open(end_image_path, "wb") as fh:
                     fh.write(job.end_image_bytes)
 
+            if job.image_ref_bytes:
+                image_ref_path = os.path.join(tmpdir, "input_ref_image.png")
+                with open(image_ref_path, "wb") as fh:
+                    fh.write(job.image_ref_bytes)
+
             config = LTXVideoConfig(server_url=job.wangp_url, timeout=job.wangp_timeout)
             params = VideoGenerationParams(
                 prompt=job.prompt,
                 negative_prompt=job.negative_prompt,
-                image_path=image_path,
-                audio_path=audio_path,
-                video_path=video_path,
-                end_image_path=end_image_path,
+                image_start=image_path,
+                audio_guide=audio_path,
+                video_guide=video_path,
+                image_end=end_image_path,
+                image_refs=[image_ref_path] if image_ref_path else [],
                 model_type=job.model_type,
                 resolution=job.resolution,
                 duration_seconds=job.duration_seconds,
                 fps=job.fps,
-                steps=job.steps,
+                num_inference_steps=job.num_inference_steps,
                 guidance_scale=job.guidance_scale,
                 flow_shift=job.flow_shift,
                 seed=job.seed,
                 audio_scale=job.audio_scale,
-                audio_guidance=job.audio_guidance,
+                audio_guidance_scale=job.audio_guidance_scale,
                 denoising_strength=job.denoising_strength,
                 video_prompt_type=job.video_prompt_type,
-                transition_frames=job.transition_frames,
-                lora_name=job.lora_name,
-                lora_multiplier=job.lora_multiplier,
-                identity_preservation=job.identity_preservation,
+                image_prompt_type=job.image_prompt_type,
+                audio_prompt_type=job.audio_prompt_type,
+                keep_frames_video_guide=job.keep_frames_video_guide,
+                activated_loras=job.activated_loras,
+                loras_multipliers=job.loras_multipliers,
+                remove_background_images_ref=job.remove_background_images_ref,
+                sample_solver=job.sample_solver,
+                guidance_phases=job.guidance_phases,
             )
 
             output_dir = os.path.join(tmpdir, "output")
@@ -844,43 +786,48 @@ async def health():
 @router.post("/single-clip", response_model=SingleClipResponse)
 async def generate_single_clip(
     background_tasks: BackgroundTasks,
-    prompt:           str           = Form(...),
-    negative_prompt:  str           = Form(DEFAULT_NEGATIVE_PROMPT),
-    wangp_url:        str           = Form("http://gx10-cbc5:8082"),
-    wangp_timeout:    float         = Form(600.0),
-    quality_preset:   Optional[str] = Form(None, description="Named preset: 'fast', 'quality', 'high_quality'."),
-    model_type:       str           = Form("ltx2_22B_distilled"),
-    resolution:       str           = Form("1280x720"),
-    duration_seconds: float         = Form(4.0),
-    fps:              int           = Form(24),
-    steps:            int           = Form(8),
-    guidance_scale:   float         = Form(3.0),
-    flow_shift:       float         = Form(3.0),
-    seed:             int           = Form(-1),
-    audio_scale:        float        = Form(1.0),
-    audio_guidance:     float        = Form(4.5),
-    denoising_strength: float        = Form(0.7),
-    video_prompt_type:  str          = Form("DVG", description="V2V preprocessing mode: DVG, PVG, OVG, EVG, or VG"),
-    transition_frames:  int          = Form(0, description="Smoothing frames between image_start and video_guide (0=off)."),
-    lora_name:             Optional[str] = Form(None, description="LoRA filename to activate (e.g. 'my-style.safetensors')."),
-    lora_multiplier:       float         = Form(1.0, description="Strength/weight for the user-supplied LoRA (0.0–2.0)."),
-    identity_preservation: bool          = Form(False, description="Enable ID-LoRA talking-heads mode (requires ltx2_22B or ltx2_19B)."),
-    image:              Optional[UploadFile] = File(default=None),
-    audio:              Optional[UploadFile] = File(default=None),
-    video:              Optional[UploadFile] = File(default=None),
-    end_image:          Optional[UploadFile] = File(default=None, description="Last/end-frame conditioning image."),
+    prompt:                str           = Form(...),
+    negative_prompt:       str           = Form(DEFAULT_NEGATIVE_PROMPT),
+    wangp_url:             str           = Form("http://gx10-cbc5:8082"),
+    wangp_timeout:         float         = Form(600.0),
+    quality_preset:        Optional[str] = Form(None, description="Named preset: 'fast', 'quality', 'high_quality'."),
+    model_type:            str           = Form("ltx2_22B_distilled_1_1"),
+    resolution:            str           = Form("1280x720"),
+    duration_seconds:      float         = Form(4.0),
+    fps:                   int           = Form(24),
+    num_inference_steps:   int           = Form(8),
+    guidance_scale:        float         = Form(1.0),
+    flow_shift:            float         = Form(5.0),
+    seed:                  int           = Form(-1),
+    audio_scale:           float         = Form(1.0),
+    audio_guidance_scale:  float         = Form(7.0),
+    denoising_strength:    float         = Form(1.0),
+    video_prompt_type:     str           = Form("", description="V2V / identity flags, e.g. 'DVG', 'PVG', 'I'. Empty = unused."),
+    image_prompt_type:     str           = Form("", description="Image conditioning flags: 'S', 'SE', 'E'. Empty = unused."),
+    audio_prompt_type:     str           = Form("", description="Audio flags: 'A', 'A1O'. Empty = unused."),
+    keep_frames_video_guide: Optional[str] = Form(None, description="Blank first N guide frames, e.g. '17:-1'."),
+    activated_loras:       str           = Form("", description="Comma-separated LoRA filenames."),
+    loras_multipliers:     str           = Form("", description="Space-separated multipliers for activated_loras."),
+    remove_background_images_ref: Optional[int] = Form(None, description="Strip background from image_refs (0=off, 1=on, None=server default)."),
+    sample_solver:         Optional[str] = Form(None, description="Solver type, e.g. 'distilled_8_steps'."),
+    guidance_phases:       Optional[int] = Form(None, description="Number of guidance phases (1 or 2)."),
+    image:                 Optional[UploadFile] = File(default=None, description="Start/first-frame image (also set image_prompt_type='S')."),
+    audio:                 Optional[UploadFile] = File(default=None, description="Audio conditioning file (also set audio_prompt_type='A')."),
+    video:                 Optional[UploadFile] = File(default=None, description="Source video for V2V (also set video_prompt_type)."),
+    end_image:             Optional[UploadFile] = File(default=None, description="End/last-frame conditioning image (also set image_prompt_type containing 'E')."),
+    image_ref:             Optional[UploadFile] = File(default=None, description="Identity reference image (set video_prompt_type='I')."),
 ):
     """
-    Generate a single video clip from an optional conditioning image and/or audio.
+    Generate a single video clip via POST /jobs/raw.
 
-    Accepts ``multipart/form-data``.
+    Accepts ``multipart/form-data``.  All conditioning flags must be set explicitly:
 
-    Modes:
     - Text-to-video:               prompt only
-    - Image-to-video (i2v):        prompt + image file
-    - Audio-conditioned i2v:       prompt + image file + audio file
-    - Video-to-video (v2v):        prompt + video file
-    - V2V with pinned first frame: prompt + video file + image file
+    - Image-to-video:              image + image_prompt_type="S"
+    - Audio-conditioned i2v:       image + audio + image_prompt_type="S" + audio_prompt_type="A"
+    - Video-to-video (depth):      video + video_prompt_type="DVG"
+    - Identity reference:          image_ref + video_prompt_type="I"
+    - Talking head (ID-LoRA):      image + audio + image_prompt_type="S" + audio_prompt_type="A1O"
 
     Quality presets (``quality_preset``): ``fast`` · ``quality`` · ``high_quality``.
 
@@ -889,20 +836,19 @@ async def generate_single_clip(
     """
     if quality_preset and quality_preset in VIDEO_PRESETS:
         preset = VIDEO_PRESETS[quality_preset]
-        _DEFAULT_MODEL = "ltx2_22B_distilled"
-        _DEFAULT_STEPS = 8
-        _DEFAULT_FPS   = 24
-        if model_type == _DEFAULT_MODEL:
+        if model_type == "ltx2_22B_distilled_1_1":
             model_type = preset.get("model_type", model_type)
-        if steps == _DEFAULT_STEPS:
-            steps = int(preset.get("steps", steps))
-        if fps == _DEFAULT_FPS:
-            fps = int(preset.get("fps", fps))
+        if num_inference_steps == 8:
+            num_inference_steps = int(preset.get("num_inference_steps", num_inference_steps))
 
     image_bytes     = await image.read()     if image     else None
     audio_bytes     = await audio.read()     if audio     else None
     video_bytes     = await video.read()     if video     else None
     end_image_bytes = await end_image.read() if end_image else None
+    image_ref_bytes = await image_ref.read() if image_ref else None
+
+    # Parse comma-separated LoRA list
+    lora_list = [l.strip() for l in activated_loras.split(",") if l.strip()]
 
     job = _SingleClipJob(
         prompt=prompt,
@@ -917,18 +863,23 @@ async def generate_single_clip(
         resolution=resolution,
         duration_seconds=duration_seconds,
         fps=fps,
-        steps=steps,
+        num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         flow_shift=flow_shift,
         seed=seed,
         audio_scale=audio_scale,
-        audio_guidance=audio_guidance,
+        audio_guidance_scale=audio_guidance_scale,
         denoising_strength=denoising_strength,
         video_prompt_type=video_prompt_type,
-        transition_frames=transition_frames,
-        lora_name=lora_name or None,
-        lora_multiplier=lora_multiplier,
-        identity_preservation=identity_preservation,
+        image_prompt_type=image_prompt_type,
+        audio_prompt_type=audio_prompt_type,
+        keep_frames_video_guide=keep_frames_video_guide,
+        activated_loras=lora_list,
+        loras_multipliers=loras_multipliers,
+        image_ref_bytes=image_ref_bytes,
+        remove_background_images_ref=remove_background_images_ref,
+        sample_solver=sample_solver,
+        guidance_phases=guidance_phases,
     )
 
     job_store = await get_global_job_store()
