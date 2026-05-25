@@ -93,7 +93,6 @@ RUN mkdir -p /data/out_video_folder \
     chmod -R 755 /data
 
 # copy sources
-COPY ./checkpoints/ ./checkpoints
 COPY ./models ./models
 COPY ./face_detection ./face_detection
 COPY ./README.md .
