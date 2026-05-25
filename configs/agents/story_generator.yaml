@@ -16,7 +16,7 @@ model:
 
 metadata:
   version: "1.0.0"
-  description: "Generates C'est pas Sorcier parody stories from titles"
+  description: "Generates stories from titles"
   owners:
     - virtual-streamer-team
   tags:

@@ -159,9 +159,16 @@ def _apply_subtitles(
     fontsize: int,
 ) -> str:
     """
-    Burn subtitles into each segment that has TTS audio, then re-concatenate.
-    Returns the path to the new final video.
+    Burn subtitles into each segment by transcribing the audio embedded in each
+    MP4 segment (not the reference audio used for conditioning). Re-concatenates
+    all segments into a final video.
+
+    Expects segment video files to still exist on disk (call scenes_to_video /
+    story_input_to_video with keep_segments=True). Cleans up segment dirs after
+    the final video is produced.
     """
+    import shutil
+    import subprocess as _subprocess
     from virtual_streamer.utils.transcription import transcribe_to_srt
 
     sub_dir = os.path.join(output_dir, "subtitles")
@@ -171,17 +178,62 @@ def _apply_subtitles(
     subtitled: List[str] = []
 
     for seg in result.segments:
-        if seg.audio_path and os.path.exists(seg.audio_path):
-            srt = os.path.join(sub_dir, f"seg_{seg.index:03d}.srt")
-            out = os.path.join(sub_dir, f"seg_{seg.index:03d}.mp4")
-            transcribe_to_srt(seg.audio_path, srt)
-            add_subtitle_from_srt(seg.video_path, srt, out, fontsize=fontsize)
-            subtitled.append(out)
-        else:
+        if not seg.video_path or not os.path.exists(seg.video_path):
+            logger.warning(
+                f"_apply_subtitles: segment video missing, skipping subtitle for "
+                f"seg {seg.index}: {seg.video_path}"
+            )
+            continue
+
+        # Extract the audio track embedded in the generated video segment.
+        # This is the correct audio to transcribe — not seg.audio_path, which is
+        # the reference voice sample used for A1O conditioning (not the output audio).
+        extracted_audio = os.path.join(temp_dir, f"seg_{seg.index:03d}_audio.wav")
+        extract_proc = _subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", seg.video_path,
+                "-vn", "-acodec", "pcm_s16le",
+                extracted_audio,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        has_audio = (
+            extract_proc.returncode == 0
+            and os.path.exists(extracted_audio)
+            and os.path.getsize(extracted_audio) > 0
+        )
+
+        if not has_audio:
+            logger.info(
+                f"_apply_subtitles: seg {seg.index} has no audio track "
+                f"(ffmpeg rc={extract_proc.returncode}) — including without subtitles"
+            )
             subtitled.append(seg.video_path)
+            continue
+
+        srt = os.path.join(sub_dir, f"seg_{seg.index:03d}.srt")
+        out = os.path.join(sub_dir, f"seg_{seg.index:03d}.mp4")
+        transcribe_to_srt(extracted_audio, srt)
+        add_subtitle_from_srt(seg.video_path, srt, out, fontsize=fontsize)
+        subtitled.append(out)
+
+    if not subtitled:
+        logger.warning("_apply_subtitles: no subtitled segments produced, returning original video")
+        return result.final_video_path
 
     sub_final = os.path.join(output_dir, "final_with_subtitles.mp4")
     concatenate_videos(subtitled, sub_final, temp_dir)
+
+    # Clean up segment dirs that were kept alive for us (keep_segments=True)
+    seen_dirs: set = set()
+    for seg in result.segments:
+        if seg.video_path:
+            seg_dir = os.path.dirname(seg.video_path)
+            if seg_dir and seg_dir not in seen_dirs:
+                seen_dirs.add(seg_dir)
+                shutil.rmtree(seg_dir, ignore_errors=True)
+
     return sub_final
 
 
@@ -309,6 +361,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             debug_minio_prefix=debug_prefix,
             story_repo=_story_repo,
             db_story_id=_db_story_id,
+            keep_segments=request.enable_subtitles,
         )
 
         # Step 4 (optional): Burn subtitles per segment, then re-concatenate
@@ -481,6 +534,7 @@ async def _run_from_script(job_id: str, request: VideoFromScriptRequest):
             debug_minio_prefix=debug_prefix,
             story_repo=_story_repo,
             db_story_id=_db_story_id,
+            keep_segments=request.enable_subtitles,
         )
 
         # Step 3 (optional): Burn subtitles per segment, then re-concatenate

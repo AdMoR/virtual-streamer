@@ -63,15 +63,11 @@ Stylized aesthetics	    Painterly, noir, analog film, fashion editorial, pixelat
 Lighting & mood control	Backlighting, color palettes, rim light, flickering lamps
 
 Generate scenes with preferably a lot of dynamism. To do so, describe precisely how the camera moves and actions from the main character.
-
+Scene with characters always start with a close range shot first and then zoom out rather than the contrary.
 
 ## Common Mistakes for the scene description 
-
 Too vague: "A nice video of nature" — the model has too many options and picks arbitrarily. Be specific about what's in the frame.
 Over-constrained: "Exactly 3 birds flying left to right at 45 degrees while the camera pans right at 2 degrees per second" — the model works best with natural language descriptions, not numerical specifications.
-Mismatched duration: A 10-word prompt for a 10-second video — the model doesn't have enough direction to fill the duration. Long videos need long prompts.
-Conflicting directions: "A still, peaceful lake with dramatic waves crashing" — contradictions confuse the model. Be internally consistent.
-Generating precise text - text will not be rendered faithfully 100% of the time, avoid it as much as possible.
 
 
 Example of scene_description : 
@@ -87,6 +83,8 @@ Focus on:
 - In story_plan, explain your creative choices and the comedic arc. Please plan for a format respecting the size mentioned.
 - make scene_description specific enough to find visually matching videos
 - Last line of the serie must have a twist.
+
+
 
 """
 
