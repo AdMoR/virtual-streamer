@@ -19,7 +19,6 @@ services:
     devices:
       - /dev/nvidia0:/dev/nvidia0
     depends_on:
-      - tts
       - minio
       - mysql
     environment:

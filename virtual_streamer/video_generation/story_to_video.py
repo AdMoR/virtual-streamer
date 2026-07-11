@@ -246,8 +246,8 @@ async def generate_location_image(
                             prompt=prompt,
                             negative_prompt=negative_prompt,
                             image_paths=local_paths,
-                            width=1920,
-                            height=1080,
+                            width=968,
+                            height=544,
                             extra_args={"denoising_strength": 0.1},
                         ),
                         output_dir=output_dir,
@@ -264,8 +264,8 @@ async def generate_location_image(
                 Txt2ImageParams(
                     prompt=prompt,
                     negative_prompt=negative_prompt,
-                    width=1280,
-                    height=720,
+                    width=968,
+                    height=544,
                 ),
                 output_dir=output_dir,
             )
@@ -700,6 +700,7 @@ async def story_input_to_video(
     reference_videos: Optional[Dict[int, str]] = None,
     story_repo: Optional[Any] = None,
     db_story_id: Optional[str] = None,
+    keep_segments: bool = False,
     seed_hunt_config: Optional["SeedHuntConfig"] = None,
 ) -> StoryVideoResult:
     """
@@ -1051,10 +1052,12 @@ async def story_input_to_video(
         concatenate_videos(video_paths=video_paths, output_path=final_path, temp_dir=str(temp_dir))
         total_duration = sum(seg.duration_seconds for seg in segments)
 
-        # Clean up temporary segment dirs, image dirs, and temp dir
-        for seg in segments:
-            seg_dir = os.path.dirname(seg.video_path)
-            shutil.rmtree(seg_dir, ignore_errors=True)
+        # Clean up temporary segment dirs, image dirs, and temp dir.
+        # Skip segment deletion when the caller needs them (e.g. subtitle burning).
+        if not keep_segments:
+            for seg in segments:
+                seg_dir = os.path.dirname(seg.video_path)
+                shutil.rmtree(seg_dir, ignore_errors=True)
         for d in output_path.glob("images_*"):
             shutil.rmtree(str(d), ignore_errors=True)
         shutil.rmtree(str(temp_dir), ignore_errors=True)
@@ -1368,6 +1371,7 @@ async def scenes_to_video(
     reference_videos: Optional[Dict[int, str]] = None,
     story_repo: Optional[Any] = None,
     db_story_id: Optional[str] = None,
+    keep_segments: bool = False,
     seed_hunt_config: Optional["SeedHuntConfig"] = None,
 ) -> StoryVideoResult:
     """
@@ -1376,6 +1380,10 @@ async def scenes_to_video(
     Thin wrapper: converts scenes → StoryInput (via DetailedSceneInput) and
     delegates to story_input_to_video. Audio is sourced automatically from
     each speaker's voice samples — no TTS pre-generation needed.
+
+    keep_segments: if True, individual segment video directories are NOT deleted
+    after concatenation. Set this when the caller still needs each segment file
+    (e.g. to burn in subtitles per segment).
     """
     scene_inputs = [DetailedSceneInput.from_detailed_scene(s, i) for i, s in enumerate(scenes)]
     story_input = StoryInput(
@@ -1396,6 +1404,7 @@ async def scenes_to_video(
         reference_videos=reference_videos,
         story_repo=story_repo,
         db_story_id=db_story_id,
+        keep_segments=keep_segments,
         seed_hunt_config=seed_hunt_config,
     )
 

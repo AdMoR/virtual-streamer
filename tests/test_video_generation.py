@@ -507,25 +507,34 @@ class TestApplySubtitles:
         return seg
 
     def test_subtitles_applied_when_audio_present(self, tmp_path):
-        """transcribe_to_srt and add_subtitle_from_srt are called for segments with audio."""
+        """Audio is extracted from the video segment (not seg.audio_path), then transcribed."""
         import os
 
-        # Create dummy video and audio files so os.path.exists passes
+        # Create a dummy video file (audio_path is no longer the source of truth)
         video_file = tmp_path / "seg_000.mp4"
-        audio_file = tmp_path / "seg_000.wav"
         video_file.write_bytes(b"FAKE_VIDEO")
-        audio_file.write_bytes(b"FAKE_AUDIO")
 
         mock_result = MagicMock()
         mock_result.segments = [
-            self._make_mock_segment(0, str(video_file), str(audio_file)),
+            self._make_mock_segment(0, str(video_file), None),
         ]
         mock_result.final_video_path = str(video_file)
+
+        def fake_ffmpeg_extract(cmd, **kwargs):
+            """Simulate ffmpeg successfully extracting audio by writing the output file."""
+            # The extracted audio path is the last positional argument in the command
+            out_path = cmd[-1]
+            with open(out_path, "wb") as fh:
+                fh.write(b"FAKE_EXTRACTED_AUDIO")
+            proc = MagicMock()
+            proc.returncode = 0
+            return proc
 
         with (
             patch("virtual_streamer.api.high_level.video_generation.add_subtitle_from_srt") as mock_sub,
             patch("virtual_streamer.utils.transcription.transcribe_to_srt") as mock_srt,
             patch("virtual_streamer.api.high_level.video_generation.concatenate_videos") as mock_concat,
+            patch("subprocess.run", side_effect=fake_ffmpeg_extract),
         ):
             mock_concat.return_value = str(tmp_path / "final_with_subtitles.mp4")
 
@@ -537,7 +546,7 @@ class TestApplySubtitles:
             mock_concat.assert_called_once()
 
     def test_subtitles_skipped_when_no_audio(self, tmp_path):
-        """Segments without audio are passed through unchanged."""
+        """Segments whose video has no audio track are passed through without subtitles."""
         video_file = tmp_path / "seg_000.mp4"
         video_file.write_bytes(b"FAKE_VIDEO")
 
@@ -545,10 +554,18 @@ class TestApplySubtitles:
         mock_result.segments = [
             self._make_mock_segment(0, str(video_file), None),
         ]
+        mock_result.final_video_path = str(video_file)
+
+        def fake_ffmpeg_no_audio(cmd, **kwargs):
+            """Simulate ffmpeg failing to extract audio (video has no audio track)."""
+            proc = MagicMock()
+            proc.returncode = 1  # extraction failed
+            return proc
 
         with (
             patch("virtual_streamer.api.high_level.video_generation.add_subtitle_from_srt") as mock_sub,
             patch("virtual_streamer.api.high_level.video_generation.concatenate_videos") as mock_concat,
+            patch("subprocess.run", side_effect=fake_ffmpeg_no_audio),
         ):
             mock_concat.return_value = str(tmp_path / "final_with_subtitles.mp4")
 
