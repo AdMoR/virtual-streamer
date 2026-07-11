@@ -22,6 +22,7 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel, Field
 
+from virtual_streamer.utils.gpu_queue import enqueue_gpu_job, PRIORITY_INTERACTIVE
 from virtual_streamer.utils.job_store import get_global_job_store
 from virtual_streamer.utils.minio_client import get_storage_client
 from virtual_streamer.utils.story_repository import get_story_repository
@@ -100,12 +101,35 @@ async def _run_recompose(job_id: str, story_id: str, request: RecomposeRequest):
                     "selection_source": (cand or {}).get("selection_source"),
                 })
 
+            # Subtitles: each segment video carries its own generated speech
+            # audio track, so transcribe the video itself and burn per segment
+            # before concatenation (same flow as _apply_subtitles at generation).
+            if request.enable_subtitles:
+                import asyncio
+
+                from virtual_streamer.utils.transcription import transcribe_to_srt
+                from virtual_streamer.utils.utils import add_subtitle_from_srt
+
+                subtitled: List[str] = []
+                for idx, seg_path in enumerate(local_paths):
+                    srt = os.path.join(tmpdir, f"seg_{idx:03d}.srt")
+                    out = os.path.join(tmpdir, f"seg_{idx:03d}_sub.mp4")
+                    try:
+                        await asyncio.to_thread(transcribe_to_srt, seg_path, srt)
+                        await asyncio.to_thread(
+                            add_subtitle_from_srt, seg_path, srt, out,
+                            fontsize=request.subtitle_fontsize,
+                        )
+                        subtitled.append(out)
+                    except Exception as sub_exc:
+                        logger.warning(
+                            f"[recompose {job_id}] subtitle failed for segment {idx}: {sub_exc}"
+                        )
+                        subtitled.append(seg_path)
+                local_paths = subtitled
+
             final_local = os.path.join(tmpdir, "recomposed.mp4")
             concatenate_videos(local_paths, final_local, tmpdir)
-
-            if request.enable_subtitles:
-                logger.info(f"[recompose {job_id}] subtitles requested but skipped: "
-                            "per-segment audio not re-derivable at recompose time")
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             final_key = f"generated_videos/ltx/recomposed_{story_id}_{ts}.mp4"
@@ -296,5 +320,96 @@ async def regenerate_scene(
     await job_store.create_job(
         job_id, {"story_id": story_id, "scene_id": scene_id, "pipeline": "regenerate-scene"}
     )
-    background_tasks.add_task(_run_regenerate, job_id, story_id, scene_id, request)
-    return ReviewJobResponse(job_id=job_id, status="pending", message="Scene regeneration job submitted")
+    position = await enqueue_gpu_job(
+        job_id,
+        lambda: _run_regenerate(job_id, story_id, scene_id, request),
+        priority=PRIORITY_INTERACTIVE,
+    )
+    return ReviewJobResponse(
+        job_id=job_id, status="pending",
+        message=f"Scene regeneration job queued (position {position})",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Backfill candidates for pre-seed-hunt stories
+# ---------------------------------------------------------------------------
+
+
+async def _run_backfill(job_id: str, story_id: str):
+    """Create one candidate row (with judge verdict) per scene lacking candidates."""
+    from virtual_streamer.agents.video_judge.agent import run_video_judge
+
+    job_store = await get_global_job_store()
+    repo = get_story_repository()
+    storage = get_storage_client()
+    try:
+        await job_store.update_job(job_id, status="running")
+
+        scenes = await repo.list_scenes_for_story(story_id)
+        backfilled, skipped = [], []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for scene in scenes:
+                if await repo.list_candidates_for_scene(scene["scene_id"]):
+                    skipped.append(scene["scene_id"])
+                    continue
+                video_key = scene.get("video_segment_key")
+                if not video_key:
+                    skipped.append(scene["scene_id"])
+                    continue
+
+                local = os.path.join(tmpdir, f"{scene['scene_id']}.mp4")
+                await storage.download_file(video_key, local)
+                verdict = await run_video_judge(
+                    local,
+                    scene["prompt"]
+                    + (f'\nSpoken line: "{scene["spoken_line"]}"' if scene.get("spoken_line") else ""),
+                )
+
+                candidate_id = str(uuid.uuid4())
+                await repo.create_candidate(
+                    candidate_id=candidate_id,
+                    scene_id=scene["scene_id"],
+                    seed=-1,  # original seed unknown for pre-seed-hunt segments
+                    generation_params={"backfilled": True},
+                    video_key=video_key,
+                    judge_verdict=verdict.model_dump(),
+                    duration_seconds=scene.get("duration_seconds"),
+                    selected=True,
+                    selection_source="fallback",
+                )
+                backfilled.append({
+                    "scene_id": scene["scene_id"],
+                    "candidate_id": candidate_id,
+                    "judge_score": verdict.score,
+                    "judge_passed": verdict.passed,
+                })
+
+        await job_store.update_job(
+            job_id,
+            status="completed",
+            result={"story_id": story_id, "backfilled": backfilled, "skipped": skipped},
+        )
+    except Exception as exc:
+        logger.error(f"[backfill {job_id}] failed: {exc}", exc_info=True)
+        await job_store.update_job(job_id, status="failed", error=str(exc))
+
+
+@router.post("/stories/{story_id}/backfill-candidates", response_model=ReviewJobResponse)
+async def backfill_candidates(story_id: str, background_tasks: BackgroundTasks):
+    """
+    Make a pre-seed-hunt story reviewable: for each scene with a segment video
+    but no candidates, create one selected candidate from the existing segment
+    and judge it. Afterwards the story works in the review UI, select/feedback
+    and recompose exactly like a seed-hunted one.
+    """
+    repo = get_story_repository()
+    story = await repo.get_story(story_id)
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Story not found")
+
+    job_store = await get_global_job_store()
+    job_id = str(uuid.uuid4())
+    await job_store.create_job(job_id, {"story_id": story_id, "pipeline": "backfill-candidates"})
+    background_tasks.add_task(_run_backfill, job_id, story_id)
+    return ReviewJobResponse(job_id=job_id, status="pending", message="Backfill job submitted")

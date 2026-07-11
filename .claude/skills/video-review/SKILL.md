@@ -77,9 +77,15 @@ replay). Poll `/api/v1/jobs/{job_id}`.
   permissive default (`passed=true, score=5.0, judge_error` set). Filter on
   `judge_error` when analyzing verdicts.
 - Recompose uses MinIO candidate videos; scenes generated before seed hunting
-  fall back to `scenes.video_segment_key` (debug uploads must have been enabled).
-- Candidate MinIO keys: `candidates/{story_id}/{scene_id}/seed_{seed}.mp4`.
-  Presign with GET `/api/v1/storage/presign?key=...`.
+  fall back to `scenes.video_segment_key`, or run
+  `POST /stories/{id}/backfill-candidates` to turn existing segments into
+  judged candidates. Recompose re-burns subtitles on request
+  (`enable_subtitles: true` — transcribed from each segment's audio track).
+- Candidate MinIO keys: `candidates/{story_id}/{scene_id}/seed_{seed}.mp4`;
+  candidate API responses also include a presigned `video_url`.
+- Jobs: long-poll `GET /api/v1/jobs/{id}/wait?timeout=600` instead of polling.
+  GPU jobs are serialized through a single priority queue (interactive ahead
+  of batch); `gpu_queue_depth` is on the video-generation health endpoint.
 - LTX server: `LTX_SERVER_URL` (default `http://gx10-cbc5:8082`); SD server:
   `SD_SERVER_URL` (default `http://gx10-cbc5:1234`); local judge LLM:
   llama.cpp OpenAI endpoint at `http://100.114.182.89:8081`.

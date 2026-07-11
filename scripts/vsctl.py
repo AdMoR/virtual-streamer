@@ -16,13 +16,14 @@ Usage:
         --json '{"k": "v"}'         Request body (JSON string or @file.json)
         --api http://host:8000      API base (default $VS_API_URL or localhost:8000)
 
-Typical regeneration loop:
+Typical regeneration loop (--wait blocks until the job finishes):
     vsctl call list-stories -p limit=5
     vsctl call get-story-scenes -p story_id=UUID
-    vsctl call list-candidates -p story_id=UUID -p scene_id=UUID
-    vsctl call regenerate-scene -p story_id=UUID -p scene_id=UUID --json '{"max_candidates": 3}'
-    vsctl call job-status -p job_id=UUID
-    vsctl call recompose-story -p story_id=UUID --json '{}'
+    vsctl call list-candidates -p story_id=UUID -p scene_id=UUID   # each take has video_url
+    vsctl call regenerate-scene -p story_id=UUID -p scene_id=UUID \
+        --json '{"max_candidates": 3}' --wait --timeout 1800
+    vsctl call recompose-story -p story_id=UUID --json '{}' --wait
+    vsctl fetch generated_videos/ltx/recomposed_UUID_TS.mp4
 """
 
 import argparse
@@ -99,8 +100,10 @@ OPERATIONS: dict[str, tuple[str, str, str]] = {
     "export-feedback":  ("GET",  "/api/v1/judge-feedback/export", "Judge-vs-human labels for judge tuning."),
     "regenerate-scene": ("POST", "/api/v1/stories/{story_id}/scenes/{scene_id}/regenerate", "Fresh seed hunt for one scene. Returns job_id."),
     "recompose-story":  ("POST", "/api/v1/stories/{story_id}/recompose", "Rebuild the final video from selected takes. Returns job_id."),
+    "backfill-candidates": ("POST", "/api/v1/stories/{story_id}/backfill-candidates", "Make a pre-seed-hunt story reviewable: judge existing segments into candidates. Returns job_id."),
     # ── Utilities ───────────────────────────────────────────────────────────
     "job-status": ("GET", "/api/v1/jobs/{job_id}", "Status/result of a background generation job."),
+    "wait-job":   ("GET", "/api/v1/jobs/{job_id}/wait", "Long-poll a job until completed/failed (or timeout)."),
     "presign":    ("GET", "/api/v1/storage/presign", "Presigned URL for a MinIO key (view videos/images)."),
 }
 
@@ -202,11 +205,47 @@ def cmd_call(args):
         method, f"{args.api}{path}", params=kv or None, json=body, timeout=args.timeout
     )
     try:
-        print(json.dumps(r.json(), indent=2, ensure_ascii=False))
+        payload = r.json()
     except ValueError:
         print(r.text)
+        payload = None
     if not r.ok:
+        if payload is not None:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
         sys.exit(f"HTTP {r.status_code}")
+
+    # --wait: if the operation returned a job, long-poll it to its terminal state
+    if getattr(args, "wait", False) and isinstance(payload, dict) and payload.get("job_id"):
+        job_id = payload["job_id"]
+        print(f"# job {job_id} submitted — waiting…", file=sys.stderr)
+        r = requests.get(
+            f"{args.api}/api/v1/jobs/{job_id}/wait",
+            params={"timeout": args.timeout},
+            timeout=args.timeout + 30,
+        )
+        payload = r.json()
+        if payload.get("status") == "failed":
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            sys.exit("job failed")
+
+    if payload is not None:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def cmd_fetch(args):
+    """Download a MinIO object via presigned URL to a local file."""
+    r = requests.get(
+        f"{args.api}/api/v1/storage/presign", params={"key": args.key}, timeout=30
+    )
+    r.raise_for_status()
+    url = r.json()["url"]
+    dest = args.dest or os.path.basename(args.key)
+    with requests.get(url, stream=True, timeout=600) as dl:
+        dl.raise_for_status()
+        with open(dest, "wb") as fh:
+            for chunk in dl.iter_content(chunk_size=1 << 20):
+                fh.write(chunk)
+    print(dest)
 
 
 def main():
@@ -229,7 +268,14 @@ def main():
     p_call.add_argument("-p", "--param", action="append", help="name=value (path or query)")
     p_call.add_argument("--json", help="JSON request body (string or @file)")
     p_call.add_argument("--timeout", type=float, default=120.0)
+    p_call.add_argument("--wait", action="store_true",
+                        help="If the call returns a job_id, block until the job completes/fails")
     p_call.set_defaults(fn=cmd_call)
+
+    p_fetch = sub.add_parser("fetch", help="Download a MinIO object (presign + download)")
+    p_fetch.add_argument("key", help="MinIO key, e.g. candidates/STORY/SCENE/seed_42.mp4")
+    p_fetch.add_argument("dest", nargs="?", help="Destination path (default: basename of key)")
+    p_fetch.set_defaults(fn=cmd_fetch)
 
     args = ap.parse_args()
     args.fn(args)

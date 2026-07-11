@@ -190,7 +190,9 @@ async function renderScene(scene) {
 
 async function renderCandidate(scene, c) {
   let videoTag = '<div class="empty">no video</div>';
-  if (c.video_key) {
+  if (c.video_url) {
+    videoTag = `<video controls preload="metadata" src="${c.video_url}"></video>`;
+  } else if (c.video_key) {
     try { videoTag = `<video controls preload="metadata" src="${await presign(c.video_key)}"></video>`; } catch {}
   }
   const v = c.judge_verdict || {};
