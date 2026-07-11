@@ -361,7 +361,7 @@ async def _run_video_generation(job_id: str, request: VideoGenerationRequest):
             debug_minio_prefix=debug_prefix,
             story_repo=_story_repo,
             db_story_id=_db_story_id,
-            keep_segments=request.enable_subtitles,
+            seed_hunt_config=request.to_seed_hunt_config(),
         )
 
         # Step 4 (optional): Burn subtitles per segment, then re-concatenate
@@ -534,7 +534,7 @@ async def _run_from_script(job_id: str, request: VideoFromScriptRequest):
             debug_minio_prefix=debug_prefix,
             story_repo=_story_repo,
             db_story_id=_db_story_id,
-            keep_segments=request.enable_subtitles,
+            seed_hunt_config=request.to_seed_hunt_config(),
         )
 
         # Step 3 (optional): Burn subtitles per segment, then re-concatenate

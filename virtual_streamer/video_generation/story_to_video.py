@@ -35,7 +35,7 @@ import shutil
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -63,6 +63,9 @@ from virtual_streamer.image_generation.stable_cpp_client import (
     ImageEditParams,
 )
 from virtual_streamer.utils.minio_client import get_storage_client
+
+if TYPE_CHECKING:  # lazy import — avoids loading the judge agent at module import time
+    from virtual_streamer.video_generation.seed_hunting import SeedHuntConfig
 
 logger = logging.getLogger(__name__)
 
@@ -698,9 +701,16 @@ async def story_input_to_video(
     story_repo: Optional[Any] = None,
     db_story_id: Optional[str] = None,
     keep_segments: bool = False,
+    seed_hunt_config: Optional["SeedHuntConfig"] = None,
 ) -> StoryVideoResult:
     """
     Convert a StoryInput into a final concatenated video.
+
+    When *seed_hunt_config* is enabled, each scene is generated up to
+    max_candidates times with distinct seeds; every take is judged by the local
+    vision-LLM VideoJudgeAgent and the best one is used. All takes are persisted
+    (MinIO + segment_candidates) so the choice can be overridden and the story
+    recomposed afterwards.
 
     For each scene the pipeline:
       1. Generates a situational conditioning image via Stable Diffusion (character
@@ -905,14 +915,56 @@ async def story_input_to_video(
                         )
 
                 try:
-                    segment = await generate_segment_from_input(
-                        client=client,
-                        scene_input=scene_input,
-                        output_dir=str(output_path),
-                        video_params=params,
-                        audio_path=speaker_audio_path,
-                        image_path=conditioning_image_path,
-                    )
+                    if seed_hunt_config and seed_hunt_config.enabled:
+                        # ── Seed hunting: N judged takes, best one selected ──
+                        from virtual_streamer.video_generation.seed_hunting import (
+                            hunt_segment,
+                            persist_candidates,
+                        )
+
+                        _si = scene_input  # bind loop vars for the closure
+
+                        async def _generate_take(seed: int, _si=_si):
+                            return await generate_segment_from_input(
+                                client=client,
+                                scene_input=_si,
+                                output_dir=str(output_path),
+                                video_params=params.model_copy(update={"seed": seed}),
+                                audio_path=speaker_audio_path,
+                                image_path=conditioning_image_path,
+                            )
+
+                        candidates = await hunt_segment(
+                            generate_fn=_generate_take,
+                            scene_input=scene_input,
+                            hunt_config=seed_hunt_config,
+                            progress=(
+                                (lambda msg: progress_callback(i, total, msg))
+                                if progress_callback else None
+                            ),
+                        )
+                        if db_scene_id:
+                            try:
+                                _cand_storage = get_storage_client()
+                            except Exception:
+                                _cand_storage = None
+                            await persist_candidates(
+                                story_repo=story_repo,
+                                storage=_cand_storage,
+                                db_scene_id=db_scene_id,
+                                candidates=candidates,
+                                minio_prefix=f"candidates/{db_story_id or 'adhoc'}/{db_scene_id}",
+                            )
+                        segment = next(c.segment for c in candidates if c.selected)
+                    else:
+                        segment = await generate_segment_from_input(
+                            client=client,
+                            scene_input=scene_input,
+                            output_dir=str(output_path),
+                            video_params=params,
+                            audio_path=speaker_audio_path,
+                            image_path=conditioning_image_path,
+                        )
                     segment.db_scene_id = db_scene_id
                     segments.append(segment)
 
@@ -1320,6 +1372,7 @@ async def scenes_to_video(
     story_repo: Optional[Any] = None,
     db_story_id: Optional[str] = None,
     keep_segments: bool = False,
+    seed_hunt_config: Optional["SeedHuntConfig"] = None,
 ) -> StoryVideoResult:
     """
     Convert a list of DetailedScene objects into a final concatenated video.
@@ -1352,6 +1405,7 @@ async def scenes_to_video(
         story_repo=story_repo,
         db_story_id=db_story_id,
         keep_segments=keep_segments,
+        seed_hunt_config=seed_hunt_config,
     )
 
 

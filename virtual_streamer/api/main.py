@@ -29,6 +29,8 @@ from virtual_streamer.api.low_level.playlist import router as playlist_router
 from virtual_streamer.api.low_level.articles import router as articles_router
 from virtual_streamer.api.low_level.db_browser import router as db_browser_router
 from virtual_streamer.api.low_level.storage import router as storage_router
+from virtual_streamer.api.low_level.candidates import router as candidates_router
+from virtual_streamer.api.medium_level.review import router as review_router
 from virtual_streamer.api.medium_level.tts import router as tts_router
 from virtual_streamer.api.medium_level.stt import router as stt_router
 from virtual_streamer.api.high_level.video_generation import (
@@ -136,6 +138,8 @@ app.include_router(characters_router, prefix="/api/v1")
 app.include_router(clips_router, prefix="/api/v1")
 app.include_router(story_templates_router, prefix="/api/v1")
 app.include_router(stories_router, prefix="/api/v1")
+app.include_router(candidates_router, prefix="/api/v1")
+app.include_router(review_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(articles_router, prefix="/api/v1")
 # Low-level: Streaming infrastructure

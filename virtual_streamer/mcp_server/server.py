@@ -401,6 +401,144 @@ async def submit_feedback(entry_id: str, user: str, feedback: str) -> dict:
     )
 
 
+# ---------------------------------------------------------------------------
+# Seed-hunt review tools (candidates, judge feedback, recompose, regenerate)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_stories(story_template_id: str | None = None, limit: int = 20) -> list[dict]:
+    """List generated stories (id, title, status, final_video_key).
+
+    Args:
+        story_template_id: Optional filter by template
+        limit: Maximum number of stories to return
+    """
+    params = {"limit": limit}
+    if story_template_id:
+        params["story_template_id"] = story_template_id
+    return await _api_get("/api/v1/stories", params=params)
+
+
+@mcp.tool()
+async def get_story_scenes(story_id: str) -> list[dict]:
+    """List all scenes of a story (scene_id, index, prompt, spoken_line, video key).
+
+    Args:
+        story_id: The story ID from list_stories
+    """
+    return await _api_get(f"/api/v1/stories/{story_id}/scenes")
+
+
+@mcp.tool()
+async def list_scene_candidates(story_id: str, scene_id: str) -> list[dict]:
+    """List all generated takes (seed candidates) for a scene, with LLM-judge verdicts.
+
+    Each candidate has: candidate_id, seed, video_key, judge_verdict (passed,
+    score 0-10, artifacts), selected flag and selection_source (judge|human|fallback).
+
+    Args:
+        story_id: The story ID
+        scene_id: The scene ID from get_story_scenes
+    """
+    return await _api_get(f"/api/v1/stories/{story_id}/scenes/{scene_id}/candidates")
+
+
+@mcp.tool()
+async def select_candidate(candidate_id: str, user: str = "mcp_agent", comment: str | None = None) -> dict:
+    """Override the judge: mark this candidate as the selected take for its scene.
+
+    Call recompose_story afterwards to rebuild the final video with this take.
+
+    Args:
+        candidate_id: The candidate to select
+        user: Who is making the override
+        comment: Optional justification (stored as feedback)
+    """
+    return await _api_post(
+        f"/api/v1/candidates/{candidate_id}/select",
+        {"user": user, "comment": comment},
+    )
+
+
+@mcp.tool()
+async def submit_judge_feedback(
+    candidate_id: str,
+    human_passed: bool,
+    user: str = "mcp_agent",
+    human_score: float | None = None,
+    artifact_tags: list[str] | None = None,
+    comment: str | None = None,
+) -> dict:
+    """Record a human/agent preference label on a candidate to improve the video judge.
+
+    Args:
+        candidate_id: The candidate being labelled
+        human_passed: True if the take is usable, False if not
+        user: Who is labelling
+        human_score: Optional 0-10 score
+        artifact_tags: Artifact categories seen (unrealistic_movement, impossible_body,
+            object_intersection, impossible_setting, identity_drift, visual_glitch, other)
+        comment: Optional free-text note
+    """
+    return await _api_post(
+        f"/api/v1/candidates/{candidate_id}/feedback",
+        {
+            "user": user,
+            "human_passed": human_passed,
+            "human_score": human_score,
+            "artifact_tags": artifact_tags or [],
+            "comment": comment,
+        },
+    )
+
+
+@mcp.tool()
+async def recompose_story(story_id: str) -> dict:
+    """Rebuild a story's final video from each scene's currently selected candidate.
+
+    Returns a job_id — poll with get_job_status.
+
+    Args:
+        story_id: The story to recompose
+    """
+    return await _api_post(f"/api/v1/stories/{story_id}/recompose", {})
+
+
+@mcp.tool()
+async def regenerate_scene(
+    story_id: str,
+    scene_id: str,
+    max_candidates: int = 3,
+    seeds: list[int] | None = None,
+) -> dict:
+    """Run a fresh seed hunt for one scene (new takes generated + judged as candidates).
+
+    Returns a job_id — poll with get_job_status, then recompose_story to apply.
+
+    Args:
+        story_id: The story containing the scene
+        scene_id: The scene to regenerate
+        max_candidates: How many seeds to try (early-stops on a good take)
+        seeds: Explicit seeds to replay; random when omitted
+    """
+    return await _api_post(
+        f"/api/v1/stories/{story_id}/scenes/{scene_id}/regenerate",
+        {"max_candidates": max_candidates, "seeds": seeds},
+        timeout=60.0,
+    )
+
+
+@mcp.tool()
+async def export_judge_feedback(limit: int = 200) -> list[dict]:
+    """Export human labels joined with judge verdicts (training/eval data for the judge).
+
+    Args:
+        limit: Maximum rows to return, newest first
+    """
+    return await _api_get("/api/v1/judge-feedback/export", params={"limit": limit})
+
+
 #@mcp.tool() # removed for now
 async def greet_viewer(user_name: str, character_id: str = "jesus_short") -> dict:
     """Generate a personalized greeting video for a viewer.

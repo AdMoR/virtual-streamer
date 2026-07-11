@@ -126,6 +126,41 @@ class StoryRepository:
                     )
                 """)
 
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS segment_candidates (
+                        candidate_id      CHAR(36)     NOT NULL PRIMARY KEY,
+                        scene_id          CHAR(36)     NOT NULL,
+                        seed              BIGINT       NOT NULL,
+                        video_key         VARCHAR(512),
+                        image_key         VARCHAR(512),
+                        generation_params JSON         NOT NULL,
+                        judge_verdict     JSON,
+                        judge_score       FLOAT,
+                        judge_passed      TINYINT(1),
+                        selected          TINYINT(1)   NOT NULL DEFAULT 0,
+                        selection_source  ENUM('judge','human','fallback')
+                                                       NOT NULL DEFAULT 'judge',
+                        duration_seconds  FLOAT,
+                        created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (scene_id) REFERENCES scenes(scene_id) ON DELETE CASCADE
+                    )
+                """)
+
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS judge_feedback (
+                        feedback_id    CHAR(36)     NOT NULL PRIMARY KEY,
+                        candidate_id   CHAR(36)     NOT NULL,
+                        user           VARCHAR(255) NOT NULL,
+                        human_passed   TINYINT(1),
+                        human_score    FLOAT,
+                        artifact_tags  JSON,
+                        comment        TEXT,
+                        created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (candidate_id)
+                            REFERENCES segment_candidates(candidate_id) ON DELETE CASCADE
+                    )
+                """)
+
                 print("Ensured story tables exist")
 
     # ── Story CRUD ─────────────────────────────────────────────────────────────
@@ -449,6 +484,219 @@ class StoryRepository:
                         "location_image_key": r[4],
                         "flux_prompt_json": json.loads(r[5]) if r[5] else {},
                         "created_at": r[6].isoformat() if r[6] else None,
+                    }
+                    for r in rows
+                ]
+
+    # ── SegmentCandidate CRUD ──────────────────────────────────────────────────
+
+    _CANDIDATE_COLS = (
+        "candidate_id, scene_id, seed, video_key, image_key, generation_params, "
+        "judge_verdict, judge_score, judge_passed, selected, selection_source, "
+        "duration_seconds, created_at"
+    )
+
+    @staticmethod
+    def _candidate_row_to_dict(r) -> Dict[str, Any]:
+        return {
+            "candidate_id": r[0],
+            "scene_id": r[1],
+            "seed": r[2],
+            "video_key": r[3],
+            "image_key": r[4],
+            "generation_params": json.loads(r[5]) if r[5] else {},
+            "judge_verdict": json.loads(r[6]) if r[6] else None,
+            "judge_score": r[7],
+            "judge_passed": bool(r[8]) if r[8] is not None else None,
+            "selected": bool(r[9]),
+            "selection_source": r[10],
+            "duration_seconds": r[11],
+            "created_at": r[12].isoformat() if r[12] else None,
+        }
+
+    async def create_candidate(
+        self,
+        candidate_id: str,
+        scene_id: str,
+        seed: int,
+        generation_params: dict,
+        video_key: Optional[str] = None,
+        image_key: Optional[str] = None,
+        judge_verdict: Optional[dict] = None,
+        duration_seconds: Optional[float] = None,
+        selected: bool = False,
+        selection_source: str = "judge",
+    ) -> dict:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO segment_candidates
+                        (candidate_id, scene_id, seed, video_key, image_key,
+                         generation_params, judge_verdict, judge_score, judge_passed,
+                         selected, selection_source, duration_seconds)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        candidate_id, scene_id, seed, video_key, image_key,
+                        json.dumps(generation_params, ensure_ascii=False),
+                        json.dumps(judge_verdict, ensure_ascii=False) if judge_verdict else None,
+                        (judge_verdict or {}).get("score"),
+                        (judge_verdict or {}).get("passed"),
+                        int(selected), selection_source, duration_seconds,
+                    ),
+                )
+        return await self.get_candidate(candidate_id)
+
+    async def get_candidate(self, candidate_id: str) -> Optional[Dict[str, Any]]:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"SELECT {self._CANDIDATE_COLS} FROM segment_candidates WHERE candidate_id = %s",
+                    (candidate_id,),
+                )
+                row = await cur.fetchone()
+                return self._candidate_row_to_dict(row) if row else None
+
+    async def list_candidates_for_scene(self, scene_id: str) -> List[Dict[str, Any]]:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    SELECT {self._CANDIDATE_COLS} FROM segment_candidates
+                    WHERE scene_id = %s ORDER BY created_at ASC
+                    """,
+                    (scene_id,),
+                )
+                return [self._candidate_row_to_dict(r) for r in await cur.fetchall()]
+
+    async def set_selected_candidate(
+        self, candidate_id: str, selection_source: str = "human"
+    ) -> Optional[dict]:
+        """Mark *candidate_id* as the selected take for its scene (unselects siblings)."""
+        candidate = await self.get_candidate(candidate_id)
+        if candidate is None:
+            return None
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE segment_candidates SET selected = 0 WHERE scene_id = %s",
+                    (candidate["scene_id"],),
+                )
+                await cur.execute(
+                    """
+                    UPDATE segment_candidates
+                    SET selected = 1, selection_source = %s
+                    WHERE candidate_id = %s
+                    """,
+                    (selection_source, candidate_id),
+                )
+        return await self.get_candidate(candidate_id)
+
+    async def get_selected_candidates_for_story(self, story_id: str) -> List[Dict[str, Any]]:
+        """Selected candidate per scene, ordered by scene_index. Scenes without candidates are absent."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    SELECT {', '.join('c.' + col.strip() for col in self._CANDIDATE_COLS.split(','))},
+                           s.scene_index
+                    FROM segment_candidates c
+                    JOIN scenes s ON s.scene_id = c.scene_id
+                    WHERE s.story_id = %s AND c.selected = 1
+                    ORDER BY s.scene_index ASC
+                    """,
+                    (story_id,),
+                )
+                rows = await cur.fetchall()
+                out = []
+                for r in rows:
+                    d = self._candidate_row_to_dict(r)
+                    d["scene_index"] = r[13]
+                    out.append(d)
+                return out
+
+    # ── JudgeFeedback CRUD ─────────────────────────────────────────────────────
+
+    async def create_judge_feedback(
+        self,
+        feedback_id: str,
+        candidate_id: str,
+        user: str,
+        human_passed: Optional[bool] = None,
+        human_score: Optional[float] = None,
+        artifact_tags: Optional[List[str]] = None,
+        comment: Optional[str] = None,
+    ) -> dict:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO judge_feedback
+                        (feedback_id, candidate_id, user, human_passed, human_score,
+                         artifact_tags, comment)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        feedback_id, candidate_id, user,
+                        int(human_passed) if human_passed is not None else None,
+                        human_score,
+                        json.dumps(artifact_tags or []),
+                        comment,
+                    ),
+                )
+        return {
+            "feedback_id": feedback_id,
+            "candidate_id": candidate_id,
+            "user": user,
+            "human_passed": human_passed,
+            "human_score": human_score,
+            "artifact_tags": artifact_tags or [],
+            "comment": comment,
+        }
+
+    async def export_judge_feedback(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        """Human labels joined with the judge verdict — training data for judge improvement."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT f.feedback_id, f.candidate_id, f.user, f.human_passed,
+                           f.human_score, f.artifact_tags, f.comment, f.created_at,
+                           c.video_key, c.seed, c.judge_verdict, c.judge_score,
+                           c.judge_passed, s.prompt, s.spoken_line
+                    FROM judge_feedback f
+                    JOIN segment_candidates c ON c.candidate_id = f.candidate_id
+                    JOIN scenes s ON s.scene_id = c.scene_id
+                    ORDER BY f.created_at DESC LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = await cur.fetchall()
+                return [
+                    {
+                        "feedback_id": r[0],
+                        "candidate_id": r[1],
+                        "user": r[2],
+                        "human_passed": bool(r[3]) if r[3] is not None else None,
+                        "human_score": r[4],
+                        "artifact_tags": json.loads(r[5]) if r[5] else [],
+                        "comment": r[6],
+                        "created_at": r[7].isoformat() if r[7] else None,
+                        "video_key": r[8],
+                        "seed": r[9],
+                        "judge_verdict": json.loads(r[10]) if r[10] else None,
+                        "judge_score": r[11],
+                        "judge_passed": bool(r[12]) if r[12] is not None else None,
+                        "scene_prompt": r[13],
+                        "spoken_line": r[14],
                     }
                     for r in rows
                 ]

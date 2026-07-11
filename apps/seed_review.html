@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seed Review — Virtual Streamer</title>
+<style>
+:root {
+  --bg: #0f1117; --panel: #171a23; --panel2: #1e2230; --border: #2a2f3f;
+  --text: #e6e9f0; --muted: #8b92a5; --accent: #6c8cff; --ok: #3ecf8e;
+  --warn: #f5a623; --bad: #ff5d5d;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, 'Segoe UI', Roboto, sans-serif; padding: 24px; }
+h1 { font-size: 22px; margin-bottom: 4px; }
+.sub { color: var(--muted); margin-bottom: 20px; }
+.topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+input[type=text] { background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; min-width: 260px; }
+button { background: var(--accent); border: none; color: #fff; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+button.secondary { background: var(--panel2); border: 1px solid var(--border); }
+button.danger { background: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: inline-block; }
+.dot.ok { background: var(--ok); }
+.layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.story-item { padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
+.story-item:hover { background: var(--panel2); }
+.story-item.active { border-color: var(--accent); background: var(--panel2); }
+.story-item .title { font-weight: 600; font-size: 13px; }
+.story-item .meta { color: var(--muted); font-size: 11px; }
+.scene { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 18px; padding: 12px; background: var(--panel2); }
+.scene-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.scene-head .line { color: var(--muted); font-size: 12px; max-width: 70%; }
+.cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.cand { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+.cand.selected { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+.cand video { width: 100%; border-radius: 8px; background: #000; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.badge.pass { background: rgba(62,207,142,.15); color: var(--ok); }
+.badge.fail { background: rgba(255,93,93,.15); color: var(--bad); }
+.badge.sel { background: rgba(108,140,255,.15); color: var(--accent); }
+.badge.human { background: rgba(245,166,35,.15); color: var(--warn); }
+.artifact { font-size: 11px; color: var(--warn); }
+.reason { font-size: 12px; color: var(--muted); margin: 6px 0; }
+.cand-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.cand-actions button { padding: 5px 10px; font-size: 12px; }
+.fb-form { margin-top: 8px; display: none; gap: 6px; flex-direction: column; }
+.fb-form.open { display: flex; }
+.fb-form select, .fb-form input, .fb-form textarea { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px; font-size: 12px; }
+#toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel2); border: 1px solid var(--border); border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; opacity: 0; transition: opacity .3s; max-width: 420px; }
+#toast.visible { opacity: 1; }
+.empty { color: var(--muted); text-align: center; padding: 30px; }
+.score { font-size: 16px; font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>🎯 Seed Review</h1>
+<div class="sub">Inspect judged takes per scene, override the judge, leave feedback, regenerate scenes and recompose the final video.</div>
+
+<div class="topbar">
+  <span class="dot" id="status-dot"></span><span id="status-label">checking…</span>
+  <input type="text" id="api-base" placeholder="API base (e.g. http://localhost:8000)">
+  <button class="secondary" onclick="init()">↻ Refresh</button>
+  <span style="flex:1"></span>
+  <input type="text" id="user-name" placeholder="your name" style="min-width:140px">
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <h3 style="margin-bottom:10px">Stories</h3>
+    <div id="story-list"><div class="empty">Loading…</div></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 id="story-title">Select a story</h3>
+      <div style="display:flex;gap:8px">
+        <button id="btn-recompose" onclick="recompose()" disabled>🎬 Recompose final video</button>
+      </div>
+    </div>
+    <div id="final-video"></div>
+    <div id="scenes"><div class="empty">No story selected</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const base = () => $('api-base').value.trim().replace(/\/$/, '') || 'http://localhost:8000';
+const user = () => $('user-name').value.trim() || 'anonymous';
+let currentStory = null;
+
+const ARTIFACT_TAGS = ['unrealistic_movement','impossible_body','object_intersection',
+                       'impossible_setting','identity_drift','visual_glitch','other'];
+
+$('api-base').value = localStorage.getItem('vs_api_base') || 'http://localhost:8000';
+$('user-name').value = localStorage.getItem('vs_user') || '';
+$('api-base').addEventListener('change', () => { localStorage.setItem('vs_api_base', $('api-base').value); init(); });
+$('user-name').addEventListener('change', () => localStorage.setItem('vs_user', $('user-name').value));
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('visible');
+  setTimeout(() => t.classList.remove('visible'), 6000);
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+async function jfetch(path, opts) {
+  const r = await fetch(`${base()}${path}`, opts);
+  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
+  return r.json();
+}
+
+async function presign(key) {
+  const { url } = await jfetch(`/api/v1/storage/presign?key=${encodeURIComponent(key)}`);
+  return url;
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch(`${base()}/health`, { signal: AbortSignal.timeout(4000) });
+    $('status-dot').classList.toggle('ok', r.ok);
+    $('status-label').textContent = r.ok ? 'API online' : `API ${r.status}`;
+  } catch { $('status-dot').classList.remove('ok'); $('status-label').textContent = 'API offline'; }
+}
+
+// ── Stories ──────────────────────────────────────────────────────────────────
+async function loadStories() {
+  try {
+    const stories = await jfetch('/api/v1/stories?limit=50');
+    const list = $('story-list');
+    if (!stories.length) { list.innerHTML = '<div class="empty">No stories yet</div>'; return; }
+    list.innerHTML = stories.map(s => `
+      <div class="story-item" id="story-${s.story_id}" onclick="openStory('${s.story_id}', this)">
+        <div class="title">${esc(s.title)}</div>
+        <div class="meta">${esc(s.story_template_id)} · ${esc(s.status)} · ${esc((s.created_at||'').slice(0,16).replace('T',' '))}</div>
+      </div>`).join('');
+  } catch (e) { $('story-list').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function openStory(storyId, el) {
+  document.querySelectorAll('.story-item').forEach(x => x.classList.remove('active'));
+  if (el) el.classList.add('active');
+  currentStory = storyId;
+  $('btn-recompose').disabled = false;
+  $('scenes').innerHTML = '<div class="empty">Loading scenes…</div>';
+  try {
+    const [story, scenes] = await Promise.all([
+      jfetch(`/api/v1/stories/${storyId}`),
+      jfetch(`/api/v1/stories/${storyId}/scenes`),
+    ]);
+    $('story-title').textContent = story.title;
+    renderFinalVideo(story);
+    const blocks = await Promise.all(scenes.map(renderScene));
+    $('scenes').innerHTML = blocks.join('') || '<div class="empty">No scenes</div>';
+  } catch (e) { $('scenes').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function renderFinalVideo(story) {
+  const div = $('final-video');
+  div.innerHTML = '';
+  if (!story.final_video_key) return;
+  try {
+    const url = await presign(story.final_video_key);
+    div.innerHTML = `<details style="margin-bottom:14px"><summary style="cursor:pointer;color:var(--muted)">▶ Current final video</summary>
+      <video controls preload="metadata" src="${url}" style="width:60%;margin-top:8px;border-radius:8px"></video></details>`;
+  } catch {}
+}
+
+// ── Scenes + candidates ──────────────────────────────────────────────────────
+async function renderScene(scene) {
+  let cands = [];
+  try { cands = await jfetch(`/api/v1/stories/${scene.story_id}/scenes/${scene.scene_id}/candidates`); }
+  catch {}
+  const candHtml = cands.length
+    ? await Promise.all(cands.map(c => renderCandidate(scene, c))).then(a => a.join(''))
+    : '<div class="empty">No candidates recorded for this scene (generated before seed hunting, or hunt disabled)</div>';
+  return `
+  <div class="scene" id="scene-${scene.scene_id}">
+    <div class="scene-head">
+      <div>
+        <b>Scene ${scene.scene_index}</b> — <span style="color:var(--muted)">${esc(scene.speaker_id || 'no speaker')}</span>
+        <div class="line">“${esc(scene.spoken_line || scene.prompt?.slice(0,120) || '')}”</div>
+      </div>
+      <button class="secondary" onclick="regenerate('${scene.scene_id}')">♻️ Regenerate (new seeds)</button>
+    </div>
+    <div class="cands">${candHtml}</div>
+  </div>`;
+}
+
+async function renderCandidate(scene, c) {
+  let videoTag = '<div class="empty">no video</div>';
+  if (c.video_key) {
+    try { videoTag = `<video controls preload="metadata" src="${await presign(c.video_key)}"></video>`; } catch {}
+  }
+  const v = c.judge_verdict || {};
+  const artifacts = (v.artifacts || []).map(a =>
+    `<div class="artifact">⚠ [${esc(a.severity)}] ${esc(a.category)}: ${esc(a.description)}</div>`).join('');
+  const selBadge = c.selected
+    ? `<span class="badge ${c.selection_source === 'human' ? 'human' : 'sel'}">SELECTED (${esc(c.selection_source)})</span>` : '';
+  const passBadge = c.judge_passed === null ? ''
+    : `<span class="badge ${c.judge_passed ? 'pass' : 'fail'}">${c.judge_passed ? 'PASS' : 'FAIL'}</span>`;
+  return `
+  <div class="cand ${c.selected ? 'selected' : ''}">
+    ${videoTag}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <div>${passBadge} ${selBadge}</div>
+      <span class="score">${c.judge_score != null ? c.judge_score.toFixed(1) : '–'}<span style="font-size:11px;color:var(--muted)">/10</span></span>
+    </div>
+    <div class="reason">seed ${c.seed}${v.reasoning ? ' · ' + esc(v.reasoning) : ''}</div>
+    ${artifacts}
+    <div class="cand-actions">
+      ${c.selected ? '' : `<button onclick="selectCandidate('${c.candidate_id}','${scene.scene_id}')">✓ Use this take</button>`}
+      <button class="secondary" onclick="toggleFb('${c.candidate_id}')">💬 Feedback</button>
+    </div>
+    <div class="fb-form" id="fb-${c.candidate_id}">
+      <select id="fbv-${c.candidate_id}">
+        <option value="">verdict…</option>
+        <option value="true">👍 usable (judge should pass this)</option>
+        <option value="false">👎 unusable (judge should fail this)</option>
+      </select>
+      <select id="fbt-${c.candidate_id}" multiple size="4" title="artifact tags (ctrl-click for multiple)">
+        ${ARTIFACT_TAGS.map(t => `<option value="${t}">${t}</option>`).join('')}
+      </select>
+      <input id="fbs-${c.candidate_id}" type="number" min="0" max="10" step="0.5" placeholder="your score 0-10 (optional)">
+      <textarea id="fbc-${c.candidate_id}" rows="2" placeholder="comment (optional)"></textarea>
+      <button onclick="sendFeedback('${c.candidate_id}')">Submit feedback</button>
+    </div>
+  </div>`;
+}
+
+function toggleFb(id) { $(`fb-${id}`).classList.toggle('open'); }
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function selectCandidate(candidateId, sceneId) {
+  try {
+    await jfetch(`/api/v1/candidates/${candidateId}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: user() }),
+    });
+    toast('Take selected. Recompose the video to apply.');
+    openStory(currentStory, document.getElementById(`story-${currentStory}`));
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function sendFeedback(candidateId) {
+  const verdict = $(`fbv-${candidateId}`).value;
+  const tags = [...$(`fbt-${candidateId}`).selectedOptions].map(o => o.value);
+  const score = $(`fbs-${candidateId}`).value;
+  try {
+    await jfetch(`/api/v1/candidates/${candidateId}/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user: user(),
+        human_passed: verdict === '' ? null : verdict === 'true',
+        human_score: score === '' ? null : parseFloat(score),
+        artifact_tags: tags,
+        comment: $(`fbc-${candidateId}`).value || null,
+      }),
+    });
+    toast('Feedback recorded — thank you. It feeds judge improvement.');
+    toggleFb(candidateId);
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function regenerate(sceneId) {
+  try {
+    const r = await jfetch(`/api/v1/stories/${currentStory}/scenes/${sceneId}/regenerate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_candidates: 3 }),
+    });
+    toast(`Regeneration job ${r.job_id} started…`);
+    pollJob(r.job_id, () => openStory(currentStory, document.getElementById(`story-${currentStory}`)));
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function recompose() {
+  if (!currentStory) return;
+  try {
+    const r = await jfetch(`/api/v1/stories/${currentStory}/recompose`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    toast(`Recompose job ${r.job_id} started…`);
+    pollJob(r.job_id, () => openStory(currentStory, document.getElementById(`story-${currentStory}`)));
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function pollJob(jobId, onDone) {
+  const iv = setInterval(async () => {
+    try {
+      const j = await jfetch(`/api/v1/jobs/${jobId}`);
+      if (j.status === 'completed') { clearInterval(iv); toast('✅ Job complete'); onDone && onDone(); }
+      else if (j.status === 'failed') { clearInterval(iv); toast(`❌ Job failed: ${j.error}`); }
+    } catch { clearInterval(iv); }
+  }, 5000);
+}
+
+function init() { checkHealth(); loadStories(); }
+init();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>
