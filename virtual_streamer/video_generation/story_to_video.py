@@ -84,7 +84,7 @@ LOCATION_IMAGE_QUALITY_KEYWORDS = (
 TALKING_HEAD_LORA = "id-lora-celebvhq-ltx2.3.safetensors"
 TALKING_HEAD_LORA_MULTIPLIER = "1.0"
 
-#: Distilled-model settings shared by all talking-head segments.
+#: Distilled-model settings shared by all talking-head segments (fast, default).
 TALKING_HEAD_PARAMS: dict = {
     "model_type":          "ltx2_22B_distilled_1_1",
     "num_inference_steps": 8,
@@ -95,6 +95,36 @@ TALKING_HEAD_PARAMS: dict = {
     "audio_scale":         1.0,
     "audio_guidance_scale": 5.0,
 }
+
+#: Non-distilled ("quality") talking-head settings. Uses the full ltx2_22B base
+#: model for the generation pass instead of the distilled variant: higher
+#: fidelity and motion, but ~4x slower and a much larger model load (watch GPU /
+#: unified memory). Experimental — the A1O ID-LoRA path is primarily validated on
+#: the distilled model, so validate a single scene before a full run.
+TALKING_HEAD_PARAMS_QUALITY: dict = {
+    "model_type":          "ltx2_22B",
+    "num_inference_steps": 30,
+    "guidance_scale":      3.0,
+    "flow_shift":          5.0,
+    "guidance_phases":     1,
+    # sample_solver left unset -> server default for the non-distilled model
+    "audio_scale":         1.0,
+    "audio_guidance_scale": 5.0,
+}
+
+
+def _talking_head_params() -> dict:
+    """Talking-head generation params, distilled by default.
+
+    Set ``TALKING_HEAD_MODEL=quality`` (or ``non_distilled``) in the API
+    environment to run the first (generation) pass on the full, non-distilled
+    ltx2_22B model instead of the distilled one.
+    """
+    mode = os.environ.get("TALKING_HEAD_MODEL", "distilled").strip().lower()
+    if mode in ("quality", "non_distilled", "nondistilled", "full", "hq"):
+        logger.info("[talking-head] using NON-DISTILLED (quality) model params")
+        return TALKING_HEAD_PARAMS_QUALITY
+    return TALKING_HEAD_PARAMS
 
 #: Approximate spoken words per second (French/general conversational rate).
 _WORDS_PER_SECOND: float = 2.2
@@ -538,8 +568,9 @@ async def generate_segment_from_input(
             image_prompt_type="S" if image_path else "",
             audio_guide=audio_path,
             audio_prompt_type="A1O",
-            # Distilled model + LoRA settings (hardcoded for A1O pipeline)
-            **TALKING_HEAD_PARAMS,
+            # Model + LoRA settings for the A1O pipeline (distilled by default;
+            # TALKING_HEAD_MODEL=quality switches to the non-distilled base)
+            **_talking_head_params(),
             activated_loras=[TALKING_HEAD_LORA],
             loras_multipliers=TALKING_HEAD_LORA_MULTIPLIER,
         )

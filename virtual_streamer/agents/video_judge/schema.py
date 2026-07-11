@@ -21,6 +21,8 @@ ArtifactCategory = Literal[
     "impossible_setting",     # physically impossible scene layout
     "identity_drift",         # character changes appearance mid-clip
     "visual_glitch",          # flicker, smearing, heavy distortion
+    "static_character",       # visible character frozen (no motion) for the whole clip
+    "no_lip_movement",        # speaking character whose lips never move
     "other",
 ]
 

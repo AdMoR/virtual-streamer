@@ -48,6 +48,8 @@ services:
       # API configuration
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      # Talking-head generation model: distilled (default, fast) or quality (non-distilled ltx2_22B)
+      - TALKING_HEAD_MODEL=quality
     networks:
       - tts
     volumes:
