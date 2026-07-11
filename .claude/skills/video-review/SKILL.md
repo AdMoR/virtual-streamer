@@ -5,6 +5,9 @@ description: Operate the resilient video generation pipeline — seed hunting wi
 
 # Video Review & Seed Hunting Workflow
 
+For the full end-to-end generation recipe via the CLI (prerequisite checks,
+template/script creation, regeneration cases) see the `vsctl-e2e-video` skill.
+
 ## Concepts
 
 - A **story** is a list of **scenes**; each scene becomes one LTX-2 video segment.
