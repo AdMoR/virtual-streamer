@@ -113,14 +113,24 @@ first:
    takes, pass the original seeds (visible per candidate) via
    `seed_hunt_seeds`.
 
-## Gotchas
+## Async jobs, files & queueing
 
-- `generate-video*` and `regenerate/recompose` are async: always poll
-  `job-status`; jobs report `failed` with an `error` string.
-- Recompose does not re-burn subtitles.
-- Scenes generated before seed hunting existed have no candidates —
-  `list-candidates` returns `[]`; recompose then falls back to the scene's
-  original `video_segment_key`.
-- Candidate/final videos are MinIO keys, never local paths — always `presign`.
-- The heavy GPU services (WanGP, SD) are single-queue: don't launch parallel
-  full-video jobs; sequence them.
+- `generate-video*`, `regenerate-scene`, `recompose-story`,
+  `backfill-candidates` are async and return a `job_id`. Add `--wait
+  [--timeout N]` to any `vsctl call` to block until the job completes/fails
+  (uses the server long-poll `wait-job` = `GET /jobs/{id}/wait`; vsctl exits
+  non-zero on failure). Failed jobs carry an `error` string.
+- Recompose re-burns subtitles when you pass
+  `--json '{"enable_subtitles": true}'` — each segment's own audio track is
+  transcribed (Whisper accepts video input), so it works for any take.
+- For a story generated before seed hunting, run
+  `vsctl call backfill-candidates -p story_id=UUID --wait` once: it wraps each
+  existing segment into a judged, selected candidate so review/override/
+  recompose work exactly like a seed-hunted story.
+- Candidate responses include a ready `video_url` (presigned) — no manual
+  presign needed. To download any MinIO key locally:
+  `vsctl fetch <key> [dest]`.
+- GPU jobs are serialized server-side through a single priority queue
+  (interactive jobs — scene regeneration, single clips — jump ahead of queued
+  full videos). Submit freely; the response message includes the queue
+  position, and `/api/v1/video-generation/health` reports `gpu_queue_depth`.

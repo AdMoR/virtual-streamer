@@ -12,6 +12,7 @@ take, and collect human preference labels to improve the judge.
   GET  /judge-feedback/export                            — labelled data for judge training
 """
 
+import logging
 import uuid
 from typing import List, Optional
 
@@ -21,6 +22,22 @@ from pydantic import BaseModel, Field
 from virtual_streamer.utils.story_repository import get_story_repository
 
 router = APIRouter(tags=["Candidates"])
+
+logger = logging.getLogger(__name__)
+
+
+def _with_video_url(candidate: dict) -> dict:
+    """Attach a ready-to-play presigned URL so consumers never handle raw MinIO keys."""
+    if candidate.get("video_key"):
+        try:
+            from virtual_streamer.utils.minio_client import get_storage_client
+            candidate["video_url"] = get_storage_client().get_url(candidate["video_key"])
+        except Exception as exc:
+            logger.warning(f"presign failed for {candidate.get('video_key')}: {exc}")
+            candidate["video_url"] = None
+    else:
+        candidate["video_url"] = None
+    return candidate
 
 
 class SelectRequest(BaseModel):
@@ -48,7 +65,7 @@ async def list_candidates(story_id: str, scene_id: str):
     scene = await repo.get_scene(scene_id)
     if scene is None or scene["story_id"] != story_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scene not found")
-    return await repo.list_candidates_for_scene(scene_id)
+    return [_with_video_url(c) for c in await repo.list_candidates_for_scene(scene_id)]
 
 
 @router.get("/candidates/{candidate_id}", response_model=dict)
@@ -57,7 +74,7 @@ async def get_candidate(candidate_id: str):
     cand = await repo.get_candidate(candidate_id)
     if cand is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
-    return cand
+    return _with_video_url(cand)
 
 
 @router.post("/candidates/{candidate_id}/select", response_model=dict)

@@ -49,6 +49,12 @@ from virtual_streamer.image_generation.stable_cpp_client import (
     StableDiffusionCppConfig,
     Txt2ImageParams,
 )
+from virtual_streamer.utils.gpu_queue import (
+    enqueue_gpu_job,
+    queue_depth,
+    PRIORITY_BATCH,
+    PRIORITY_INTERACTIVE,
+)
 from virtual_streamer.utils.job_store import get_global_job_store
 from virtual_streamer.utils.minio_client import get_storage_client
 from virtual_streamer.utils.utils import add_subtitle_from_srt
@@ -785,11 +791,13 @@ async def generate_video(request: VideoGenerationRequest, background_tasks: Back
     job_store = await get_global_job_store()
     job_id = str(uuid.uuid4())
     await job_store.create_job(job_id, {**request.model_dump(), "pipeline": "ltx-2"})
-    background_tasks.add_task(_run_video_generation, job_id, request)
+    position = await enqueue_gpu_job(
+        job_id, lambda: _run_video_generation(job_id, request), priority=PRIORITY_BATCH
+    )
     return VideoGenerationResponse(
         job_id=job_id,
         status="pending",
-        message="Video generation job submitted successfully",
+        message=f"Video generation job queued (position {position})",
     )
 
 
@@ -814,11 +822,13 @@ async def generate_video_from_script(
             "pipeline": "ltx-2-from-script",
         },
     )
-    background_tasks.add_task(_run_from_script, job_id, request)
+    position = await enqueue_gpu_job(
+        job_id, lambda: _run_from_script(job_id, request), priority=PRIORITY_BATCH
+    )
     return VideoGenerationResponse(
         job_id=job_id,
         status="pending",
-        message="Video generation (from script) job submitted successfully",
+        message=f"Video generation (from script) job queued (position {position})",
     )
 
 
@@ -833,6 +843,7 @@ async def health():
         "active_jobs": active_count,
         "total_jobs": len(jobs),
         "storage_backend": os.environ.get("JOB_STORAGE_BACKEND", "memory"),
+        "gpu_queue_depth": queue_depth(),
         "ltx_server_url": _LTX_SERVER_URL,
     }
 
@@ -942,9 +953,11 @@ async def generate_single_clip(
         job_id,
         {"prompt": prompt, "resolution": resolution, "duration_seconds": duration_seconds, "model_type": model_type},
     )
-    background_tasks.add_task(_run_single_clip, job_id, job)
+    position = await enqueue_gpu_job(
+        job_id, lambda: _run_single_clip(job_id, job), priority=PRIORITY_INTERACTIVE
+    )
     return SingleClipResponse(
         job_id=job_id,
         status="pending",
-        message="Single-clip generation job submitted",
+        message=f"Single-clip generation job queued (position {position})",
     )
