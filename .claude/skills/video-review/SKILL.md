@@ -29,9 +29,15 @@ description: Operate the resilient video generation pipeline — seed hunting wi
    `list_stories`, `get_story_scenes`, `list_scene_candidates`,
    `select_candidate`, `submit_judge_feedback`, `regenerate_scene`,
    `recompose_story`, `export_judge_feedback`, `get_job_status`.
-3. **Discoverable CLI**: `python scripts/vsctl.py ops [filter]` lists every
-   REST operation from the live OpenAPI schema; `describe` shows params;
-   `call` invokes. Set `VS_API_URL` or `--api` (default `http://localhost:8000`).
+3. **Discoverable CLI**: `python scripts/vsctl.py ops [filter]` lists a
+   *curated* set of ~25 generic generation operations under short stable names
+   (`generate-video`, `generate-script`, `generate-voice`, `generate-scene-image`,
+   `generate-location`, `generate-story-template`, entity CRUD, review loop ops,
+   `job-status`, `presign`). `describe <op>` pulls the live param/body schema
+   from OpenAPI; `call <op> -p k=v --json '{}'` invokes. `ops --all` shows the
+   raw API surface if something is missing. Set `VS_API_URL` or `--api`
+   (default `http://localhost:8000`). Character-specific agents (jesus…),
+   streaming/playlist/twitch and admin endpoints are deliberately excluded.
 
 ## Standard workflows
 
