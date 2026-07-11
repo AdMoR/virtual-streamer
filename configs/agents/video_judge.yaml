@@ -1,0 +1,13 @@
+name: video_judge
+
+model:
+  provider: openai
+  model: Qwen3-VL-8B-Instruct-GGUF:UD-Q4_K_XL
+  parameters:
+    temperature: 0.1
+    max_output_tokens: 2048
+    api_base: http://100.114.182.89:8081
+
+metadata:
+  version: "1.0.0"
+  description: "Judges generated video segments for artifacts (unrealistic movement, impossible bodies/settings) during seed hunting."

@@ -69,6 +69,12 @@ def _get_atari_action_agent():
     return get_atari_action_agent()
 
 
+@register_agent("video_judge")
+def _get_video_judge():
+    from virtual_streamer.agents.video_judge.agent import get_video_judge_agent
+    return get_video_judge_agent()
+
+
 @register_agent("scene_enricher_pipeline")
 def _get_scene_enricher_pipeline():
     from virtual_streamer.agents.scene_enricher.agent import get_scene_enricher_pipeline

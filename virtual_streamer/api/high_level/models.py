@@ -56,6 +56,23 @@ class VideoGenerationRequest(BaseModel):
     enable_subtitles: bool = True
     subtitle_fontsize: int = 14
 
+    # Seed hunting (per-scene multi-take generation + LLM judge)
+    enable_seed_hunt: bool = True
+    seed_hunt_max_candidates: int = 3
+    seed_hunt_accept_score: float = 7.5
+    seed_hunt_seeds: Optional[List[int]] = Field(
+        default=None, description="Explicit seeds to replay; random when null"
+    )
+
+    def to_seed_hunt_config(self):
+        from virtual_streamer.video_generation.seed_hunting import SeedHuntConfig
+        return SeedHuntConfig(
+            enabled=self.enable_seed_hunt,
+            max_candidates=self.seed_hunt_max_candidates,
+            accept_score=self.seed_hunt_accept_score,
+            seeds=self.seed_hunt_seeds,
+        )
+
     def to_video_params(self, prompt: str = "", **overrides) -> VideoGenerationParams:
         return VideoGenerationParams(
             prompt=prompt,
@@ -113,6 +130,23 @@ class VideoFromScriptRequest(BaseModel):
     # Subtitle options
     enable_subtitles: bool = False
     subtitle_fontsize: int = 14
+
+    # Seed hunting (per-scene multi-take generation + LLM judge)
+    enable_seed_hunt: bool = True
+    seed_hunt_max_candidates: int = 3
+    seed_hunt_accept_score: float = 7.5
+    seed_hunt_seeds: Optional[List[int]] = Field(
+        default=None, description="Explicit seeds to replay; random when null"
+    )
+
+    def to_seed_hunt_config(self):
+        from virtual_streamer.video_generation.seed_hunting import SeedHuntConfig
+        return SeedHuntConfig(
+            enabled=self.enable_seed_hunt,
+            max_candidates=self.seed_hunt_max_candidates,
+            accept_score=self.seed_hunt_accept_score,
+            seeds=self.seed_hunt_seeds,
+        )
 
     def to_video_params(self, prompt: str = "", **overrides) -> VideoGenerationParams:
         return VideoGenerationParams(
