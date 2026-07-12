@@ -1,0 +1,34 @@
+# First LLM-agent benchmark (cheapest to run — no GPU): exercises the
+# title_generator agent on easy, ambiguous and edge-case inputs. model_id is
+# the agent config name, so pointing configs/agents/title_generator.yaml at a
+# different model and re-running gives a side-by-side model comparison.
+name: llm/title-generator
+model_kind: llm_agent
+description: >
+  title_generator agent quality: are the generated titles specific, on-topic
+  and usable as show episode titles? Review the JSON output of each case.
+cases:
+  - case_id: simple_topic
+    label: Simple concrete topic
+    params:
+      message: >
+        Generate an episode title for a woodworking show. Topic: restoring a
+        100-year-old oak dining table found in a barn.
+  - case_id: vague_topic
+    label: Vague topic (does it invent specifics?)
+    params:
+      message: >
+        Generate an episode title for a cooking show. Topic: something with
+        seasonal ingredients.
+  - case_id: technical_topic
+    label: Technical topic (jargon handling)
+    params:
+      message: >
+        Generate an episode title for a programming stream. Topic: debugging a
+        race condition in an async Python job queue.
+  - case_id: constrained_format
+    label: Constraint following (length limit)
+    params:
+      message: >
+        Generate an episode title of at most 6 words for a gardening show.
+        Topic: protecting tomatoes from late frost.

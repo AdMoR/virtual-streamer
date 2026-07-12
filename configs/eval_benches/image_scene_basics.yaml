@@ -1,0 +1,58 @@
+# First image-generation benchmark: covers the scene archetypes the pipeline
+# actually produces (character close-up, two-person scene, empty location,
+# text rendering, fine detail). Load with POST /api/v1/eval/benches/sync,
+# run against model_id "stable_cpp" (or "openai"), review in apps/eval_bench.html.
+name: image/scene-basics
+model_kind: image
+description: >
+  Conditioning-image quality across typical show scenes: anatomy, multi-subject
+  composition, environments, on-image text and fine detail. Judge each sample
+  for artifacts (extra fingers, warped faces, garbled text) and prompt adherence.
+cases:
+  - case_id: portrait_speaker
+    label: Talking-head style portrait (anatomy, face quality)
+    params:
+      prompt: >
+        Medium close-up portrait of a friendly middle-aged carpenter in a sunlit
+        wooden workshop, looking at the camera, natural skin texture, shallow
+        depth of field, photorealistic
+      width: 1024
+      height: 768
+      seed: 42
+  - case_id: two_characters
+    label: Two-person dialogue scene (multi-subject composition)
+    params:
+      prompt: >
+        Two people sitting across a small café table having an animated
+        conversation, warm evening light through the window, both faces clearly
+        visible, photorealistic
+      width: 1024
+      height: 768
+      seed: 42
+  - case_id: empty_location
+    label: Empty recurring location (environment consistency)
+    params:
+      prompt: >
+        Wide shot of an empty cozy podcast studio with two microphones, acoustic
+        foam panels, neon sign on the back wall, no people, cinematic lighting
+      width: 1024
+      height: 768
+      seed: 42
+  - case_id: text_rendering
+    label: On-image text (known failure mode)
+    params:
+      prompt: >
+        A wooden sign hanging above a bakery entrance that reads "DAILY BREAD"
+        in carved letters, morning light, photorealistic street view
+      width: 1024
+      height: 768
+      seed: 42
+  - case_id: hands_detail
+    label: Hands manipulating objects (fine detail stress test)
+    params:
+      prompt: >
+        Close-up of two hands kneading dough on a floured wooden table, flour
+        dust in the air, warm kitchen light, photorealistic
+      width: 1024
+      height: 768
+      seed: 42

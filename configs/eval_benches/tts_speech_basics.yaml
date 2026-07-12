@@ -1,0 +1,37 @@
+# First TTS benchmark: sentences stressing prosody, numbers, questions and
+# long-form delivery. model_id is a character_id whose voice sample to clone
+# ("default" = no cloning), so the same bench compares character voices.
+name: tts/speech-basics
+model_kind: tts
+description: >
+  Fish-Speech output quality: pronunciation, prosody, numbers/dates, question
+  intonation and stamina on longer passages. Listen for robotic cadence,
+  skipped words, artifacts and clipping.
+cases:
+  - case_id: plain_sentence
+    label: Plain declarative sentence
+    params:
+      text: The workshop smelled of sawdust and fresh coffee this morning.
+  - case_id: question_intonation
+    label: Question intonation
+    params:
+      text: Did you really think the bridge would hold all that weight?
+  - case_id: numbers_and_dates
+    label: Numbers, dates and units
+    params:
+      text: >
+        The order arrived on March 3rd, 2025 — 47 planks, each 2.4 meters long,
+        for a total of 1,180 euros.
+  - case_id: emotional_line
+    label: Emotional delivery
+    params:
+      text: I can't believe it... after all these years, you actually came back!
+  - case_id: long_passage
+    label: Long passage (stamina, pacing)
+    params:
+      text: >
+        Every craft has its rhythm. First you measure, then you cut, then you
+        sand until the surface feels like glass under your palm. People think
+        the secret is in the tools, but the tools only repeat what the hands
+        already know. That is why an old carpenter can build with a broken
+        chisel what a beginner cannot build with a full workshop.
