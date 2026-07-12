@@ -29,6 +29,7 @@ Important host rule:
     the LTXVideoConfig.server_url field.
 """
 
+import asyncio
 import logging
 import os
 import shutil
@@ -831,6 +832,19 @@ async def story_input_to_video(
     try:
         async with WanGPLTXClient(config) as client:
             for i, scene_input in enumerate(story_input.scenes):
+                # Idle gap before every scene except the first, so the video
+                # server can release GPU/unified memory between segments.
+                if i > 0:
+                    from virtual_streamer.video_generation.seed_hunting import (
+                        inter_segment_delay_seconds,
+                    )
+                    delay = inter_segment_delay_seconds()
+                    if delay > 0:
+                        if progress_callback:
+                            progress_callback(i, total, f"Cooling down {delay:.0f}s before scene {i + 1}/{total}")
+                        logger.info(f"[scene {i}] idle {delay:.0f}s (memory cooldown) before generation")
+                        await asyncio.sleep(delay)
+
                 if progress_callback:
                     progress_callback(i, total, f"Generating scene {i + 1}/{total}")
 

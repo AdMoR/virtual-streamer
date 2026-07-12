@@ -16,6 +16,7 @@ Flow per scene:
     score overall with selection_source="fallback")
 """
 
+import asyncio
 import logging
 import os
 import random
@@ -89,6 +90,21 @@ def select_best(candidates: List[CandidateResult]) -> CandidateResult:
     return best
 
 
+def inter_segment_delay_seconds() -> float:
+    """Idle seconds to wait between back-to-back video generations.
+
+    The GPU host has a single shared (unified CPU/GPU) memory pool; running
+    heavy generations back-to-back can exhaust it and crash the video server.
+    Sleeping between generations — with nothing queued — lets the server release
+    memory before the next load. Tunable via ``INTER_SEGMENT_DELAY_SECONDS``
+    (default 30; set 0 to disable).
+    """
+    try:
+        return max(0.0, float(os.environ.get("INTER_SEGMENT_DELAY_SECONDS", "30")))
+    except ValueError:
+        return 30.0
+
+
 async def hunt_segment(
     generate_fn: Callable[..., Any],
     scene_input: SceneInput,
@@ -125,6 +141,15 @@ async def hunt_segment(
 
     for attempt, seed in enumerate(hunt_config.resolve_seeds()):
         label = f"scene {scene_input.scene_index} take {attempt + 1}/{hunt_config.max_candidates} (seed={seed})"
+        # Idle gap before every take except the first, so the video server can
+        # release GPU/unified memory between back-to-back generations.
+        if attempt > 0:
+            delay = inter_segment_delay_seconds()
+            if delay > 0:
+                if progress:
+                    progress(f"Cooling down {delay:.0f}s before {label}")
+                logger.info(f"[seed-hunt] idle {delay:.0f}s (memory cooldown) before {label}")
+                await asyncio.sleep(delay)
         if progress:
             progress(f"Generating {label}")
         try:

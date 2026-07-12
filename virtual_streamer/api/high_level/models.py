@@ -24,6 +24,10 @@ class StoryPipelineResult(BaseModel):
 class VideoGenerationRequest(BaseModel):
     """Request model for LTX-2 video generation from a title or story text."""
 
+    # Reject unknown top-level fields so a mistyped knob (e.g. seed_hunt_seed
+    # vs seed_hunt_seeds) fails with a 422 instead of silently defaulting.
+    model_config = ConfigDict(extra="forbid")
+
     # Input (mutually exclusive)
     title: Optional[str] = None
     story_text: Optional[str] = None
@@ -102,6 +106,10 @@ class VideoFromScriptRequest(BaseModel):
     Scenes and locations come from a prior call to /story-pipeline/run and
     may have been modified by the user in the UI.
     """
+
+    # Reject unknown top-level fields so a mistyped knob fails with a 422.
+    # Nested scenes/locations stay permissive (typed Dict[str, Any]).
+    model_config = ConfigDict(extra="forbid")
 
     story_title: str
     story_template_id: str

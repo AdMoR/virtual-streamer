@@ -33,7 +33,10 @@ agent).
 
 If a check fails, inspect that service directly (e.g. `curl -s
 $VS_API_URL/health`, `docker compose ps mysql minio`) — the script only
-reports pass/fail, not how to fix it.
+reports pass/fail, not how to fix it. The SD server (1234) in particular
+flaps but auto-restarts within ~1 min, so on an SD-only failure just
+**re-run the precheck once or twice** rather than hand-curling `/v1/models`
+in a loop.
 
 If the judge LLM is down, generation still succeeds — the judge fails open
 (`judge_error` set, every take accepted at score 5.0) — but seed hunting
@@ -74,30 +77,49 @@ memory pool and get the process killed. So:
 
 ## Case B — Existing template: script → review → video
 
-1. **Generate the script** (nothing persisted — safe to iterate):
+1. **Generate the script** (nothing persisted — safe to iterate). The only
+   params are `title`, `story_template_id`, and optional `news_context` —
+   there is **no `story_concept` field** (pass it and it's silently dropped),
+   so encode the premise *and any required twist* in `title` + `news_context`.
+   The endpoint runs three LLM agents and routinely exceeds vsctl's 120 s
+   default, so pass `--timeout 600` and save the output for the next step:
    ```bash
-   vsctl call generate-script \
-     --json '{"title": "Fred se lance dans l IA", "story_template_id": "TPL"}'
+   vsctl call generate-script --timeout 600 --json '{
+     "title": "Fred se lance dans la vente de ventilateurs pendant la canicule",
+     "story_template_id": "TPL",
+     "news_context": "Titre: ...\nRésumé: ...\nTwist final à réserver pour la dernière réplique: ...\nDate: ..."}' > script.json
    ```
-   Returns `raw_story_text`, `recurrent_locations`, `detailed_scenes`.
+   Response shape (so you don't have to probe it): `raw_story_text` (str),
+   `recurrent_locations.locations[]`, and `detailed_scenes.scenes[]` — each
+   scene has `speaker_id`, `spoken_line`, `ltx_prompt`, `location`,
+   `character_on_screen`, `scene_visual_description`.
 2. **Edit the script if needed** (change `spoken_line`, `ltx_prompt`,
-   speakers, cut scenes) — it's plain JSON.
-3. **Generate the video from the (edited) script**:
+   speakers, cut scenes) — it's plain JSON in `script.json`.
+3. **Generate the video from the (edited) script.** Build `request.json`
+   straight from `script.json` — no manual parsing:
    ```bash
-   vsctl call generate-video-from-script --json @request.json
+   python3 - <<'PY'
+   import json
+   d = json.load(open("script.json"))
+   json.dump({"story_title": d["title"], "story_template_id": "TPL",
+              "scenes": d["detailed_scenes"]["scenes"],
+              "locations": d["recurrent_locations"]["locations"]},
+             open("request.json", "w"), ensure_ascii=False)
+   PY
+   vsctl call generate-video-from-script --json @request.json --wait --timeout 3600
    ```
-   where `request.json` = `{"story_title": ..., "story_template_id": "TPL",
-   "scenes": [...detailed_scenes.scenes...], "locations":
-   [...recurrent_locations.locations...]}` plus optional knobs:
-   `enable_seed_hunt` (default true), `seed_hunt_max_candidates` (3),
-   `seed_hunt_accept_score` (7.5), `seed_hunt_seeds` (explicit seeds ⇒ exact
-   replay), `enable_subtitles`.
+   Optional knobs in `request.json`: `enable_seed_hunt` (default true),
+   `seed_hunt_max_candidates` (3), `seed_hunt_accept_score` (7.5),
+   `seed_hunt_seeds` (explicit seeds ⇒ exact replay), `enable_subtitles`.
    - Shortcut when no script editing is wanted: `vsctl call generate-video
-     --json '{"title": "...", "story_template_id": "TPL"}'` runs script +
-     video in one job.
-4. **Poll**: `vsctl call job-status -p job_id=JOB` until
-   `completed`/`failed`. The result contains `story_id` implicitly via
-   `list-stories`, segment details, and `metadata.video_url`.
+     --json '{"title": "...", "story_template_id": "TPL"}' --wait --timeout 3600`
+     runs script + video in one job.
+4. **`--wait` already blocked** until `completed`/`failed` (exits non-zero on
+   failure) — no hand-rolled poll loop needed. A mid-run GPU crash surfaces
+   *after the fact* as dropped scenes, so instead of live-monitoring `/health`,
+   just **verify `result.segment_count` == scenes submitted** (see Async jobs)
+   on the returned result. `story_id` is reachable via `list-stories`; the
+   result also carries segment details and `metadata.video_url`.
 5. **View**: `vsctl call presign -p key=MINIO_KEY` on
    `metadata.minio_video_key` (or any candidate `video_key`).
 
