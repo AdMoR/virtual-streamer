@@ -1,0 +1,37 @@
+# First video-generation benchmark: short text-to-video clips exercising the
+# motion failure modes the video_judge looks for (body movement, object
+# interaction, camera motion). model_id selects the quality preset
+# ("fast", "quality", "high_quality"), so the same bench compares presets.
+# judge_agent gives every sample an automatic verdict to compare against yours.
+name: video/motion-basics
+model_kind: video
+description: >
+  Short t2v clips stressing motion realism: walking, object interaction and
+  camera movement. Review for unrealistic movement, impossible bodies, object
+  intersections and glitches — the same vocabulary the judge uses.
+judge_agent: video_judge
+cases:
+  - case_id: walking_person
+    label: Person walking toward camera (gait realism)
+    params:
+      prompt: >
+        A man in a denim jacket walks slowly toward the camera down a quiet
+        tree-lined street, natural daylight, steady camera
+      duration_seconds: 4.0
+      seed: 42
+  - case_id: pouring_coffee
+    label: Pouring coffee (object interaction / fluids)
+    params:
+      prompt: >
+        Close-up of a barista pouring steaming coffee from a metal kettle into
+        a white ceramic cup on a wooden counter, warm café lighting
+      duration_seconds: 4.0
+      seed: 42
+  - case_id: camera_pan
+    label: Camera pan across a room (scene coherence under motion)
+    params:
+      prompt: >
+        Slow camera pan across a cluttered artist studio with canvases,
+        paint jars and an easel near a large window, golden hour light
+      duration_seconds: 4.0
+      seed: 42

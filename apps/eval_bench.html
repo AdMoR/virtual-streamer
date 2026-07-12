@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eval Bench — Virtual Streamer</title>
+<style>
+:root {
+  --bg: #0f1117; --panel: #171a23; --panel2: #1e2230; --border: #2a2f3f;
+  --text: #e6e9f0; --muted: #8b92a5; --accent: #6c8cff; --ok: #3ecf8e;
+  --warn: #f5a623; --bad: #ff5d5d;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, 'Segoe UI', Roboto, sans-serif; padding: 24px; }
+h1 { font-size: 22px; margin-bottom: 4px; }
+h3 { margin-bottom: 10px; }
+.sub { color: var(--muted); margin-bottom: 20px; }
+.topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+input[type=text], input[type=number] { background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; }
+input[type=text] { min-width: 200px; }
+button { background: var(--accent); border: none; color: #fff; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+button.secondary { background: var(--panel2); border: 1px solid var(--border); }
+button:disabled { opacity: .5; cursor: default; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: inline-block; }
+.dot.ok { background: var(--ok); }
+.layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.kind-group { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin: 12px 0 4px; }
+.bench-item { padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
+.bench-item:hover { background: var(--panel2); }
+.bench-item.active { border-color: var(--accent); background: var(--panel2); }
+.bench-item .title { font-weight: 600; font-size: 13px; }
+.bench-item .meta { color: var(--muted); font-size: 11px; }
+table.runs { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+table.runs th, table.runs td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+table.runs th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+table.runs tr.run-row { cursor: pointer; }
+table.runs tr.run-row:hover { background: var(--panel2); }
+table.runs tr.run-row.active { background: var(--panel2); outline: 1px solid var(--accent); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.badge.pass { background: rgba(62,207,142,.15); color: var(--ok); }
+.badge.fail { background: rgba(255,93,93,.15); color: var(--bad); }
+.badge.warn { background: rgba(245,166,35,.15); color: var(--warn); }
+.badge.info { background: rgba(108,140,255,.15); color: var(--accent); }
+.launcher { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--panel2); margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+.launcher textarea { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px; font: 12px monospace; min-width: 260px; min-height: 36px; }
+.samples { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.sample { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+.sample.err { border-color: var(--bad); }
+.sample video, .sample img { width: 100%; border-radius: 8px; background: #000; }
+.sample audio { width: 100%; }
+.sample pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 11px; overflow-x: auto; max-height: 240px; white-space: pre-wrap; }
+.case-label { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.reason { font-size: 12px; color: var(--muted); margin: 6px 0; }
+.artifact { font-size: 11px; color: var(--warn); }
+.score { font-size: 15px; font-weight: 700; }
+.sample-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.sample-actions button { padding: 5px 10px; font-size: 12px; }
+.fb-form { margin-top: 8px; display: none; gap: 6px; flex-direction: column; }
+.fb-form.open { display: flex; }
+.fb-form select, .fb-form input, .fb-form textarea { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px; font-size: 12px; }
+.fb-existing { font-size: 11px; color: var(--muted); margin-top: 6px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+#toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel2); border: 1px solid var(--border); border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; opacity: 0; transition: opacity .3s; max-width: 420px; }
+#toast.visible { opacity: 1; }
+.empty { color: var(--muted); text-align: center; padding: 30px; }
+</style>
+</head>
+<body>
+<h1>🧪 Eval Bench</h1>
+<div class="sub">Run benchmarks against any generative model (image / video / TTS / LLM agents), inspect the generations and label them. Human feedback here is the ground truth for model comparison and judge tuning.</div>
+
+<div class="topbar">
+  <span class="dot" id="status-dot"></span><span id="status-label">checking…</span>
+  <input type="text" id="api-base" placeholder="API base (e.g. http://localhost:8000)">
+  <button class="secondary" onclick="init()">↻ Refresh</button>
+  <button class="secondary" onclick="syncBenches()">⤓ Sync benches from configs</button>
+  <button class="secondary" onclick="backfill()">📦 Import seed-hunt takes</button>
+  <span style="flex:1"></span>
+  <input type="text" id="user-name" placeholder="your name" style="min-width:140px">
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <h3>Benches</h3>
+    <div id="bench-list"><div class="empty">Loading…</div></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 id="bench-title">Select a bench</h3>
+      <button class="secondary" id="btn-export" onclick="exportFeedback()" disabled>⬇ Export feedback</button>
+    </div>
+    <div id="bench-desc" class="reason"></div>
+    <div id="launcher"></div>
+    <div id="runs"></div>
+    <div id="samples"><div class="empty">No bench selected</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const base = () => $('api-base').value.trim().replace(/\/$/, '') || 'http://localhost:8000';
+const user = () => $('user-name').value.trim() || 'anonymous';
+let currentBench = null, currentRun = null;
+
+const TAGS = {
+  image: ['bad_anatomy','extra_limbs','garbled_text','wrong_composition','artifact_noise','off_prompt','other'],
+  video: ['unrealistic_movement','impossible_body','object_intersection','impossible_setting','identity_drift','visual_glitch','other'],
+  tts: ['mispronunciation','robotic_cadence','skipped_words','audio_artifact','wrong_pacing','wrong_voice','other'],
+  llm_agent: ['off_topic','format_violation','hallucination','too_generic','constraint_ignored','other'],
+};
+const MODEL_ID_HINT = {
+  image: 'stable_cpp | openai',
+  video: 'fast | quality | high_quality',
+  tts: 'character_id or "default"',
+  llm_agent: 'agent name (configs/agents/*.yaml)',
+};
+
+$('api-base').value = localStorage.getItem('vs_api_base') || 'http://localhost:8000';
+$('user-name').value = localStorage.getItem('vs_user') || '';
+$('api-base').addEventListener('change', () => { localStorage.setItem('vs_api_base', $('api-base').value); init(); });
+$('user-name').addEventListener('change', () => localStorage.setItem('vs_user', $('user-name').value));
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('visible');
+  setTimeout(() => t.classList.remove('visible'), 6000);
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+function fmt(x, digits = 1) { return x == null ? '–' : Number(x).toFixed(digits); }
+
+async function jfetch(path, opts) {
+  const r = await fetch(`${base()}${path}`, opts);
+  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
+  return r.json();
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch(`${base()}/health`, { signal: AbortSignal.timeout(4000) });
+    $('status-dot').classList.toggle('ok', r.ok);
+    $('status-label').textContent = r.ok ? 'API online' : `API ${r.status}`;
+  } catch { $('status-dot').classList.remove('ok'); $('status-label').textContent = 'API offline'; }
+}
+
+// ── Benches ──────────────────────────────────────────────────────────────────
+let benches = [];
+async function loadBenches() {
+  try {
+    benches = await jfetch('/api/v1/eval/benches');
+    const list = $('bench-list');
+    if (!benches.length) { list.innerHTML = '<div class="empty">No benches. Click “Sync benches from configs”.</div>'; return; }
+    const byKind = {};
+    benches.forEach(b => (byKind[b.model_kind] ||= []).push(b));
+    list.innerHTML = Object.entries(byKind).map(([kind, bs]) => `
+      <div class="kind-group">${esc(kind)}</div>` + bs.map(b => `
+      <div class="bench-item" id="bench-${b.bench_id}" onclick="openBench('${b.bench_id}')">
+        <div class="title">${esc(b.name)}</div>
+        <div class="meta">${b.cases.length} cases${b.judge_agent ? ' · auto-judged' : ''}</div>
+      </div>`).join('')).join('');
+  } catch (e) { $('bench-list').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function syncBenches() {
+  try {
+    const synced = await jfetch('/api/v1/eval/benches/sync', { method: 'POST' });
+    toast(`Synced ${synced.length} benches from configs/eval_benches/`);
+    loadBenches();
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function backfill() {
+  try {
+    const r = await jfetch('/api/v1/eval/backfill-candidates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    toast(`Backfill job ${r.job_id} started…`);
+    pollJob(r.job_id, loadBenches);
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+// ── Bench detail: launcher + runs table ─────────────────────────────────────
+async function openBench(benchId) {
+  document.querySelectorAll('.bench-item').forEach(x => x.classList.remove('active'));
+  $(`bench-${benchId}`)?.classList.add('active');
+  currentBench = benches.find(b => b.bench_id === benchId);
+  currentRun = null;
+  $('btn-export').disabled = false;
+  $('bench-title').textContent = currentBench.name;
+  $('bench-desc').textContent = currentBench.description || '';
+  $('launcher').innerHTML = `
+    <div class="launcher">
+      <div>
+        <div class="reason">model_id (${esc(MODEL_ID_HINT[currentBench.model_kind] || '')})</div>
+        <input type="text" id="run-model-id" placeholder="model_id">
+      </div>
+      <div>
+        <div class="reason">label (optional)</div>
+        <input type="text" id="run-label" placeholder="e.g. baseline">
+      </div>
+      <div>
+        <div class="reason">model_config JSON (optional)</div>
+        <textarea id="run-config">{}</textarea>
+      </div>
+      <button style="margin-top:22px" onclick="startRun()">▶ Run bench</button>
+    </div>`;
+  $('samples').innerHTML = '<div class="empty">Select a run below</div>';
+  await loadRuns();
+}
+
+async function loadRuns() {
+  try {
+    const runs = await jfetch(`/api/v1/eval/benches/${currentBench.bench_id}/runs`);
+    if (!runs.length) { $('runs').innerHTML = '<div class="empty">No runs yet — launch one above.</div>'; return; }
+    $('runs').innerHTML = `
+      <table class="runs">
+        <tr><th>when</th><th>model</th><th>label</th><th>status</th><th>samples</th>
+            <th>auto score</th><th>human score</th><th>pass rate</th><th>labels</th><th>latency</th></tr>
+        ${runs.map(r => `
+        <tr class="run-row ${r.run_id === currentRun ? 'active' : ''}" onclick="openRun('${r.run_id}')">
+          <td>${esc((r.created_at||'').slice(0,16).replace('T',' '))}</td>
+          <td><b>${esc(r.model_id)}</b></td>
+          <td>${esc(r.label || '')}</td>
+          <td><span class="badge ${r.status === 'completed' ? 'pass' : r.status === 'failed' ? 'fail' : 'warn'}">${esc(r.status)}</span></td>
+          <td>${r.n_samples}${r.n_errors ? ` <span class="badge fail">${r.n_errors} err</span>` : ''}</td>
+          <td>${fmt(r.avg_auto_score)}</td>
+          <td>${fmt(r.avg_human_score)}</td>
+          <td>${r.human_pass_rate == null ? '–' : Math.round(r.human_pass_rate * 100) + '%'}</td>
+          <td>${r.n_feedback}</td>
+          <td>${fmt(r.avg_latency)}s</td>
+        </tr>`).join('')}
+      </table>`;
+  } catch (e) { $('runs').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function startRun() {
+  const modelId = $('run-model-id').value.trim();
+  if (!modelId) { toast('⚠️ model_id is required'); return; }
+  let config;
+  try { config = JSON.parse($('run-config').value || '{}'); }
+  catch { toast('⚠️ model_config is not valid JSON'); return; }
+  try {
+    const r = await jfetch(`/api/v1/eval/benches/${currentBench.bench_id}/runs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId, model_config: config, label: $('run-label').value || null }),
+    });
+    toast(`Run started (job ${r.job_id})…`);
+    await loadRuns();
+    pollJob(r.job_id, () => { loadRuns(); if (currentRun === r.run_id) openRun(r.run_id); });
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+// ── Samples ──────────────────────────────────────────────────────────────────
+async function openRun(runId) {
+  currentRun = runId;
+  document.querySelectorAll('.run-row').forEach(x => x.classList.remove('active'));
+  $('samples').innerHTML = '<div class="empty">Loading samples…</div>';
+  await loadRuns();
+  try {
+    const samples = await jfetch(`/api/v1/eval/runs/${runId}/samples`);
+    if (!samples.length) { $('samples').innerHTML = '<div class="empty">No samples (run still in progress?)</div>'; return; }
+    const labels = Object.fromEntries((currentBench.cases || []).map(c => [c.case_id, c.label]));
+    $('samples').innerHTML = '<div class="samples">' +
+      samples.map(s => renderSample(s, labels[s.case_id])).join('') + '</div>';
+  } catch (e) { $('samples').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+}
+
+function renderMedia(s) {
+  if (!s.artifact_url) return '';
+  switch (currentBench.model_kind) {
+    case 'image': return `<img src="${s.artifact_url}" loading="lazy">`;
+    case 'video': return `<video controls preload="metadata" src="${s.artifact_url}"></video>`;
+    case 'tts':   return `<audio controls preload="metadata" src="${s.artifact_url}"></audio>`;
+    default:      return '';
+  }
+}
+
+function renderSample(s, caseLabel) {
+  const v = s.auto_verdict || {};
+  const artifacts = (v.artifacts || []).map(a =>
+    `<div class="artifact">⚠ [${esc(a.severity)}] ${esc(a.category)}: ${esc(a.description)}</div>`).join('');
+  const outputBlock = s.output_json
+    ? `<details open><summary>output</summary><pre>${esc(JSON.stringify(s.output_json, null, 2))}</pre></details>` : '';
+  const fbExisting = (s.feedback || []).map(f =>
+    `<div class="fb-existing">💬 ${esc(f.user)}: ${f.passed === true ? '👍' : f.passed === false ? '👎' : ''} ` +
+    `${f.score != null ? f.score + '/10 ' : ''}${(f.tags||[]).map(esc).join(', ')} ${esc(f.comment || '')}</div>`).join('');
+  const tags = TAGS[currentBench.model_kind] || TAGS.llm_agent;
+  return `
+  <div class="sample ${s.status === 'error' ? 'err' : ''}">
+    <div class="case-label">${esc(caseLabel || s.case_id)}</div>
+    ${s.status === 'error' ? `<div class="artifact">❌ ${esc(s.error)}</div>` : ''}
+    ${renderMedia(s)}
+    ${outputBlock}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <div>${s.auto_score != null ? `<span class="badge info">judge ${fmt(s.auto_score)}/10</span>` : ''}</div>
+      <span class="reason">${s.latency_seconds != null ? fmt(s.latency_seconds) + 's' : ''}</span>
+    </div>
+    ${v.reasoning ? `<div class="reason">${esc(v.reasoning)}</div>` : ''}
+    ${artifacts}
+    <details><summary>input params</summary><pre>${esc(JSON.stringify(s.input_params, null, 2))}</pre></details>
+    ${fbExisting}
+    <div class="sample-actions">
+      <button class="secondary" onclick="toggleFb('${s.sample_id}')">💬 Feedback</button>
+    </div>
+    <div class="fb-form" id="fb-${s.sample_id}">
+      <select id="fbv-${s.sample_id}">
+        <option value="">verdict…</option>
+        <option value="true">👍 usable</option>
+        <option value="false">👎 unusable</option>
+      </select>
+      <select id="fbt-${s.sample_id}" multiple size="4" title="issue tags (ctrl-click for multiple)">
+        ${tags.map(t => `<option value="${t}">${t}</option>`).join('')}
+      </select>
+      <input id="fbs-${s.sample_id}" type="number" min="0" max="10" step="0.5" placeholder="your score 0-10 (optional)">
+      <textarea id="fbc-${s.sample_id}" rows="2" placeholder="comment (optional)"></textarea>
+      <button onclick="sendFeedback('${s.sample_id}')">Submit feedback</button>
+    </div>
+  </div>`;
+}
+
+function toggleFb(id) { $(`fb-${id}`).classList.toggle('open'); }
+
+async function sendFeedback(sampleId) {
+  const verdict = $(`fbv-${sampleId}`).value;
+  const tags = [...$(`fbt-${sampleId}`).selectedOptions].map(o => o.value);
+  const score = $(`fbs-${sampleId}`).value;
+  try {
+    await jfetch(`/api/v1/eval/samples/${sampleId}/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user: user(),
+        passed: verdict === '' ? null : verdict === 'true',
+        score: score === '' ? null : parseFloat(score),
+        tags,
+        comment: $(`fbc-${sampleId}`).value || null,
+      }),
+    });
+    toast('Feedback recorded — thank you.');
+    openRun(currentRun);
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function exportFeedback() {
+  if (!currentBench) return;
+  try {
+    const data = await jfetch(`/api/v1/eval/feedback/export?bench_id=${currentBench.bench_id}&limit=5000`);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `eval_feedback_${currentBench.name.replace(/[^a-z0-9]+/gi, '_')}.json`;
+    a.click();
+    toast(`Exported ${data.length} feedback rows`);
+  } catch (e) { toast(`⚠️ ${e.message}`); }
+}
+
+async function pollJob(jobId, onDone) {
+  const iv = setInterval(async () => {
+    try {
+      const j = await jfetch(`/api/v1/jobs/${jobId}`);
+      if (j.status === 'completed') { clearInterval(iv); toast('✅ Job complete'); onDone && onDone(); }
+      else if (j.status === 'failed') { clearInterval(iv); toast(`❌ Job failed: ${j.error}`); }
+    } catch { clearInterval(iv); }
+  }, 5000);
+}
+
+function init() { checkHealth(); loadBenches(); }
+init();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>

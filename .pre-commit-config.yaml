@@ -8,3 +8,13 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
+      - id: e2e-pipeline
+        name: E2E pipeline compatibility (real micro-generation, ~2-4 min)
+        language: system
+        entry: uv run python scripts/e2e_pipeline.py
+        pass_filenames: false
+        stages: [pre-commit]
+        # Runs only when pipeline-contract code changes. Skip when the GPU box
+        # is unreachable with:  SKIP=e2e-pipeline git commit ...
+        files: >-
+          ^(virtual_streamer/video_generation/.*|virtual_streamer/agents/video_judge/.*|virtual_streamer/image_generation/stable_cpp_client\.py|virtual_streamer/utils/story_repository\.py|virtual_streamer/utils/gpu_queue\.py|virtual_streamer/api/medium_level/review\.py|virtual_streamer/api/low_level/candidates\.py|configs/agents/video_judge\.yaml)$

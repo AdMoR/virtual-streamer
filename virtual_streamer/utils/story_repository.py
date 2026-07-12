@@ -277,6 +277,14 @@ class StoryRepository:
                     for r in rows
                 ]
 
+    async def delete_story(self, story_id: str) -> bool:
+        """Delete a story; scenes, candidates and feedback cascade via FKs."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM stories WHERE story_id = %s", (story_id,))
+                return cur.rowcount > 0
+
     # ── Scene CRUD ─────────────────────────────────────────────────────────────
 
     async def create_scene(
