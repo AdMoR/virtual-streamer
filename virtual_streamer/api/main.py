@@ -70,15 +70,14 @@ async def lifespan(app: FastAPI):
     Mounted apps' lifespans are merged into this via mount_app().
     """
     # Startup
-    print("=" * 70)
-    print("Virtual Streamer API Starting (Fully Unified)")
-    print("=" * 70)
-    print(f"Data directory: {os.environ.get('DATA_DIR', '/data')}")
-    print(f"Temp directory: {os.environ.get('TEMP_DIR', './temp')}")
-    print(
-        f"TTS service: {os.environ.get('FISH_TTS_HOST', 'localhost')}:{os.environ.get('FISH_TTS_PORT', '8003')}"
+    logger.info("Virtual Streamer API Starting (Fully Unified)")
+    logger.info("Data directory: %s", os.environ.get("DATA_DIR", "/data"))
+    logger.info("Temp directory: %s", os.environ.get("TEMP_DIR", "./temp"))
+    logger.info(
+        "TTS service: %s:%s",
+        os.environ.get("FISH_TTS_HOST", "localhost"),
+        os.environ.get("FISH_TTS_PORT", "8003"),
     )
-    print("=" * 70)
 
     # Ensure temp directory exists
     temp_dir = os.environ.get("TEMP_DIR", "./temp")
@@ -87,7 +86,7 @@ async def lifespan(app: FastAPI):
     yield  # App is running
 
     # Shutdown
-    print("Virtual Streamer API shutting down...")
+    logger.info("Virtual Streamer API shutting down...")
 
 
 # Create FastAPI app with lifespan
@@ -228,7 +227,8 @@ if __name__ == "__main__":
     host = os.environ.get("API_HOST", "0.0.0.0")
     port = int(os.environ.get("API_PORT", "8000"))
 
-    print(f"Starting server on {host}:{port}")
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Starting server on %s:%s", host, port)
 
     uvicorn.run(
         "virtual_streamer.api.main:app",
