@@ -3,7 +3,7 @@ High-level API: Story Pipeline Agent Testing
 
 Exposes the StoryPipelineAgent as a testable REST endpoint.
 
-  Input : title (str), optional news_context (str)
+  Input : title (str), optional story_template_id (str), optional news_context (str)
   Output: raw_story_text, recurrent_locations, detailed_scenes
 """
 
@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from virtual_streamer.agents.common.state_keys import (
     TITLE,
@@ -46,6 +46,10 @@ APP_NAME = "story_pipeline_test"
 
 
 class StoryPipelineRequest(BaseModel):
+    # Reject unknown fields so a mistyped/unsupported arg (e.g. story_concept)
+    # returns a 422 naming the offender instead of being silently dropped.
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(
         ...,
         description="Story title — the seed for the full pipeline.",

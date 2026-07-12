@@ -26,6 +26,12 @@ from virtual_streamer.video_generation.ltx_client import (
 from virtual_streamer.video_generation.scene_input import SceneInput, StoryInput
 
 
+@pytest.fixture(autouse=True)
+def _no_inter_segment_delay(monkeypatch):
+    """Disable the between-generation memory-cooldown sleep in tests."""
+    monkeypatch.setenv("INTER_SEGMENT_DELAY_SECONDS", "0")
+
+
 # ---------------------------------------------------------------------------
 # Fake filesystem helpers
 # ---------------------------------------------------------------------------
