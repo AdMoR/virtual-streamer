@@ -49,7 +49,6 @@ from virtual_streamer.video_generation.ltx_client import (
 from virtual_streamer.video_generation.ltx_prompt_builder import (
     build_ltx_prompt,
     build_negative_prompt,
-    build_talking_head_prompt,
 )
 from virtual_streamer.video_generation.scene_input import (
     SceneInput,
@@ -57,6 +56,8 @@ from virtual_streamer.video_generation.scene_input import (
     DetailedSceneInput,
     DialogLineInput,
 )
+from virtual_streamer.video_generation.strategies import ConditioningContext, select_strategy
+from virtual_streamer.video_generation.strategies.frame_utils import frames_from_duration
 from virtual_streamer.image_generation.stable_cpp_client import (
     StableDiffusionCppClient,
     StableDiffusionCppConfig,
@@ -77,60 +78,8 @@ LOCATION_IMAGE_QUALITY_KEYWORDS = (
     "dramatic lighting, sharp focus, 8k"
 )
 
-# ---------------------------------------------------------------------------
-# Talking-head (A1O) constants
-# ---------------------------------------------------------------------------
-
-#: ID-LoRA filename on the WanGP server used for audio-conditioned talking-head generation.
-TALKING_HEAD_LORA = "id-lora-celebvhq-ltx2.3.safetensors"
-TALKING_HEAD_LORA_MULTIPLIER = "1.0"
-
-#: Distilled-model settings shared by all talking-head segments (fast, default).
-TALKING_HEAD_PARAMS: dict = {
-    "model_type":          "ltx2_22B_distilled_1_1",
-    "num_inference_steps": 8,
-    "guidance_scale":      1.0,
-    "flow_shift":          5.0,
-    "guidance_phases":     2,
-    "sample_solver":       "distilled_8_steps",
-    "audio_scale":         1.0,
-    "audio_guidance_scale": 5.0,
-}
-
-#: Non-distilled ("quality") talking-head settings. Uses the full ltx2_22B base
-#: model for the generation pass instead of the distilled variant: higher
-#: fidelity and motion, but ~4x slower and a much larger model load (watch GPU /
-#: unified memory). Experimental — the A1O ID-LoRA path is primarily validated on
-#: the distilled model, so validate a single scene before a full run.
-TALKING_HEAD_PARAMS_QUALITY: dict = {
-    "model_type":          "ltx2_22B",
-    "num_inference_steps": 30,
-    "guidance_scale":      3.0,
-    "flow_shift":          5.0,
-    "guidance_phases":     1,
-    # sample_solver left unset -> server default for the non-distilled model
-    "audio_scale":         1.0,
-    "audio_guidance_scale": 5.0,
-}
-
-
-def _talking_head_params() -> dict:
-    """Talking-head generation params, distilled by default.
-
-    Set ``TALKING_HEAD_MODEL=quality`` (or ``non_distilled``) in the API
-    environment to run the first (generation) pass on the full, non-distilled
-    ltx2_22B model instead of the distilled one.
-    """
-    mode = os.environ.get("TALKING_HEAD_MODEL", "distilled").strip().lower()
-    if mode in ("quality", "non_distilled", "nondistilled", "full", "hq"):
-        logger.info("[talking-head] using NON-DISTILLED (quality) model params")
-        return TALKING_HEAD_PARAMS_QUALITY
-    return TALKING_HEAD_PARAMS
-
-#: Approximate spoken words per second (French/general conversational rate).
-_WORDS_PER_SECOND: float = 2.2
-_MIN_SPEECH_SECONDS: float = 5.0
-_MAX_SPEECH_SECONDS: float = 15.0
+# Talking-head constants, params, and A1O prompt logic now live in
+# virtual_streamer/video_generation/strategies/talking_head.py.
 
 
 # ---------------------------------------------------------------------------
@@ -314,29 +263,6 @@ async def generate_location_image(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _frames_from_duration(duration_seconds: float, fps: int) -> int:
-    """Round a duration to the nearest valid LTX frame count (8n+1, min 9)."""
-    raw = int(duration_seconds * fps)
-    n = max(round((raw - 1) / 8), 1)
-    return 8 * n + 1
-
-
-def _video_length_from_spoken_line(spoken_line: Optional[str], fps: int) -> int:
-    """
-    Estimate the required video_length (8n+1 frames) from the word count of
-    *spoken_line*.
-
-    Uses a conversational speech rate of ~2.2 words/second plus a 1.5-second
-    margin for lead-in/lead-out, clamped to [5, 15] seconds.
-    """
-    words = len(spoken_line.split()) if spoken_line else 0
-    duration = max(
-        _MIN_SPEECH_SECONDS,
-        min(_MAX_SPEECH_SECONDS, words / _WORDS_PER_SECOND + 1.5),
-    )
-    return _frames_from_duration(duration, fps)
-
-
 def _file_size(path: str) -> int:
     try:
         return os.path.getsize(path)
@@ -505,97 +431,34 @@ async def generate_segment_from_input(
     """
     Generate one video segment from a SceneInput.
 
-    Two modes are selected automatically:
-
-    **Talking-head (A1O)** — when *audio_path* is provided:
-      - ``audio_prompt_type = "A1O"`` (audio conditioning + ID-LoRA + force output)
-      - ``image_prompt_type = "S"`` (start-frame conditioning)
-      - Distilled-model settings from ``TALKING_HEAD_PARAMS``
-      - Prompt in ``[VISUAL]/[SPEECH]/[SOUNDS]`` format
-      - ``video_length`` estimated from word count of ``scene_input.spoken_line``
-
-    **Image-to-video / text-to-video** — when *audio_path* is absent:
-      - Uses ``scene_input.ltx_prompt`` as-is
-      - ``video_length`` from ``video_params.duration_seconds``
+    The conditioning mode (talking-head A1O, reference-sheet ingredient-lora,
+    plain i2v/t2v, ...) is picked per scene by
+    ``strategies.select_strategy()`` — see ``video_generation/strategies/``
+    for the available modes and how a new one gets added.
     """
     i = scene_input.scene_index
-    talking_head = audio_path is not None
 
-    if talking_head and not os.path.exists(audio_path):
+    if audio_path is not None and not os.path.exists(audio_path):
         logger.warning(f"[scene {i}] Audio file not found: {audio_path} — falling back to i2v")
-        talking_head = False
         audio_path = None
-
-    mode = "talking-head A1O" if talking_head else ("i2v" if image_path else "t2v")
-    logger.info(
-        f"[scene {i}] START  mode={mode}  "
-        f"speaker={scene_input.speaker_id!r}  "
-        f"line={str(scene_input.spoken_line or '')[:60]!r}"
-    )
-
-    if talking_head:
-        # Build [VISUAL]/[SPEECH]/[SOUNDS] prompt from scene data
-        if scene_input.scene_visual_description:
-            try:
-                from virtual_streamer.image_generation.models import FluxPrompt
-                flux_prompt = FluxPrompt.model_validate(scene_input.scene_visual_description)
-                visual = flux_prompt.to_prompt()
-            except Exception:
-                visual = scene_input.ltx_prompt
-        else:
-            visual = scene_input.ltx_prompt
-
-        prompt = build_talking_head_prompt(
-            visual_description=visual,
-            spoken_line=scene_input.spoken_line or "",
-        )
-        video_length = _video_length_from_spoken_line(scene_input.spoken_line, video_params.fps)
-
-        logger.info(
-            f"[scene {i}] talking-head  video_length={video_length}  "
-            f"words={len((scene_input.spoken_line or '').split())}"
-        )
-
-        segment_params = VideoGenerationParams(
-            prompt=prompt,
-            negative_prompt=build_negative_prompt(),
-            # Resolution left at default — client auto-corrects to match the start image
-            resolution=video_params.resolution,
-            video_length=video_length,
-            fps=video_params.fps,
-            seed=video_params.seed,
-            # Talking-head conditioning
-            image_start=image_path,
-            image_prompt_type="S" if image_path else "",
-            audio_guide=audio_path,
-            audio_prompt_type="A1O",
-            # Model + LoRA settings for the A1O pipeline (distilled by default;
-            # TALKING_HEAD_MODEL=quality switches to the non-distilled base)
-            **_talking_head_params(),
-            activated_loras=[TALKING_HEAD_LORA],
-            loras_multipliers=TALKING_HEAD_LORA_MULTIPLIER,
-        )
-    else:
-        frames = _frames_from_duration(
-            video_params.duration_seconds or 5.0, video_params.fps
-        )
-        logger.info(f"[scene {i}] i2v/t2v  frames={frames}")
-
-        segment_params = VideoGenerationParams(
-            prompt=scene_input.ltx_prompt,
-            negative_prompt=build_negative_prompt(),
-            resolution=video_params.resolution,
-            video_length=frames,
-            fps=video_params.fps,
-            num_inference_steps=video_params.num_inference_steps,
-            guidance_scale=video_params.guidance_scale,
-            seed=video_params.seed,
-            image_start=image_path,
-            image_prompt_type="S" if image_path else "",
-        )
 
     segment_dir = os.path.join(output_dir, f"scene_{i:03d}_{uuid.uuid4().hex[:8]}")
     os.makedirs(segment_dir, exist_ok=True)
+
+    ctx = ConditioningContext(
+        scene_input=scene_input,
+        video_params=video_params,
+        output_dir=segment_dir,
+        image_path=image_path,
+        audio_path=audio_path,
+    )
+    strategy = select_strategy(ctx)
+    logger.info(
+        f"[scene {i}] START  mode={strategy.name}  "
+        f"speaker={scene_input.speaker_id!r}  "
+        f"line={str(scene_input.spoken_line or '')[:60]!r}"
+    )
+    segment_params = await strategy.build_params(ctx)
 
     result = await client.generate_video(params=segment_params, output_dir=segment_dir)
 
@@ -789,9 +652,14 @@ async def story_input_to_video(
         "final_video_key": None,
     }
 
+    # Reference-sheet (IC-LoRA ingredients) conditioning mode: build a grid of
+    # location/character/detail images per scene instead of a start-frame image.
+    _sheet_mode = os.environ.get("REFERENCE_SHEET_MODE", "").strip().lower() in ("1", "true", "yes")
+
     # Pre-load location and character entities from DB
     location_map: Dict[str, dict] = {}
     character_map: Dict[str, dict] = {}
+    visual_details: List[dict] = []
     template_id = story_input.story_template_id
 
     if template_id:
@@ -800,6 +668,12 @@ async def story_input_to_video(
 
         loc_rows = await repo.list_locations_by_template(template_id)
         location_map = {loc["location_id"]: loc for loc in loc_rows}
+
+        if _sheet_mode:
+            try:
+                visual_details = await repo.list_visual_details_by_template(template_id)
+            except Exception as exc:
+                logger.warning(f"Could not load visual details for template {template_id}: {exc}")
 
         all_char_ids: set = set()
         for si in story_input.scenes:
@@ -886,14 +760,30 @@ async def story_input_to_video(
                     if cid in character_map
                 ]
 
-                conditioning_image_path = await generate_scene_image_from_input(
-                    scene_input=scene_input,
-                    location=location,
-                    character_dicts=char_dicts,
-                    output_dir=image_dir,
-                    sd_server_url=_sd_url,
-                    video_params=video_params,
-                )
+                conditioning_image_path: Optional[str] = None
+                if _sheet_mode:
+                    # Reference-sheet conditioning replaces both the start-frame
+                    # image and the audio conditioning (the IC-LoRA path is v2v).
+                    from virtual_streamer.video_generation.scene_reference_sheet import (
+                        attach_reference_sheet,
+                    )
+                    scene_input = await attach_reference_sheet(
+                        scene_input=scene_input,
+                        location=location,
+                        character_dicts=char_dicts,
+                        visual_details=visual_details,
+                        resolution=video_params.resolution,
+                        output_dir=image_dir,
+                    )
+                else:
+                    conditioning_image_path = await generate_scene_image_from_input(
+                        scene_input=scene_input,
+                        location=location,
+                        character_dicts=char_dicts,
+                        output_dir=image_dir,
+                        sd_server_url=_sd_url,
+                        video_params=video_params,
+                    )
 
                 # ── Upload conditioning image & persist artifact ────────────
                 minio_cond_key: Optional[str] = None
@@ -921,9 +811,11 @@ async def story_input_to_video(
                             logger.warning(f"[db] create_conditioning_image_artifact failed: {db_exc}")
 
                 # ── Resolve speaker's reference audio (voice sample) ───────
+                # Skipped in reference-sheet mode: audio conditioning would
+                # select the talking-head strategy and shadow the sheet.
                 speaker_audio_path: Optional[str] = None
                 speaker_id = scene_input.speaker_id
-                if speaker_id and speaker_id in character_map:
+                if not _sheet_mode and speaker_id and speaker_id in character_map:
                     char_data = character_map[speaker_id]
                     voice_samples = char_data.get("voice_samples") or []
                     if voice_samples:
@@ -1365,7 +1257,7 @@ async def generate_scene_segment(
             except Exception as exc:
                 logger.warning(f"[scene {index}] Could not read audio length: {exc}")
 
-    frames = _frames_from_duration(duration, video_params.fps)
+    frames = frames_from_duration(duration, video_params.fps)
 
     segment_params = VideoGenerationParams(
         prompt=scene.ltx_prompt,

@@ -166,6 +166,33 @@ class EntityRepository(BaseMySQLRepository):
                 "ALTER TABLE locations ADD COLUMN image_path VARCHAR(512)"
             )
 
+        # Labeled identity images (view labels + captions) on characters
+        await cur.execute("""
+            SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'characters'
+              AND COLUMN_NAME = 'labeled_images'
+        """)
+        if (await cur.fetchone())[0] == 0:
+            await cur.execute(
+                "ALTER TABLE characters ADD COLUMN labeled_images JSON"
+            )
+
+        # Visual details table (reusable props/logos for reference sheets)
+        await cur.execute("""
+            CREATE TABLE IF NOT EXISTS visual_details (
+                id VARCHAR(255) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                description TEXT NOT NULL,
+                category VARCHAR(64) NOT NULL DEFAULT 'Props',
+                story_template_id VARCHAR(255) NOT NULL,
+                image_path VARCHAR(512),
+                label JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (story_template_id) REFERENCES story_templates(id) ON DELETE CASCADE
+            )
+        """)
+
     # ==================== CHARACTER METHODS ====================
 
     async def create_character(
@@ -177,15 +204,17 @@ class EntityRepository(BaseMySQLRepository):
         voice_samples: Optional[List[Dict[str, str]]] = None,
         video_search_tag: Optional[str] = None,
         identity_images: Optional[List[str]] = None,
+        labeled_images: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Create a new character with optional voice samples, search tag, and identity images."""
         await self._execute(
             """
-            INSERT INTO characters (id, name, description, video_clip_path, video_search_tag, identity_images, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO characters (id, name, description, video_clip_path, video_search_tag, identity_images, labeled_images, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (character_id, name, description, video_clip_path, video_search_tag,
              json.dumps(identity_images) if identity_images else None,
+             json.dumps(labeled_images) if labeled_images else None,
              datetime.utcnow()),
         )
 
@@ -204,19 +233,19 @@ class EntityRepository(BaseMySQLRepository):
     async def get_character(self, character_id: str) -> Optional[Dict[str, Any]]:
         """Get a character by ID with its voice samples."""
         row = await self._fetch_one(
-            "SELECT id, name, description, video_clip_path, video_search_tag, identity_images, created_at FROM characters WHERE id = %s",
+            "SELECT id, name, description, video_clip_path, video_search_tag, identity_images, labeled_images, created_at FROM characters WHERE id = %s",
             (character_id,),
         )
         if row is None:
             return None
 
-        # Parse identity_images JSON
-        identity_images = []
-        if row[5]:
+        def _parse_json_list(value) -> list:
+            if not value:
+                return []
             try:
-                identity_images = json.loads(row[5]) if isinstance(row[5], str) else row[5]
+                return json.loads(value) if isinstance(value, str) else value
             except (json.JSONDecodeError, TypeError):
-                identity_images = []
+                return []
 
         character = {
             "character_id": row[0],
@@ -224,9 +253,10 @@ class EntityRepository(BaseMySQLRepository):
             "description": row[2],
             "video_clip_path": row[3] or "",
             "video_search_tag": row[4],
-            "identity_images": identity_images or [],
-            "created_at": row[6].isoformat() if row[6] else None,
-            "updated_at": row[6].isoformat() if row[6] else None,  # Use created_at as updated_at
+            "identity_images": _parse_json_list(row[5]),
+            "labeled_images": _parse_json_list(row[6]),
+            "created_at": row[7].isoformat() if row[7] else None,
+            "updated_at": row[7].isoformat() if row[7] else None,  # Use created_at as updated_at
         }
 
         samples = await self._fetch_all(
@@ -267,6 +297,7 @@ class EntityRepository(BaseMySQLRepository):
         video_search_tag: Optional[str] = None,
         identity_images: Optional[List[str]] = None,
         voice_samples: Optional[List[Dict[str, str]]] = None,
+        labeled_images: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Update an existing character.
@@ -293,6 +324,9 @@ class EntityRepository(BaseMySQLRepository):
         if identity_images is not None:
             updates.append("identity_images = %s")
             values.append(json.dumps(identity_images))
+        if labeled_images is not None:
+            updates.append("labeled_images = %s")
+            values.append(json.dumps(labeled_images))
 
         if updates:
             values.append(character_id)
@@ -747,6 +781,94 @@ class EntityRepository(BaseMySQLRepository):
         """Delete a location by ID."""
         return await self._execute(
             "DELETE FROM locations WHERE id = %s", (location_id,)
+        ) > 0
+
+    # ==================== VISUAL DETAIL METHODS ====================
+
+    _VISUAL_DETAIL_COLS = "id, name, description, category, story_template_id, image_path, label, created_at"
+
+    @staticmethod
+    def _visual_detail_row_to_dict(row) -> Dict[str, Any]:
+        label = None
+        if row[6]:
+            try:
+                label = json.loads(row[6]) if isinstance(row[6], str) else row[6]
+            except (json.JSONDecodeError, TypeError):
+                label = None
+        return {
+            "detail_id": row[0],
+            "name": row[1],
+            "description": row[2],
+            "category": row[3],
+            "story_template_id": row[4],
+            "image_path": row[5],
+            "label": label,
+            "created_at": row[7],
+            "updated_at": row[7],
+        }
+
+    async def create_visual_detail(
+        self,
+        detail_id: str,
+        name: str,
+        description: str,
+        story_template_id: str,
+        category: str = "Props",
+        image_path: Optional[str] = None,
+        label: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Create a new visual detail scoped to a story template."""
+        await self._execute(
+            """
+            INSERT INTO visual_details (id, name, description, category, story_template_id, image_path, label, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (detail_id, name, description, category, story_template_id,
+             image_path, json.dumps(label) if label else None, datetime.utcnow()),
+        )
+        return await self.get_visual_detail(detail_id)
+
+    async def update_visual_detail_image(
+        self,
+        detail_id: str,
+        image_path: str,
+        label: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Update the image path (and optional label) of a visual detail."""
+        await self._execute(
+            "UPDATE visual_details SET image_path = %s, label = %s WHERE id = %s",
+            (image_path, json.dumps(label) if label else None, detail_id),
+        )
+        return await self.get_visual_detail(detail_id)
+
+    async def get_visual_detail(self, detail_id: str) -> Optional[Dict[str, Any]]:
+        """Get a visual detail by ID."""
+        row = await self._fetch_one(
+            f"SELECT {self._VISUAL_DETAIL_COLS} FROM visual_details WHERE id = %s",
+            (detail_id,),
+        )
+        return self._visual_detail_row_to_dict(row) if row else None
+
+    async def list_visual_details_by_template(
+        self, template_id: str, limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """List all visual details for a given story template."""
+        rows = await self._fetch_all(
+            f"""
+            SELECT {self._VISUAL_DETAIL_COLS}
+            FROM visual_details
+            WHERE story_template_id = %s
+            ORDER BY name
+            LIMIT %s
+            """,
+            (template_id, limit),
+        )
+        return [self._visual_detail_row_to_dict(r) for r in rows]
+
+    async def delete_visual_detail(self, detail_id: str) -> bool:
+        """Delete a visual detail by ID."""
+        return await self._execute(
+            "DELETE FROM visual_details WHERE id = %s", (detail_id,)
         ) > 0
 
 

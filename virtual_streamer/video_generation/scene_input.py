@@ -38,6 +38,10 @@ class SceneInput(BaseModel):
     scene_visual_description: Optional[dict] = None  # FluxPrompt.model_dump(), used for SD conditioning
     raw_scene_data: dict  # full model_dump() of source agent object — for DB storage and replay
 
+    # Ingredient-LoRA (IC-LoRA) reference-sheet conditioning, optional.
+    reference_sheet_path: Optional[str] = None  # local path to the grid image (loop-frozen as a static video for LTX)
+    reference_sheet_description: Optional[str] = None  # prose description of each cell, prepended to ltx_prompt
+
 
 class StoryInput(BaseModel):
     """Stable wrapper around story-level data consumed by the pipeline."""

@@ -23,14 +23,13 @@ from virtual_streamer.video_generation.ltx_client import (
 from virtual_streamer.video_generation.scene_input import SceneInput, StoryInput
 from virtual_streamer.video_generation.story_to_video import (
     StoryVideoResult,
-    TALKING_HEAD_LORA,
-    _frames_from_duration,
-    _video_length_from_spoken_line,
     concatenate_videos,
     generate_segment_from_input,
     generate_scene_image_from_input,
     story_input_to_video,
 )
+from virtual_streamer.video_generation.strategies.frame_utils import video_length_from_spoken_line
+from virtual_streamer.video_generation.strategies.talking_head import TALKING_HEAD_LORA
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +229,7 @@ class TestGenerateSegmentFromInput:
             audio_path=fake_audio_file,
         )
         params = client.generate_video.call_args.kwargs["params"]
-        expected = _video_length_from_spoken_line(scene.spoken_line, sample_video_params.fps)
+        expected = video_length_from_spoken_line(scene.spoken_line, sample_video_params.fps)
         assert params.video_length == expected
 
     async def test_talking_head_prompt_uses_visual_speech_format(self, fake_video_file, fake_audio_file, sample_video_params, tmp_path):

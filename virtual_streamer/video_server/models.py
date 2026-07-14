@@ -107,6 +107,46 @@ class VideoClip(VideoClipBase):
 # --- Character & TTS Models ---
 
 
+class ImageFraming(str, Enum):
+    FACE = "face"
+    BUST = "bust"
+    FULL_BODY = "full_body"
+
+
+class ImageAngle(str, Enum):
+    FRONT = "front"
+    BACK = "back"
+    LEFT = "left"
+    RIGHT = "right"
+    THREE_QUARTER = "three_quarter"
+
+
+class LabeledImage(BaseModel):
+    """An entity image with view labels and a caption.
+
+    This schema doubles as the structured output of the image-tagger LLM
+    (minus image_path), so tagging and persistence can never diverge.
+    All labels are optional — a bare storage path is a valid LabeledImage.
+    """
+
+    image_path: str = Field(..., description="Storage path (MinIO key) of the image")
+    framing: Optional[ImageFraming] = Field(
+        None, description="How much of the subject is shown: face, bust, or full_body"
+    )
+    angle: Optional[ImageAngle] = Field(
+        None, description="Viewing angle: front, back, left, right, or three_quarter"
+    )
+    variation: Optional[str] = Field(
+        None, description="Free-text variation (outfit, expression, 'with apron', ...)"
+    )
+    is_multi_view: bool = Field(
+        False, description="True when the image itself is a multi-angle collage"
+    )
+    caption: str = Field(
+        "", description="Prose description of the image content, used for reference-sheet prompts"
+    )
+
+
 class VoiceSample(BaseModel):
     sample_storage_path: str = Field(
         ..., description="Path/key to the speaker WAV file (e.g., S3 key)"
@@ -129,6 +169,13 @@ class CharacterBase(BaseModel):
     identity_images: List[str] = Field(
         default_factory=list,
         description="Storage paths to identity/reference images for the character",
+    )
+    labeled_images: List[LabeledImage] = Field(
+        default_factory=list,
+        description=(
+            "View labels + captions for the identity images (auto-tagged by the "
+            "image-tagger on upload). Paths mirror identity_images entries."
+        ),
     )
 
 
@@ -340,6 +387,50 @@ class Location(LocationBase):
     image_path: Optional[str] = Field(
         None,
         description="MinIO storage path of the identity image generated for this location.",
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        orm_mode = True
+
+
+class VisualDetailBase(BaseModel):
+    """Base model for a reusable visual detail (prop, logo, vehicle, ...).
+
+    Visual details are embedded into IC-LoRA reference sheets alongside
+    location and character images so the generated video keeps their identity.
+    """
+
+    name: str = Field(..., description="Display name (e.g. 'FreshMart tote bag')")
+    description: str = Field(
+        ...,
+        description="Prose/diffusion-prompt description of the detail — used both to generate its image and as reference-sheet cell text",
+    )
+    category: str = Field(
+        "Props",
+        description="Reference-sheet cell label: 'Props', 'Logo', 'Vehicle', ... (free text, these values by convention)",
+    )
+    story_template_id: str = Field(
+        ..., description="ID of the story template this detail is scoped to"
+    )
+
+
+class VisualDetail(VisualDetailBase):
+    """Full VisualDetail representation including generated fields."""
+
+    detail_id: str = Field(
+        ..., description="Human-readable slug derived from name (e.g. 'freshmart-tote-bag')"
+    )
+    image_path: Optional[str] = Field(
+        None, description="MinIO storage path of the detail image (generated or uploaded)"
+    )
+    label: Optional[LabeledImage] = Field(
+        None,
+        description=(
+            "View labels + caption for the image. Set from the generation prompt "
+            "when the image is generated, or by the image-tagger when uploaded."
+        ),
     )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

@@ -9,9 +9,10 @@ import os
 import tempfile
 
 from fastapi import APIRouter, HTTPException, status, Form, File, UploadFile
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from virtual_streamer.video_server.models import Character, VoiceSample
+from virtual_streamer.image_generation.image_tagger import tag_image
 from virtual_streamer.utils.minio_client import get_storage_client
 from virtual_streamer.utils.entity_repository import get_entity_repository
 from virtual_streamer.utils.transcription import transcribe_audio
@@ -23,6 +24,34 @@ router = APIRouter(prefix="/characters", tags=["Characters"])
 PREFIX_AUDIO = "audios/"
 PREFIX_CLIPS = "clips/"
 PREFIX_IDENTITY_IMAGES = "identity_images/"
+
+
+async def _tag_identity_images(
+    uploads: List[Tuple[bytes, str]],
+    character_name: str,
+    character_description: Optional[str],
+) -> List[dict]:
+    """Auto-label uploaded identity images with the image-tagger vision LLM.
+
+    Best effort: a failed tag yields an unlabeled entry (path only) and never
+    fails the upload. Returns LabeledImage dicts ready for DB storage.
+    """
+    labels = []
+    for content, storage_key in uploads:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            label = await tag_image(
+                tmp_path,
+                storage_path=storage_key,
+                entity_name=character_name,
+                entity_description=character_description,
+            )
+        finally:
+            os.unlink(tmp_path)
+        labels.append(label.model_dump(mode="json"))
+    return labels
 
 
 @router.post("", response_model=Character, status_code=status.HTTP_201_CREATED)
@@ -87,6 +116,7 @@ async def create_character(
 
     # Upload identity images to MinIO
     identity_image_paths = []
+    identity_uploads = []
     for img_file in identity_files:
         file_content = await img_file.read()
         content_type = "image/jpeg"
@@ -97,6 +127,9 @@ async def create_character(
         storage_key = f"{PREFIX_IDENTITY_IMAGES}{character_id}/{img_file.filename}"
         await storage.put_object(storage_key, file_content, content_type=content_type)
         identity_image_paths.append(storage_key)
+        identity_uploads.append((file_content, storage_key))
+
+    labeled_images = await _tag_identity_images(identity_uploads, name, description)
 
     # Store metadata in MySQL
     character_data = await repo.create_character(
@@ -107,6 +140,7 @@ async def create_character(
         voice_samples=voice_samples_data,
         video_search_tag=video_search_tag,
         identity_images=identity_image_paths,
+        labeled_images=labeled_images,
     )
 
     # Convert to Pydantic model
@@ -331,8 +365,10 @@ async def add_identity_images(
         )
 
     existing_images = existing.get("identity_images", [])
+    existing_labels = existing.get("labeled_images", [])
 
     new_paths = []
+    new_uploads = []
     for img_file in identity_files:
         file_content = await img_file.read()
         content_type = "image/jpeg"
@@ -343,9 +379,16 @@ async def add_identity_images(
         storage_key = f"{PREFIX_IDENTITY_IMAGES}{character_id}/{img_file.filename}"
         await storage.put_object(storage_key, file_content, content_type=content_type)
         new_paths.append(storage_key)
+        new_uploads.append((file_content, storage_key))
+
+    new_labels = await _tag_identity_images(
+        new_uploads, existing["name"], existing.get("description")
+    )
 
     character_data = await repo.update_character(
-        character_id, identity_images=existing_images + new_paths
+        character_id,
+        identity_images=existing_images + new_paths,
+        labeled_images=existing_labels + new_labels,
     )
 
     return Character(

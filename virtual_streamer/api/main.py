@@ -47,6 +47,7 @@ from virtual_streamer.api.high_level.story_template_generation import (
     router as story_template_generation_router,
 )
 from virtual_streamer.api.low_level.locations import router as locations_router
+from virtual_streamer.api.low_level.visual_details import router as visual_details_router
 from virtual_streamer.api.high_level.location_generation import (
     router as location_generation_router,
 )
@@ -142,6 +143,7 @@ app.include_router(candidates_router, prefix="/api/v1")
 app.include_router(eval_bench_router, prefix="/api/v1")
 app.include_router(review_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
+app.include_router(visual_details_router, prefix="/api/v1")
 app.include_router(articles_router, prefix="/api/v1")
 # Low-level: Streaming infrastructure
 app.include_router(streams_router, prefix="/api/v1")
